@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 6 validated the new email/password JWT auth + change-password feature end-to-end on top of the existing Emergent Google OAuth. Backend: added TestEmailPasswordAuthAndChange (9 new tests) covering login success (JWT returned + httpOnly access_token cookie set), 401 on wrong password / unknown email, JWT Bearer accepted on /api/auth/me and /api/clients, legacy Google session_token=test_session_verify still accepted, change-password wrong-current -> 400, new_password < 6 chars -> 400, and full 'change -> old login fails -> new login works -> revert' round trip. Full suite now 55 passed / 1 skipped (Resend rate-limit) in 72s. Frontend (playwright, 1920x1080): /login shows login-email, login-password, login-submit-btn, change-password-link AND google-login-btn; wrong-password login shows readable 'Invalid email or password' in login-error; owner login lands on Dashboard and JWT (3-segment) is stored in localStorage.session_token; user menu exposes change-password-menu-btn which navigates to /change-password; on the change-password page, mismatched new/confirm shows cp-error 'New passwords do not match.'; a successful password change renders the change-password-success card; the password was reverted to RevivalPro2026! via the API in the same run (200) and a final owner login succeeds. Google button on /login still redirects to https://auth.emergentagent.com/oauth/... . Regression: /clients and /contracts still load when authenticated. Owner credentials are back to RevivalPro2026! at end of run.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: /api/auth/change-password does not enforce rate-limiting or brute-force lockout on the current_password check (the auth_testing.md playbook mentions 5-attempt lockout). Currently unlimited attempts against a known email are possible.",
+    "OPTIONAL: /api/auth/change-password does not require the caller to be authenticated (email is in the body). This is deliberate so the /change-password link on /login works without a session, but consider requiring auth OR adding rate-limiting + captcha to prevent online password-guessing.",
+    "OPTIONAL: on the frontend, after a successful password change, the user is not automatically logged in with the new password nor redirected to /login - only the success card is shown. Consider auto-redirect to /login (with a small delay) so the flow completes.",
+    "OPTIONAL: JWT_SECRET / ADMIN_PASSWORD are read via os.environ - good - but the process would 500 (KeyError) if JWT_SECRET is ever unset. A clearer startup check would improve DX.",
+    "OPTIONAL: server.py is now ~1280 lines - splitting auth.py / contracts.py / public_sign.py / settings.py routers is overdue (unchanged from iter-5)."
+  ],
+  "critical_code_review_comments": [
+    "get_current_user tries the session_token (Google) path first and JWT path second, but both consult the same `bearer` variable. If a caller sends a JWT as Bearer and there happens to be a user_sessions row with that exact string (extremely unlikely for a JWT), the session-token branch would win. Not a practical bug but worth an explicit type discriminator (e.g. Bearer format check: JWTs have two dots).",
+    "POST /api/auth/login sets the access_token cookie with samesite='none' and secure=True which is correct for cross-site preview flows, but there is no Path scoping or Domain and no HttpOnly refresh-token pair; a single 7-day access token is the whole session. Consider a shorter access token + refresh flow.",
+    "POST /api/auth/change-password does not invalidate existing sessions/JWTs after a successful password change - a stolen JWT remains valid for its 7-day life. Consider bumping a `password_changed_at` on the user and rejecting JWTs with iat < password_changed_at.",
+    "seed_admin() updates the admin's password_hash on every startup if it detects a mismatch - great for recovery, but combined with hot-reload it means anyone with .env write access can silently rotate the admin creds on next restart. Log this action.",
+    "Frontend stores the JWT in localStorage (XSS-exposed). The httpOnly cookie is also set, so the LS copy is redundant and adds XSS risk; consider dropping it and relying on the cookie."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (+ TestEmailPasswordAuthAndChange with 9 tests; merged login + change-password into a single class so pytest-xdist loadscope pins them to one worker and the change-password test does not race against concurrent login tests)",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {
+    "backend": "100% (55/55 executed pytest cases pass, 1 skipped on Resend rate-limit which is external quota)",
+    "frontend": "100% - all 8 UI checks pass: login form renders w/ Google button; wrong-pw shows readable login-error; owner login lands on Dashboard w/ JWT in localStorage; user menu -> Change Password nav; cp-error on mismatched confirm; change-password-success on success; Google button still redirects to auth.emergentagent.com; post-revert owner login works and /clients + /contracts load."
+  },
+  "test_credentials": "Owner: tccrossmusic@gmail.com / RevivalPro2026! (VERIFIED WORKING at end of run). Legacy Google session_token 'test_session_verify' still valid.",
+  "seed_data_creation": "None. Owner password was temporarily changed to 'TempTestPass_123!' (backend test) and 'TempPass_UI_9!' (frontend test) and REVERTED back to RevivalPro2026! within each test's finally block. Confirmed by final login test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The auth suite adds 9 new tests (55 total). IMPORTANT: TestEmailPasswordAuthAndChange must remain a SINGLE class - pytest-xdist loadscope pins all methods of one class to one worker, so change-password mutations do not race against concurrent logins on another worker. If you split it back into two classes you will see intermittent 401s on jwt_bearer_* tests during the temp-change window. When testing the /change-password UI flow ALWAYS revert via `POST /api/auth/change-password {email: tccrossmusic@gmail.com, current_password: <temp>, new_password: RevivalPro2026!}` in a finally/emergency block or you will lock out the shared owner account. Frontend stores JWT in localStorage.session_token (3-segment JWT). Google button on /login navigates to https://auth.emergentagent.com/oauth/?redirect=<origin>/ - still working. /login redirects to / when already authenticated, so clear localStorage before re-testing the login page.",
+  "rca of the issue": "None - all requested features work end to end. Only test-infra observation: pytest-xdist with loadscope will race login and change-password if placed in different classes; consolidating them into one class fixes it."
+}

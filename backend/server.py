@@ -10,6 +10,8 @@ from typing import List, Optional
 import uuid
 import requests
 import base64
+import bcrypt
+import jwt
 from html import escape
 from datetime import datetime, timezone, timedelta
 from fastapi.responses import StreamingResponse
@@ -235,32 +237,109 @@ class User(BaseModel):
     picture: str = ""
 
 
+class LoginBody(BaseModel):
+    email: str
+    password: str
+
+
+class ChangePasswordBody(BaseModel):
+    email: str
+    current_password: str
+    new_password: str
+
+
+# ---------------- Password + JWT helpers ----------------
+JWT_ALGORITHM = "HS256"
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def create_access_token(user_id: str, email: str) -> str:
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "type": "access",
+        "exp": datetime.now(timezone.utc) + timedelta(days=7),
+    }
+    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
+
+
 # ---------------- Auth ----------------
-async def get_current_user(request: Request, session_token: Optional[str] = Cookie(default=None)):
-    token = session_token
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+async def get_current_user(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None),
+    access_token: Optional[str] = Cookie(default=None),
+):
+    bearer = None
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        bearer = auth[7:]
 
-    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid session")
+    # 1) Google/session-token flow (cookie or bearer)
+    token = session_token or bearer
+    if token:
+        session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+        if session:
+            expires_at = session["expires_at"]
+            if isinstance(expires_at, str):
+                expires_at = datetime.fromisoformat(expires_at)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at >= datetime.now(timezone.utc):
+                user_doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+                if user_doc:
+                    return User(**user_doc)
 
-    expires_at = session["expires_at"]
-    if isinstance(expires_at, str):
-        expires_at = datetime.fromisoformat(expires_at)
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401, detail="Session expired")
+    # 2) JWT flow (access_token cookie or bearer)
+    jwt_token = access_token or bearer
+    if jwt_token:
+        try:
+            payload = jwt.decode(jwt_token, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+            if payload.get("type") == "access":
+                user_doc = await db.users.find_one({"user_id": payload.get("sub")}, {"_id": 0})
+                if user_doc:
+                    return User(**user_doc)
+        except jwt.PyJWTError:
+            pass
 
-    user_doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
-    if not user_doc:
-        raise HTTPException(status_code=401, detail="User not found")
-    return User(**user_doc)
+    raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+@api_router.post("/auth/login")
+async def login(body: LoginBody, response: Response):
+    email = body.email.strip().lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user or not user.get("password_hash") or not verify_password(body.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_access_token(user["user_id"], email)
+    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
+                        path="/", max_age=7 * 24 * 60 * 60)
+    return {**User(**user).model_dump(), "session_token": token}
+
+
+@api_router.post("/auth/change-password")
+async def change_password(body: ChangePasswordBody):
+    email = body.email.strip().lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found for that email.")
+    if not user.get("password_hash"):
+        raise HTTPException(status_code=400, detail="This account has no password yet. Sign in with Google, then set one.")
+    if not verify_password(body.current_password, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="Your current password is incorrect.")
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+    await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password(body.new_password)}})
+    return {"status": "success"}
 
 
 @api_router.post("/auth/session")
@@ -1158,10 +1237,31 @@ async def seed_data():
     logger.info("Seed complete.")
 
 
+async def seed_admin():
+    email = os.environ["ADMIN_EMAIL"].strip().lower()
+    password = os.environ["ADMIN_PASSWORD"]
+    existing = await db.users.find_one({"email": email})
+    if not existing:
+        await db.users.insert_one({
+            "user_id": f"user_{uuid.uuid4().hex[:12]}",
+            "email": email,
+            "name": "Owner",
+            "picture": "",
+            "role": "admin",
+            "password_hash": hash_password(password),
+            "created_at": now_iso(),
+        })
+        logger.info("Seeded owner account.")
+    elif not existing.get("password_hash"):
+        await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password(password), "role": "admin"}})
+        logger.info("Added password to existing owner account.")
+
+
 @app.on_event("startup")
 async def on_startup():
     await seed_data()
     await get_company()
+    await seed_admin()
 
 
 app.include_router(api_router)

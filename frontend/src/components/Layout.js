@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { BRAND } from "@/lib/format";
-import { LayoutDashboard, Users, FileText, HardHat, Receipt, LogOut, FileSignature, Building2 } from "lucide-react";
+import { LayoutDashboard, Users, FileText, HardHat, Receipt, LogOut, FileSignature, Building2, KeyRound } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -84,6 +84,9 @@ export default function Layout() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem data-testid="company-profile-btn" onClick={() => navigate("/settings")} className="gap-2 cursor-pointer">
                   <Building2 size={16} /> Company Profile
+                </DropdownMenuItem>
+                <DropdownMenuItem data-testid="change-password-menu-btn" onClick={() => navigate("/change-password")} className="gap-2 cursor-pointer">
+                  <KeyRound size={16} /> Change Password
                 </DropdownMenuItem>
                 <DropdownMenuItem data-testid="logout-btn" onClick={logout} className="text-red-600 focus:text-red-600 gap-2 cursor-pointer">
                   <LogOut size={16} /> Sign out

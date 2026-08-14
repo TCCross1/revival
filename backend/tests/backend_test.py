@@ -877,3 +877,114 @@ class TestCountersignFlow:
         finally:
             self._cleanup(client, c, e, gen)
 
+
+
+# ---------------- New: Email/Password JWT Auth ----------------
+ADMIN_EMAIL = "tccrossmusic@gmail.com"
+ADMIN_PASSWORD = "RevivalPro2026!"
+
+
+# Merged into a single class so pytest-xdist's loadscope pins all admin-account
+# tests to ONE worker (change-password mutates the same admin row that login
+# tests exercise, so they must not run in parallel).
+class TestEmailPasswordAuthAndChange:
+    def test_login_success_returns_jwt(self):
+        r = requests.post(f"{BASE_URL}/api/auth/login",
+                          json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data.get("email") == ADMIN_EMAIL
+        assert "user_id" in data
+        token = data.get("session_token")
+        assert isinstance(token, str) and token.count(".") == 2  # JWT
+        # httpOnly cookie set
+        assert "access_token" in r.cookies
+
+    def test_login_wrong_password_401(self):
+        r = requests.post(f"{BASE_URL}/api/auth/login",
+                          json={"email": ADMIN_EMAIL, "password": "wrong-pass-xyz"})
+        assert r.status_code == 401
+
+    def test_login_unknown_email_401(self):
+        r = requests.post(f"{BASE_URL}/api/auth/login",
+                          json={"email": "nobody-xyz@nowhere.test", "password": "whatever"})
+        assert r.status_code == 401
+
+    def test_jwt_bearer_works_on_auth_me(self):
+        r = requests.post(f"{BASE_URL}/api/auth/login",
+                          json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+        assert r.status_code == 200, r.text
+        token = r.json()["session_token"]
+        r2 = requests.get(f"{BASE_URL}/api/auth/me",
+                          headers={"Authorization": f"Bearer {token}"})
+        assert r2.status_code == 200
+        assert r2.json().get("email") == ADMIN_EMAIL
+
+    def test_jwt_bearer_works_on_clients(self):
+        r = requests.post(f"{BASE_URL}/api/auth/login",
+                          json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+        assert r.status_code == 200, r.text
+        token = r.json()["session_token"]
+        r2 = requests.get(f"{BASE_URL}/api/clients",
+                          headers={"Authorization": f"Bearer {token}"})
+        assert r2.status_code == 200
+        assert isinstance(r2.json(), list)
+
+    def test_legacy_google_session_still_accepted(self, client):
+        # Existing session_token=test_session_verify still authorises /auth/me
+        r = client.get(f"{BASE_URL}/api/auth/me")
+        assert r.status_code == 200
+
+
+    # ---- change-password tests (must live in same class as login tests due to loadscope) ----
+    def test_wrong_current_400(self):
+        r = requests.post(f"{BASE_URL}/api/auth/change-password", json={
+            "email": ADMIN_EMAIL,
+            "current_password": "definitely-wrong",
+            "new_password": "AnotherStrong1!",
+        })
+        assert r.status_code == 400
+        assert "current password" in r.json().get("detail", "").lower()
+
+    def test_short_new_password_400(self):
+        r = requests.post(f"{BASE_URL}/api/auth/change-password", json={
+            "email": ADMIN_EMAIL,
+            "current_password": ADMIN_PASSWORD,
+            "new_password": "abc",
+        })
+        assert r.status_code == 400
+        assert "6" in r.json().get("detail", "")
+
+    def test_change_then_login_then_revert(self):
+        new_pw = "TempTestPass_123!"
+        # 1. Change to temp
+        r = requests.post(f"{BASE_URL}/api/auth/change-password", json={
+            "email": ADMIN_EMAIL,
+            "current_password": ADMIN_PASSWORD,
+            "new_password": new_pw,
+        })
+        assert r.status_code == 200, r.text
+        assert r.json().get("status") == "success"
+
+        try:
+            # 2. Login with old should now fail
+            r_old = requests.post(f"{BASE_URL}/api/auth/login",
+                                  json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+            assert r_old.status_code == 401
+            # 3. Login with new works
+            r_new = requests.post(f"{BASE_URL}/api/auth/login",
+                                  json={"email": ADMIN_EMAIL, "password": new_pw})
+            assert r_new.status_code == 200
+            assert "session_token" in r_new.json()
+        finally:
+            # 4. REVERT no matter what
+            rev = requests.post(f"{BASE_URL}/api/auth/change-password", json={
+                "email": ADMIN_EMAIL,
+                "current_password": new_pw,
+                "new_password": ADMIN_PASSWORD,
+            })
+            assert rev.status_code == 200, f"REVERT FAILED: {rev.text}"
+            # sanity: original creds work again
+            check = requests.post(f"{BASE_URL}/api/auth/login",
+                                  json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+            assert check.status_code == 200

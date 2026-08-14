@@ -14,6 +14,7 @@ import Contracts from "@/pages/Contracts";
 import ContractDetail from "@/pages/ContractDetail";
 import Settings from "@/pages/Settings";
 import PublicSign from "@/pages/PublicSign";
+import ChangePassword from "@/pages/ChangePassword";
 import { Toaster } from "@/components/ui/sonner";
 import { BRAND } from "@/lib/format";
 
@@ -40,6 +41,7 @@ function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/change-password" element={<ChangePassword />} />
       <Route path="/sign/:token" element={<PublicSign />} />
       <Route
         element={
