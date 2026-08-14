@@ -233,8 +233,8 @@ class TestEstimateEmail:
             "tax_rate": 0,
         }).json()
         r = client.post(f"{BASE_URL}/api/estimates/{e['id']}/send-email")
-        # Accept 502 (undeliverable, friendly) or 500 fallback; must NOT be 200
-        assert r.status_code in (502, 500), f"expected error status, got {r.status_code}: {r.text[:300]}"
+        # Now returns 4xx (400/422) with friendly detail per iter-2 fix
+        assert r.status_code in (400, 422, 502, 500), f"expected error status, got {r.status_code}: {r.text[:300]}"
         try:
             body = r.json()
             assert "detail" in body
@@ -312,3 +312,256 @@ class TestLogout:
                           headers={"Authorization": "Bearer nonexistent_token"})
         assert r.status_code == 200
         assert r.json().get("success") is True
+
+
+# ---------------- New: Settings ----------------
+class TestSettings:
+    def test_get_settings_ok(self, client):
+        r = client.get(f"{BASE_URL}/api/settings")
+        assert r.status_code == 200
+        d = r.json()
+        for k in ["name", "address", "phone", "license"]:
+            assert k in d
+
+    def test_put_settings_persists(self, client):
+        original = client.get(f"{BASE_URL}/api/settings").json()
+        payload = {
+            "name": "Revival Pro TEST",
+            "address": "123 Test Ave, TestCity, TS 00000",
+            "phone": "555-000-0000",
+            "license": "LIC-TEST-9",
+            "email": original.get("email", ""),
+        }
+        r = client.put(f"{BASE_URL}/api/settings", json=payload)
+        assert r.status_code == 200
+        r2 = client.get(f"{BASE_URL}/api/settings").json()
+        assert r2["name"] == "Revival Pro TEST"
+        assert r2["license"] == "LIC-TEST-9"
+        # restore
+        client.put(f"{BASE_URL}/api/settings", json=original)
+
+    def test_settings_requires_auth(self, anon):
+        assert anon.get(f"{BASE_URL}/api/settings").status_code == 401
+
+
+# ---------------- New: Contract Generation ----------------
+class TestContractGenerate:
+    def _make_won_estimate(self, client, tax=0):
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_ContractClient", "phone": "555-1", "email": "cc@t.com",
+            "address": "10 Contract Ln", "source": "Referral", "status": "Active"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Kitchen",
+            "status": "Won",
+            "line_items": [
+                {"description": "Demo", "quantity": 1, "unit_price": 1000},
+                {"description": "Cabinets", "quantity": 2, "unit_price": 500},
+            ],
+            "tax_rate": tax,
+        }).json()
+        return c, e
+
+    def _cleanup(self, client, c, e, gen):
+        if gen:
+            if gen.get("contract"):
+                client.delete(f"{BASE_URL}/api/contracts/{gen['contract']['id']}")
+            if gen.get("invoice"):
+                client.delete(f"{BASE_URL}/api/invoices/{gen['invoice']['id']}")
+        client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+        client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+    def test_generate_404_missing(self, client):
+        r = client.post(f"{BASE_URL}/api/estimates/does-not-exist/generate")
+        assert r.status_code == 404
+
+    def test_generate_400_non_won(self, client):
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_DraftClient", "email": "d@d.com", "address": "1", "phone": "", "source": "Referral", "status": "Lead"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Bathroom",
+            "status": "Draft",
+            "line_items": [{"description": "X", "quantity": 1, "unit_price": 100}],
+            "tax_rate": 0,
+        }).json()
+        r = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate")
+        assert r.status_code == 400
+        client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+        client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+    def test_generate_requires_auth(self, anon):
+        r = anon.post(f"{BASE_URL}/api/estimates/anything/generate")
+        assert r.status_code == 401
+
+    def test_generate_creates_contract_and_invoice_with_correct_data(self, client):
+        c, e = self._make_won_estimate(client)
+        gen = None
+        try:
+            r = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate")
+            assert r.status_code == 200, r.text
+            gen = r.json()
+            assert "contract" in gen and "invoice" in gen
+            ct = gen["contract"]
+            inv = gen["invoice"]
+
+            # contract number format
+            assert ct["contract_number"].startswith("CON-")
+            # scope pulled from estimate
+            assert len(ct["line_items"]) == 2
+            descs = [li["description"] for li in ct["line_items"]]
+            assert "Demo" in descs and "Cabinets" in descs
+            # total matches estimate total
+            assert ct["total"] == e["total"]
+            # exclusions defaults (6 items)
+            assert len(ct["exclusions"]) == 6
+            # payment schedule 3 milestones
+            assert len(ct["payment_schedule"]) == 3
+            sched_sum = round(sum(m["amount"] for m in ct["payment_schedule"]), 2)
+            assert sched_sum == round(ct["total"], 2)
+            # markup default
+            assert ct["change_order_markup"] == 20.0
+            # client info populated
+            assert ct["client_name"] == "TEST_ContractClient"
+            assert ct["client_address"] == "10 Contract Ln"
+            assert ct["client_phone"] == "555-1"
+            # contractor info populated (from settings)
+            assert ct["contractor_name"]  # nonempty
+            # invoice link
+            assert ct["invoice_id"] == inv["id"]
+            assert inv["estimate_id"] == e["id"]
+            assert inv["amount"] == e["total"]
+        finally:
+            self._cleanup(client, c, e, gen)
+
+    def test_generate_is_idempotent(self, client):
+        c, e = self._make_won_estimate(client)
+        gen = None
+        try:
+            r1 = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate").json()
+            r2 = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate").json()
+            assert r1["contract"]["id"] == r2["contract"]["id"]
+            assert r1["invoice"]["id"] == r2["invoice"]["id"]
+            # no duplicates in list
+            contracts = client.get(f"{BASE_URL}/api/contracts").json()
+            matches = [x for x in contracts if x["estimate_id"] == e["id"]]
+            assert len(matches) == 1
+            gen = r2
+        finally:
+            self._cleanup(client, c, e, gen)
+
+
+# ---------------- New: Contract CRUD ----------------
+class TestContractCRUD:
+    def test_list_requires_auth(self, anon):
+        assert anon.get(f"{BASE_URL}/api/contracts").status_code == 401
+
+    def test_list_and_get(self, client):
+        contracts = client.get(f"{BASE_URL}/api/contracts")
+        assert contracts.status_code == 200
+        arr = contracts.json()
+        assert isinstance(arr, list)
+        if arr:
+            cid = arr[0]["id"]
+            r = client.get(f"{BASE_URL}/api/contracts/{cid}")
+            assert r.status_code == 200
+            assert r.json()["id"] == cid
+
+    def test_get_404(self, client):
+        r = client.get(f"{BASE_URL}/api/contracts/no-such-id")
+        assert r.status_code == 404
+
+    def test_partial_update_merges_only_provided(self, client):
+        # create a Won estimate to generate a contract
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_PatchContract", "phone": "555-2", "email": "p@p.com",
+            "address": "22 Patch St", "source": "Referral", "status": "Active"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Kitchen",
+            "status": "Won",
+            "line_items": [{"description": "K", "quantity": 1, "unit_price": 200}],
+            "tax_rate": 0,
+        }).json()
+        gen = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate").json()
+        cid = gen["contract"]["id"]
+        try:
+            # Partial patch: only change markup
+            r = client.put(f"{BASE_URL}/api/contracts/{cid}", json={"change_order_markup": 25.5})
+            assert r.status_code == 200
+            body = r.json()
+            assert body["change_order_markup"] == 25.5
+            # Verify other fields unchanged
+            assert body["client_name"] == "TEST_PatchContract"
+            assert len(body["line_items"]) == 1
+            # Persist via GET
+            fetched = client.get(f"{BASE_URL}/api/contracts/{cid}").json()
+            assert fetched["change_order_markup"] == 25.5
+            assert fetched["client_name"] == "TEST_PatchContract"
+
+            # Update signatures and status
+            r2 = client.put(f"{BASE_URL}/api/contracts/{cid}", json={
+                "client_signature": "data:image/png;base64,AAAA",
+                "client_signed_date": "2026-01-15",
+                "contractor_signature": "data:image/png;base64,BBBB",
+                "contractor_signed_date": "2026-01-15",
+                "status": "Signed",
+            })
+            assert r2.status_code == 200
+            b2 = r2.json()
+            assert b2["status"] == "Signed"
+            assert b2["client_signature"].startswith("data:image/png")
+            assert b2["change_order_markup"] == 25.5  # prior update preserved
+        finally:
+            client.delete(f"{BASE_URL}/api/contracts/{cid}")
+            client.delete(f"{BASE_URL}/api/invoices/{gen['invoice']['id']}")
+            client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+            client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+    def test_delete_contract(self, client):
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_DelContract", "phone": "", "email": "", "address": "",
+            "source": "Referral", "status": "Lead"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Bathroom",
+            "status": "Won",
+            "line_items": [{"description": "Y", "quantity": 1, "unit_price": 300}],
+            "tax_rate": 0,
+        }).json()
+        gen = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate").json()
+        cid = gen["contract"]["id"]
+        r = client.delete(f"{BASE_URL}/api/contracts/{cid}")
+        assert r.status_code == 200
+        assert client.get(f"{BASE_URL}/api/contracts/{cid}").status_code == 404
+        # cleanup
+        client.delete(f"{BASE_URL}/api/invoices/{gen['invoice']['id']}")
+        client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+        client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+
+# ---------------- New: Contract PDF ----------------
+class TestContractPDF:
+    def test_pdf_requires_auth(self, anon, client):
+        contracts = client.get(f"{BASE_URL}/api/contracts").json()
+        if not contracts:
+            pytest.skip("no contracts to test")
+        r = anon.get(f"{BASE_URL}/api/contracts/{contracts[0]['id']}/pdf")
+        assert r.status_code == 401
+
+    def test_pdf_download_ok(self, client):
+        contracts = client.get(f"{BASE_URL}/api/contracts").json()
+        if not contracts:
+            pytest.skip("no contracts to test")
+        cid = contracts[0]["id"]
+        r = client.get(f"{BASE_URL}/api/contracts/{cid}/pdf")
+        assert r.status_code == 200
+        assert r.headers.get("content-type", "").startswith("application/pdf")
+        assert r.content.startswith(b"%PDF")
+        assert len(r.content) > 1500
+        cd = r.headers.get("content-disposition", "")
+        assert "attachment" in cd and ".pdf" in cd
+
+    def test_pdf_404(self, client):
+        r = client.get(f"{BASE_URL}/api/contracts/nonexistent/pdf")
+        assert r.status_code == 404

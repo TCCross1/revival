@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { BRAND } from "@/lib/format";
-import { LayoutDashboard, Users, FileText, HardHat, Receipt, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, FileText, HardHat, Receipt, LogOut, FileSignature } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +18,7 @@ const NAV = [
   { to: "/estimates", label: "Estimates", icon: FileText, testid: "nav-estimates" },
   { to: "/jobs", label: "Jobs", icon: HardHat, testid: "nav-jobs" },
   { to: "/invoices", label: "Invoices", icon: Receipt, testid: "nav-invoices" },
+  { to: "/contracts", label: "Contracts", icon: FileSignature, testid: "nav-contracts" },
 ];
 
 export default function Layout() {
@@ -31,7 +32,7 @@ export default function Layout() {
         className="fixed inset-0 -z-10"
         style={{ backgroundImage: `url(${BRAND.bg})`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed" }}
       />
-      <div className="fixed inset-0 -z-10 bg-[#F4F7F8]/92" />
+      <div className="fixed inset-0 -z-10 bg-[#F4F7F8]/95" />
 
       {/* Top navigation */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200">

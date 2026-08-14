@@ -10,6 +10,8 @@ import ClientDetail from "@/pages/ClientDetail";
 import Estimates from "@/pages/Estimates";
 import Jobs from "@/pages/Jobs";
 import Invoices from "@/pages/Invoices";
+import Contracts from "@/pages/Contracts";
+import ContractDetail from "@/pages/ContractDetail";
 import { Toaster } from "@/components/ui/sonner";
 import { BRAND } from "@/lib/format";
 
@@ -49,6 +51,8 @@ function AppRouter() {
         <Route path="/estimates" element={<Estimates />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/invoices" element={<Invoices />} />
+        <Route path="/contracts" element={<Contracts />} />
+        <Route path="/contracts/:id" element={<ContractDetail />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

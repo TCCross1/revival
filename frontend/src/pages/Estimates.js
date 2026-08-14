@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { usd, usdCents, fmtDate } from "@/lib/format";
@@ -12,7 +13,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, FileText, Receipt, Download, Send } from "lucide-react";
+import { Plus, Pencil, Trash2, FileText, Receipt, Download, Send, FileSignature } from "lucide-react";
 import { toast } from "sonner";
 
 const CATEGORIES = ["Kitchen", "Bathroom", "Roofing", "Addition", "Exterior", "Basement", "Flooring", "Other"];
@@ -21,6 +22,7 @@ const emptyItem = () => ({ description: "", quantity: 1, unit_price: 0 });
 
 export default function Estimates() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(null);
@@ -91,6 +93,18 @@ export default function Estimates() {
       toast.success(`Estimate emailed to ${res.data.sent_to}`);
     },
     onError: (err) => toast.error(err?.response?.data?.detail || "Could not send email"),
+  });
+
+  const generate = useMutation({
+    mutationFn: async (id) => api.post(`/estimates/${id}/generate`),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["contracts"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Contract & invoice created");
+      navigate(`/contracts/${res.data.contract.id}`);
+    },
+    onError: (err) => toast.error(err?.response?.data?.detail || "Could not generate contract"),
   });
 
   const openNew = () => {
@@ -278,9 +292,9 @@ export default function Estimates() {
                   <td className="p-4">
                     <div className="flex items-center justify-end gap-1">
                       {e.status === "Won" && (
-                        <button data-testid={`convert-estimate-${e.id}`} onClick={() => convert.mutate(e.id)} title="Convert to invoice"
+                        <button data-testid={`generate-estimate-${e.id}`} onClick={() => generate.mutate(e.id)} disabled={generate.isPending} title="Generate contract & invoice"
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-[#C9A227] hover:bg-[#B38F22] text-[#061A23] text-xs font-semibold">
-                          <Receipt size={14} /> Invoice
+                          <FileSignature size={14} /> Contract &amp; Invoice
                         </button>
                       )}
                       <button data-testid={`pdf-estimate-${e.id}`} onClick={() => downloadPdf(e)} title="Download PDF" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Download size={16} /></button>

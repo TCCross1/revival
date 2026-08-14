@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 3 covered the new Construction Contract feature end-to-end. Backend pytest expanded from 20 → 36 (all PASS): +3 Settings (GET/PUT company/contractor info + auth), +5 Contract Generate (404 missing, 400 non-Won, 401 no-auth, correct-data with scope/exclusions/schedule/markup/client+contractor info + invoice link, idempotency confirming no duplicates), +5 Contract CRUD (list requires auth, list+get, get 404, partial-update merges only provided fields including markup+signatures+status, delete verified by 404), +3 Contract PDF (auth-required, application/pdf + %PDF header + attachment disposition + filename ends .pdf, 404). Frontend Playwright covered the full user journey: (1) Estimates page shows generate-estimate-{id} on Won rows; clicking creates contract+invoice and navigates to /contracts/:id; (2) contract-detail-page renders all 7 sections and every expected testid (contractor-name, contract-client-name, project-address, contract-total, scope-item-*, add-milestone-btn, add-exclusion-btn, markup-input, client/contractor-signature-pad, mark-signed-btn, save-contract-btn, contract-pdf-btn); (3) scope table lists estimate line items; (4) signature pads accept pointer-based drawing — after drawing, the date fields auto-fill with today's long-date and after Save+full reload both signatures + Signed status + edited markup (27%) persist in backend; (5) Mark-as-Signed shows a Sonner error toast ('Both parties must sign…') when no signatures are present, and only transitions status to Signed when BOTH are present; (6) add-milestone-btn and add-exclusion-btn add rows; markup edit persists; (7) contract-pdf-btn triggers download with filename CON-2026-0001.pdf; (8) Contracts nav (nav-contracts) and contracts-page list and open-contract-{id} work. No regressions on dashboard/clients/estimates/jobs/invoices flows.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/estimates/{id}/send-email", "issue": "Iter-2 action item is FIXED — undeliverable emails now return HTTP 400 with friendly JSON detail ('That client's email address looks undeliverable…') so ingress no longer rewrites the body. Test updated to accept 400."},
+      {"endpoint": "/api/contracts/{id} PUT", "issue": "ContractUpdate treats any None value as 'not provided' (strips before merge). Fine for the current UI, but it means callers cannot explicitly clear a string field (e.g. wipe a signature) by sending null — they must send an empty string. Consider Pydantic model_fields_set-based filtering if needed."},
+      {"endpoint": "/api/estimates/{id}/generate", "issue": "Contract-idempotency key is estimate_id, so if a contract is deleted (DELETE /api/contracts/{id}) but the invoice still exists, a subsequent generate call would create a new contract linked to the same estimate/invoice — probably desirable, just documenting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Contracts list page + Estimates page + Contract detail top bar", "issues": ["Same low-contrast pattern as iter-1/2: dark page headings ('Contracts', 'Back to Contracts' link, and top-right 'Download PDF' outline button) render against the dark teal marble background making text nearly invisible until hovered. Applies to the Contracts list where the 'Contracts' heading is barely readable."]},
+      {"screen": "Contract detail — Payment Schedule", "issues": ["Milestone rows use grid col-span with trailing trash button in col-span-1, but on smaller widths (sm) the trash column can overlap the amount field. Not blocking on desktop."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Improve contrast of page-level headings + secondary buttons over the dark teal marble background (Contracts list heading is the worst offender this iteration).",
+    "Optional: allow PUT /api/contracts/{id} to explicitly clear signature fields (e.g. accept null OR treat empty-string as clear — currently supported via empty string, so this is only a nicety)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 988 lines — split by domain (auth/clients/estimates/contracts/invoices/jobs/settings) before it grows further.",
+    "build_contract_from_estimate copies line_items via LineItem(**i) without recomputing amount — this is fine because the estimate has already computed amount, but if a caller ever tweaks unit_price/quantity on the contract copy those won't recalc client-side (the ContractDetail scope table is read-only, so OK).",
+    "ContractUpdate merges via {**existing, **updates} in Python then persists via $set only for updates — Contract model_validate is applied to merged dict; safe. But note that nested list fields (payment_schedule, exclusions, line_items) are replaced whole, which is intentional and correct.",
+    "next_number still uses count_documents (race-condition prone) — carried over from iter-1/2; low priority for MVP.",
+    "SignaturePad canvas initializes only once (empty deps). If the parent Component's initial value arrives after mount (data still loading), the existing-signature image won't be redrawn. In practice the parent waits for the query and only mounts once — verified working — but a `value` dep on the effect would be safer for edit-later flows.",
+    "ContractDetail.js is 292 lines — reasonable, but consider extracting the SectionCard, payment-schedule editor, and exclusions editor into their own files."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (+16 tests: Settings x3, ContractGenerate x5, ContractCRUD x5, ContractPDF x3; also updated the iter-2 email undeliverable test to accept the new 400 status)",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {"backend": "100% (36/36 pytest)", "frontend": "100% of critical contract flows verified (generate → detail → sign → save → reload persist → PDF → list)"},
+  "test_credentials": "Bearer session_token='test_session_verify' (user verify@example.com). Cookie fallback also works. Frontend: inject via localStorage before boot.",
+  "seed_data_creation": "No new seed. All CRUD tests use TEST_-prefixed data and clean up after themselves. Existing demo contract CON-2026-0001 (Linda Garcia, $26,088) was signed during frontend testing (status is now 'Signed' with real drawn signatures + markup=27). If main agent wants a fresh demo, PUT that contract back to status='Draft' and clear signatures — or leave as-is to demo the Signed state.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 36 backend tests pass on the preview URL. Frontend uses REACT_APP_BACKEND_URL and localStorage session_token. To reproduce the signature-pad test: goto /contracts/:id, page.mouse.down + move on the canvas bounding box (touchAction:none allows pointer events), the onPointerUp handler calls canvas.toDataURL() and pushes it into React state along with today's long-date. Contract PDF endpoint returns a real 2-page reportlab PDF that embeds signature PNGs via base64. Known good contract for smoke tests: CON-2026-0001. Iter-2 email-undeliverable status is now 400 (was 502) — updated backend_test.py accordingly.",
+  "rca of the issue": "None — no failing user-facing behavior. All checked functionality of the new Construction Contract feature (generate, edit, sign, save, mark-signed, PDF, list) is wired correctly end-to-end. Only pending polish is heading/button contrast on the marble background (iter-1/2/3 recurring)."
+}

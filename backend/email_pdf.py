@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, ListFlowable, ListItem
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -244,3 +244,154 @@ async def send_email(*, to: str, subject: str, html: str, attachments=None, repl
     except Exception as e:
         logger.error(f"Email send error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to send email")
+
+
+# ---------------- Contract PDF ----------------
+def _sig_image(data_url, width=2.4 * inch, height=0.75 * inch):
+    try:
+        if not data_url or "," not in data_url:
+            return None
+        raw = base64.b64decode(data_url.split(",", 1)[1])
+        return Image(BytesIO(raw), width=width, height=height, kind="proportional")
+    except Exception:
+        return None
+
+
+def build_contract_pdf(c: dict, company: dict | None = None) -> bytes:
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.7 * inch, bottomMargin=0.7 * inch,
+                            leftMargin=0.8 * inch, rightMargin=0.8 * inch, title="Construction Contract")
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Title"], textColor=TEAL, fontSize=22, leading=26, spaceAfter=2)
+    tag = ParagraphStyle("tag", parent=styles["Normal"], textColor=GOLD, fontSize=10)
+    sec = ParagraphStyle("sec", parent=styles["Normal"], textColor=colors.white, fontSize=11, leading=14, fontName="Helvetica-Bold")
+    body = ParagraphStyle("body", parent=styles["Normal"], textColor=DARK, fontSize=9.5, leading=14)
+    small = ParagraphStyle("small", parent=styles["Normal"], textColor=GREY, fontSize=8, leading=11)
+    label = ParagraphStyle("label", parent=styles["Normal"], textColor=GREY, fontSize=8, leading=11)
+
+    def section(title):
+        t = Table([[Paragraph(title, sec)]], colWidths=[6.9 * inch])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), TEAL),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        return t
+
+    e = []
+    e.append(Paragraph("CONSTRUCTION CONTRACT", h1))
+    e.append(Paragraph(f"Revival Pro &nbsp;·&nbsp; {c.get('contract_number','')}", tag))
+    e.append(Spacer(1, 14))
+
+    # 1. Parties
+    e.append(section("1. Parties"))
+    e.append(Spacer(1, 6))
+    parties = Table([[
+        [Paragraph("CONTRACTOR", label),
+         Paragraph(f"<b>{c.get('contractor_name','')}</b><br/>{c.get('contractor_address','')}<br/>{c.get('contractor_phone','')}<br/>{c.get('contractor_license','')}", body)],
+        [Paragraph("CLIENT (HOMEOWNER)", label),
+         Paragraph(f"<b>{c.get('client_name','')}</b><br/>{c.get('client_address','')}<br/>{c.get('client_phone','')}<br/>{c.get('client_email','')}", body)],
+    ]], colWidths=[3.45 * inch, 3.45 * inch])
+    parties.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    e.append(parties)
+    e.append(Spacer(1, 12))
+
+    # 2. Project Information
+    e.append(section("2. Project Information"))
+    e.append(Spacer(1, 6))
+    e.append(Paragraph(f"<b>Job Address:</b> {c.get('project_address','')}", body))
+    e.append(Spacer(1, 3))
+    e.append(Paragraph(f"<b>Description of Project:</b> {c.get('project_description','')}", body))
+    e.append(Spacer(1, 12))
+
+    # 3. Scope of Work
+    e.append(section("3. Scope of Work"))
+    e.append(Spacer(1, 6))
+    data = [["Description", "Qty", "Unit Price", "Amount"]]
+    for li in c.get("line_items", []):
+        data.append([li.get("description", ""), "{:g}".format(float(li.get("quantity", 0))),
+                     money(li.get("unit_price", 0)), money(li.get("amount", 0))])
+    tbl = Table(data, colWidths=[3.8 * inch, 0.7 * inch, 1.2 * inch, 1.2 * inch], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), TEAL), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"), ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F7F8")]),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#E2E8F0")),
+    ]))
+    e.append(tbl)
+    e.append(Spacer(1, 12))
+
+    # 4. Contract Price and Payment Terms
+    e.append(section("4. Contract Price and Payment Terms"))
+    e.append(Spacer(1, 6))
+    e.append(Paragraph(f"<b>Total Contract Price:</b> <font color='#0A4D68'><b>{money(c.get('total',0))}</b></font>", body))
+    e.append(Spacer(1, 6))
+    e.append(Paragraph("Payment Schedule", label))
+    ps = [["Milestone", "Amount"]]
+    for m in c.get("payment_schedule", []):
+        lbl = m.get("label", "")
+        if m.get("note"):
+            lbl += f"  —  {m['note']}"
+        ps.append([Paragraph(lbl, body), money(m.get("amount", 0))])
+    pst = Table(ps, colWidths=[5.4 * inch, 1.5 * inch], repeatRows=1)
+    pst.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF1")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#E2E8F0")),
+    ]))
+    e.append(pst)
+    e.append(Spacer(1, 12))
+
+    # 5. Exclusions
+    e.append(section("5. Exclusions"))
+    e.append(Spacer(1, 6))
+    e.append(Paragraph("The following are <b>not</b> included in this contract unless specifically added in writing:", body))
+    e.append(Spacer(1, 4))
+    e.append(ListFlowable([ListItem(Paragraph(x, body), leftIndent=6) for x in c.get("exclusions", [])],
+                          bulletType="bullet", start="•", leftIndent=16))
+    e.append(Spacer(1, 12))
+
+    # 6. Change Orders
+    e.append(section("6. Change Orders"))
+    e.append(Spacer(1, 6))
+    markup = c.get("change_order_markup", 20)
+    co = [
+        "Any change to the scope of work, price, or timeline must be put in writing.",
+        "Both the Client and the Contractor must sign the change order before the additional work begins.",
+        "Verbal agreements are not binding.",
+        "Each change order will state the description of the change, the price adjustment, and any effect on the schedule.",
+        f"Change order work will be priced with a standard markup of {markup:g}% over cost.",
+    ]
+    e.append(ListFlowable([ListItem(Paragraph(x, body)) for x in co], bulletType="bullet", start="•", leftIndent=16))
+    e.append(Spacer(1, 16))
+
+    # 7. Signatures
+    e.append(section("7. Signatures"))
+    e.append(Spacer(1, 12))
+
+    def sig_cell(title, img, name, date):
+        return [
+            Paragraph(title, label), Spacer(1, 4),
+            (img if img else Paragraph("<i>Awaiting signature</i>", small)),
+            Table([[""]], colWidths=[2.8 * inch], style=[("LINEBELOW", (0, 0), (-1, -1), 0.8, DARK), ("TOPPADDING", (0, 0), (-1, -1), 2)]),
+            Paragraph(name or "", small),
+            Paragraph(f"Date: {date or '_______________'}", small),
+        ]
+    cs = _sig_image(c.get("client_signature"))
+    ks = _sig_image(c.get("contractor_signature"))
+    sig = Table([[sig_cell("CLIENT", cs, c.get("client_name", ""), c.get("client_signed_date", "")),
+                  sig_cell("CONTRACTOR", ks, c.get("contractor_name", ""), c.get("contractor_signed_date", ""))]],
+                colWidths=[3.45 * inch, 3.45 * inch])
+    sig.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    e.append(sig)
+    e.append(Spacer(1, 18))
+    e.append(Paragraph("This agreement represents the entire understanding between the parties. Revival Pro will never ask for payment details by email.", small))
+
+    doc.build(e)
+    return buf.getvalue()

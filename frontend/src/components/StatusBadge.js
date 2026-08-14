@@ -15,6 +15,8 @@ export const STATUS_STYLES = {
   Partial: "bg-amber-100 text-amber-800",
   Paid: "bg-emerald-100 text-emerald-700",
   Overdue: "bg-red-100 text-red-700",
+  // Contracts
+  Signed: "bg-emerald-100 text-emerald-700",
 };
 
 export default function StatusBadge({ status }) {

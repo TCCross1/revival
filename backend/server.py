@@ -14,7 +14,7 @@ from html import escape
 from datetime import datetime, timezone, timedelta
 from fastapi.responses import StreamingResponse
 from io import BytesIO
-from email_pdf import build_estimate_pdf, send_email, EMAIL_FROM_NAME, money
+from email_pdf import build_estimate_pdf, build_contract_pdf, send_email, EMAIL_FROM_NAME, money
 
 
 ROOT_DIR = Path(__file__).parent
@@ -40,6 +40,16 @@ def now_iso():
 
 def new_id():
     return str(uuid.uuid4())
+
+
+DEFAULT_EXCLUSIONS = [
+    "Any work not specifically listed in the Scope of Work.",
+    "Concealed or hidden conditions (rot, mold, damaged framing, or plumbing/electrical inside walls) that were not visible at the time of the estimate.",
+    "Permit fees and inspections not specifically listed in the estimate.",
+    "Landscaping, appliances, furniture, and window treatments unless specifically included.",
+    "Code-required upgrades that were not visible or known at the time of the estimate.",
+    "Removal or remediation of hazardous materials (asbestos, lead-based paint, etc.).",
+]
 
 
 # ---------------- Models ----------------
@@ -148,6 +158,69 @@ class InvoiceCreate(BaseModel):
     amount: float = 0.0
     amount_paid: float = 0.0
     due_date: str = ""
+
+
+class PaymentMilestone(BaseModel):
+    label: str = ""
+    amount: float = 0.0
+    note: str = ""
+
+
+class Contract(BaseModel):
+    id: str = Field(default_factory=new_id)
+    contract_number: str = ""
+    estimate_id: str = ""
+    invoice_id: str = ""
+    contractor_name: str = ""
+    contractor_address: str = ""
+    contractor_phone: str = ""
+    contractor_license: str = ""
+    client_name: str = ""
+    client_address: str = ""
+    client_phone: str = ""
+    client_email: str = ""
+    project_address: str = ""
+    project_description: str = ""
+    line_items: List[LineItem] = []
+    total: float = 0.0
+    payment_schedule: List[PaymentMilestone] = []
+    exclusions: List[str] = []
+    change_order_markup: float = 20.0
+    client_signature: str = ""
+    client_signed_date: str = ""
+    contractor_signature: str = ""
+    contractor_signed_date: str = ""
+    status: str = "Draft"
+    created_at: str = Field(default_factory=now_iso)
+
+
+class ContractUpdate(BaseModel):
+    contractor_name: Optional[str] = None
+    contractor_address: Optional[str] = None
+    contractor_phone: Optional[str] = None
+    contractor_license: Optional[str] = None
+    client_name: Optional[str] = None
+    client_address: Optional[str] = None
+    client_phone: Optional[str] = None
+    client_email: Optional[str] = None
+    project_address: Optional[str] = None
+    project_description: Optional[str] = None
+    payment_schedule: Optional[List[PaymentMilestone]] = None
+    exclusions: Optional[List[str]] = None
+    change_order_markup: Optional[float] = None
+    client_signature: Optional[str] = None
+    client_signed_date: Optional[str] = None
+    contractor_signature: Optional[str] = None
+    contractor_signed_date: Optional[str] = None
+    status: Optional[str] = None
+
+
+class CompanySettings(BaseModel):
+    name: str = "Revival Pro"
+    address: str = ""
+    phone: str = ""
+    license: str = ""
+    email: str = ""
 
 
 class User(BaseModel):
@@ -604,6 +677,154 @@ async def delete_invoice(invoice_id: str, user: User = Depends(get_current_user)
     return {"success": True}
 
 
+# ---------------- Company Settings ----------------
+async def get_company():
+    doc = await db.settings.find_one({"key": "company"}, {"_id": 0})
+    if not doc:
+        default = {"key": "company", **CompanySettings(
+            name="Revival Pro", address="Austin, TX 78701",
+            phone="(512) 555-0100", license="TX Lic. #RRC-000000", email=OWNER_EMAIL,
+        ).model_dump()}
+        await db.settings.insert_one(default)
+        doc = default
+    doc.pop("key", None)
+    return doc
+
+
+@api_router.get("/settings")
+async def read_settings(user: User = Depends(get_current_user)):
+    return await get_company()
+
+
+@api_router.put("/settings")
+async def write_settings(payload: CompanySettings, user: User = Depends(get_current_user)):
+    await db.settings.update_one({"key": "company"}, {"$set": payload.model_dump()}, upsert=True)
+    return await get_company()
+
+
+# ---------------- Contracts ----------------
+def default_schedule(total):
+    deposit = round(total * 0.5, 2)
+    progress = round(total * 0.3, 2)
+    final = round(total - deposit - progress, 2)
+    return [
+        PaymentMilestone(label="Deposit due at signing", amount=deposit, note="50% to reserve your spot and order materials"),
+        PaymentMilestone(label="Progress payment at project midpoint", amount=progress, note="30% once work is underway"),
+        PaymentMilestone(label="Final payment upon completion", amount=final, note="20% when the work is finished and approved"),
+    ]
+
+
+async def build_contract_from_estimate(est, client, company):
+    number = await next_number(db.contracts, "contract_number", "CON")
+    total = est.get("total", 0.0)
+    desc = f"{est.get('category','')} remodeling project"
+    if est.get("notes"):
+        desc += f" — {est['notes']}"
+    return Contract(
+        contract_number=number,
+        estimate_id=est["id"],
+        contractor_name=company.get("name", "Revival Pro"),
+        contractor_address=company.get("address", ""),
+        contractor_phone=company.get("phone", ""),
+        contractor_license=company.get("license", ""),
+        client_name=(client or {}).get("name", est.get("client_name", "")),
+        client_address=(client or {}).get("address", ""),
+        client_phone=(client or {}).get("phone", ""),
+        client_email=(client or {}).get("email", ""),
+        project_address=(client or {}).get("address", ""),
+        project_description=desc,
+        line_items=[LineItem(**i) for i in est.get("line_items", [])],
+        total=total,
+        payment_schedule=default_schedule(total),
+        exclusions=list(DEFAULT_EXCLUSIONS),
+        change_order_markup=20.0,
+    )
+
+
+@api_router.post("/estimates/{estimate_id}/generate")
+async def generate_contract_invoice(estimate_id: str, user: User = Depends(get_current_user)):
+    est = await db.estimates.find_one({"id": estimate_id}, {"_id": 0})
+    if not est:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+    if est.get("status") != "Won":
+        raise HTTPException(status_code=400, detail="Only Won estimates can generate a contract and invoice")
+
+    inv_doc = await db.invoices.find_one({"estimate_id": estimate_id}, {"_id": 0})
+    if inv_doc:
+        invoice = Invoice(**inv_doc)
+    else:
+        invoice = Invoice(
+            invoice_number=await next_number(db.invoices, "invoice_number", "INV"),
+            estimate_id=estimate_id,
+            client_name=est.get("client_name", ""),
+            status="Draft",
+            line_items=[LineItem(**i) for i in est.get("line_items", [])],
+            amount=est.get("total", 0.0),
+            amount_paid=0.0,
+            due_date=(datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+        )
+        await db.invoices.insert_one(invoice.model_dump())
+
+    con_doc = await db.contracts.find_one({"estimate_id": estimate_id}, {"_id": 0})
+    if con_doc:
+        contract = Contract(**con_doc)
+        if not contract.invoice_id:
+            contract.invoice_id = invoice.id
+            await db.contracts.update_one({"id": contract.id}, {"$set": {"invoice_id": invoice.id}})
+    else:
+        client = await db.clients.find_one({"id": est.get("client_id")}, {"_id": 0}) if est.get("client_id") else None
+        company = await get_company()
+        contract = await build_contract_from_estimate(est, client, company)
+        contract.invoice_id = invoice.id
+        await db.contracts.insert_one(contract.model_dump())
+
+    return {"contract": contract.model_dump(), "invoice": invoice.model_dump()}
+
+
+@api_router.get("/contracts", response_model=List[Contract])
+async def list_contracts(user: User = Depends(get_current_user)):
+    docs = await db.contracts.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return [Contract(**d) for d in docs]
+
+
+@api_router.get("/contracts/{contract_id}", response_model=Contract)
+async def get_contract(contract_id: str, user: User = Depends(get_current_user)):
+    doc = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    return Contract(**doc)
+
+
+@api_router.put("/contracts/{contract_id}", response_model=Contract)
+async def update_contract(contract_id: str, payload: ContractUpdate, user: User = Depends(get_current_user)):
+    existing = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    merged = {**existing, **updates}
+    if updates:
+        await db.contracts.update_one({"id": contract_id}, {"$set": updates})
+    return Contract(**merged)
+
+
+@api_router.delete("/contracts/{contract_id}")
+async def delete_contract(contract_id: str, user: User = Depends(get_current_user)):
+    await db.contracts.delete_one({"id": contract_id})
+    return {"success": True}
+
+
+@api_router.get("/contracts/{contract_id}/pdf")
+async def contract_pdf(contract_id: str, user: User = Depends(get_current_user)):
+    doc = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    company = await get_company()
+    pdf_bytes = build_contract_pdf(doc, company)
+    filename = f"{doc.get('contract_number', 'contract')}.pdf"
+    return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
 # ---------------- Dashboard ----------------
 @api_router.get("/dashboard")
 async def dashboard(user: User = Depends(get_current_user)):
@@ -747,6 +968,7 @@ async def seed_data():
 @app.on_event("startup")
 async def on_startup():
     await seed_data()
+    await get_company()
 
 
 app.include_router(api_router)
