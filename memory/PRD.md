@@ -31,7 +31,9 @@ Full-stack web app "Revival Pro" for a residential remodeling contractor. Brandi
 - Convert endpoint restricted to Won estimates (spec compliance).
 - Estimate PDF (reportlab) — download + email to client via Emergent Resend (attachment supported); friendly 400 error for undeliverable emails.
 - Client Timeline — /clients/:id detail page with per-client estimates, jobs, invoices + summary stats.
-- Construction Contracts — "Generate Contract & Invoice" on Won estimates; contract has Parties, Project Info, Scope (from estimate), Price & Payment schedule, standard Exclusions, Change Orders (editable markup, default 20%), and touch/mouse signature pads for client + contractor. Contract PDF export + editable Contracts module. Company settings (contractor info) seeded and editable via /api/settings.
+- Construction Contracts — "Generate Contract & Invoice" on Won estimates; contract has Parties, Project Info, Scope (from estimate), Price & Payment schedule, standard Exclusions, Change Orders (editable markup, default 20%), and touch/mouse signature pads for client + contractor. Contract PDF export + editable Contracts module.
+- Company Profile — /settings screen (also in user menu) to edit contractor name/address/phone/license/email via /api/settings; used when generating contracts.
+- Contract E-Sign — "Send for e-signature" emails the client a secure link (/sign/:token, no login) to review the full contract on mobile and sign; public endpoints GET/POST /api/public/contracts/{token}. Client signing marks Signed when contractor has also signed, else Sent.
 
 ## Backlog / Remaining
 - P1: Estimate PDF export / send to client; invoice PDF.

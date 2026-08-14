@@ -565,3 +565,133 @@ class TestContractPDF:
     def test_pdf_404(self, client):
         r = client.get(f"{BASE_URL}/api/contracts/nonexistent/pdf")
         assert r.status_code == 404
+
+
+# ---------------- New: E-Sign flow ----------------
+class TestESignFlow:
+    def _make_contract(self, client, email="delivered@resend.dev"):
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_ESignClient", "phone": "555-3", "email": email,
+            "address": "5 Sign Rd", "source": "Referral", "status": "Active"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Kitchen",
+            "status": "Won",
+            "line_items": [{"description": "Work", "quantity": 1, "unit_price": 400}],
+            "tax_rate": 0,
+        }).json()
+        gen = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate").json()
+        return c, e, gen
+
+    def _cleanup(self, client, c, e, gen):
+        if gen and gen.get("contract"):
+            client.delete(f"{BASE_URL}/api/contracts/{gen['contract']['id']}")
+        if gen and gen.get("invoice"):
+            client.delete(f"{BASE_URL}/api/invoices/{gen['invoice']['id']}")
+        client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+        client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+    def test_send_signature_400_no_client_email(self, client):
+        c, e, gen = self._make_contract(client, email="")
+        cid = gen["contract"]["id"]
+        try:
+            r = client.post(
+                f"{BASE_URL}/api/contracts/{cid}/send-signature-request",
+                json={"base_url": "https://example.com"},
+            )
+            assert r.status_code == 400
+            assert "email" in r.json().get("detail", "").lower()
+        finally:
+            self._cleanup(client, c, e, gen)
+
+    def test_send_signature_400_non_https_base(self, client):
+        c, e, gen = self._make_contract(client)
+        cid = gen["contract"]["id"]
+        try:
+            r = client.post(
+                f"{BASE_URL}/api/contracts/{cid}/send-signature-request",
+                json={"base_url": "http://insecure.example.com"},
+            )
+            assert r.status_code == 400
+        finally:
+            self._cleanup(client, c, e, gen)
+
+    def test_send_signature_success_and_public_get_sign(self, client, anon):
+        c, e, gen = self._make_contract(client)
+        cid = gen["contract"]["id"]
+        try:
+            r = client.post(
+                f"{BASE_URL}/api/contracts/{cid}/send-signature-request",
+                json={"base_url": BASE_URL},
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["status"] == "success"
+            assert body["sent_to"] == "delivered@resend.dev"
+            assert body["link"].startswith(f"{BASE_URL}/sign/")
+            token = body["link"].rsplit("/", 1)[-1]
+
+            # contract status Sent + sign_token set
+            after = client.get(f"{BASE_URL}/api/contracts/{cid}").json()
+            assert after["status"] == "Sent"
+            assert after["sign_token"] == token
+
+            # Public GET (no auth)
+            pr = anon.get(f"{BASE_URL}/api/public/contracts/{token}")
+            assert pr.status_code == 200
+            pdata = pr.json()
+            assert pdata["id"] == cid
+            assert pdata["client_name"] == "TEST_ESignClient"
+
+            # Public sign - missing signature -> 400
+            r_bad = anon.post(
+                f"{BASE_URL}/api/public/contracts/{token}/sign",
+                json={"signature": "", "signed_name": "John"},
+            )
+            assert r_bad.status_code == 400
+
+            # Public sign success
+            r_sign = anon.post(
+                f"{BASE_URL}/api/public/contracts/{token}/sign",
+                json={"signature": "data:image/png;base64,AAAA", "signed_name": "John"},
+            )
+            assert r_sign.status_code == 200
+            sb = r_sign.json()
+            # contractor not signed yet -> status Sent (not Signed)
+            assert sb["contract_status"] == "Sent"
+
+            # Verify persisted
+            final = client.get(f"{BASE_URL}/api/contracts/{cid}").json()
+            assert final["client_signature"].startswith("data:image/png")
+            assert final["client_signed_date"]
+
+            # Now simulate contractor already signed then client signs -> Signed
+            client.put(f"{BASE_URL}/api/contracts/{cid}", json={
+                "contractor_signature": "data:image/png;base64,BBBB",
+                "contractor_signed_date": "2026-01-15",
+            })
+            r_sign2 = anon.post(
+                f"{BASE_URL}/api/public/contracts/{token}/sign",
+                json={"signature": "data:image/png;base64,CCCC", "signed_name": "John"},
+            )
+            assert r_sign2.status_code == 200
+            assert r_sign2.json()["contract_status"] == "Signed"
+        finally:
+            self._cleanup(client, c, e, gen)
+
+    def test_public_get_404_bogus_token(self, anon):
+        r = anon.get(f"{BASE_URL}/api/public/contracts/bogus-token-xyz")
+        assert r.status_code == 404
+
+    def test_public_sign_404_bogus_token(self, anon):
+        r = anon.post(
+            f"{BASE_URL}/api/public/contracts/bogus-token-xyz/sign",
+            json={"signature": "data:image/png;base64,ZZZZ", "signed_name": "X"},
+        )
+        assert r.status_code == 404
+
+    def test_public_endpoints_no_auth_required(self, anon):
+        # Just verify anonymous request receives 404 rather than 401
+        r = anon.get(f"{BASE_URL}/api/public/contracts/anything")
+        assert r.status_code == 404
+

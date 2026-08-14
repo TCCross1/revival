@@ -188,9 +188,11 @@ class Contract(BaseModel):
     change_order_markup: float = 20.0
     client_signature: str = ""
     client_signed_date: str = ""
+    client_signed_by: str = ""
     contractor_signature: str = ""
     contractor_signed_date: str = ""
     status: str = "Draft"
+    sign_token: str = ""
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -823,6 +825,85 @@ async def contract_pdf(contract_id: str, user: User = Depends(get_current_user))
     filename = f"{doc.get('contract_number', 'contract')}.pdf"
     return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+class SignRequestBody(BaseModel):
+    base_url: str = ""
+
+
+class PublicSignBody(BaseModel):
+    signature: str
+    signed_name: str = ""
+
+
+@api_router.post("/contracts/{contract_id}/send-signature-request")
+async def send_signature_request(contract_id: str, body: SignRequestBody, user: User = Depends(get_current_user)):
+    doc = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    to = (doc.get("client_email") or "").strip()
+    if not to:
+        raise HTTPException(status_code=400, detail="Add the client's email to the contract first.")
+    base = (body.base_url or "").rstrip("/")
+    if not base.startswith("https://"):
+        raise HTTPException(status_code=400, detail="Invalid signing link.")
+    token = doc.get("sign_token") or new_id()
+    link = f"{base}/sign/{token}"
+    client_name = escape(doc.get("client_name", "there"))
+    number = escape(doc.get("contract_number", ""))
+    subject = f"Please review and sign your contract from {EMAIL_FROM_NAME} — {doc.get('contract_number','')}"
+    html = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F7F8;padding:24px 0">'
+        f'<tr><td align="center">'
+        f'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0">'
+        f'<tr><td style="background:#0A4D68;padding:24px 28px;font-family:Arial,sans-serif">'
+        f'<div style="color:#ffffff;font-size:22px;font-weight:bold;letter-spacing:1px">REVIVAL PRO</div>'
+        f'<div style="color:#C9A227;font-size:12px;margin-top:2px">Residential Remodeling</div></td></tr>'
+        f'<tr><td style="padding:28px;font-family:Arial,sans-serif;color:#061A23">'
+        f'<p style="font-size:15px;margin:0 0 12px">Hi {client_name},</p>'
+        f'<p style="font-size:14px;color:#4B6370;line-height:1.6;margin:0 0 22px">'
+        f'Your construction contract <strong>{number}</strong> is ready for your review and signature. '
+        f'You can read the full contract and sign it right from your phone — no account needed.</p>'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 22px">'
+        f'<tr><td style="border-radius:10px;background:#C9A227">'
+        f'<a href="{link}" style="display:inline-block;padding:14px 28px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#061A23;text-decoration:none">Review &amp; Sign the Contract</a>'
+        f'</td></tr></table>'
+        f'<p style="font-size:12px;color:#8AA0AB;line-height:1.5;margin:0">If the button doesn\'t work, copy and paste this secure link into your browser:<br/>{escape(link)}</p>'
+        f'</td></tr>'
+        f'<tr><td style="padding:16px 28px;background:#F4F7F8;font-family:Arial,sans-serif;font-size:11px;color:#8AA0AB">'
+        f'Sent by {escape(EMAIL_FROM_NAME)}. We never ask for your password or payment details by email.</td></tr>'
+        f'</table></td></tr></table>'
+    )
+    email_id = await send_email(to=to, subject=subject, html=html)
+    await db.contracts.update_one({"id": contract_id}, {"$set": {"sign_token": token, "status": "Sent"}})
+    return {"status": "success", "email_id": email_id, "sent_to": to, "link": link}
+
+
+@api_router.get("/public/contracts/{token}", response_model=Contract)
+async def public_get_contract(token: str):
+    doc = await db.contracts.find_one({"sign_token": token}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="This signing link is invalid or has expired.")
+    return Contract(**doc)
+
+
+@api_router.post("/public/contracts/{token}/sign")
+async def public_sign_contract(token: str, body: PublicSignBody):
+    doc = await db.contracts.find_one({"sign_token": token}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="This signing link is invalid or has expired.")
+    if not body.signature or not body.signature.startswith("data:image/"):
+        raise HTTPException(status_code=400, detail="Please add your signature before submitting.")
+    signed_date = datetime.now(timezone.utc).strftime("%B %d, %Y")
+    new_status = "Signed" if doc.get("contractor_signature") else "Sent"
+    updates = {
+        "client_signature": body.signature,
+        "client_signed_date": signed_date,
+        "client_signed_by": body.signed_name.strip() or doc.get("client_name", ""),
+        "status": new_status,
+    }
+    await db.contracts.update_one({"sign_token": token}, {"$set": updates})
+    return {"status": "success", "contract_status": new_status, "signed_date": signed_date}
 
 
 # ---------------- Dashboard ----------------

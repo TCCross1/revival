@@ -12,6 +12,8 @@ import Jobs from "@/pages/Jobs";
 import Invoices from "@/pages/Invoices";
 import Contracts from "@/pages/Contracts";
 import ContractDetail from "@/pages/ContractDetail";
+import Settings from "@/pages/Settings";
+import PublicSign from "@/pages/PublicSign";
 import { Toaster } from "@/components/ui/sonner";
 import { BRAND } from "@/lib/format";
 
@@ -38,6 +40,7 @@ function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/sign/:token" element={<PublicSign />} />
       <Route
         element={
           <ProtectedRoute>
@@ -53,6 +56,7 @@ function AppRouter() {
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/contracts/:id" element={<ContractDetail />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

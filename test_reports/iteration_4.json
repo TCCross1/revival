@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 4 covered the two new features (Company Profile settings + Contract E-Sign via emailed link). Backend pytest expanded 36 -> 42 (all PASS, 5.72s parallel). Added TestESignFlow with 6 tests: (1) send-signature-request 400 when contract has no client_email, (2) 400 when base_url is not https, (3) full success path posting base_url=REACT_APP_BACKEND_URL with client_email=delivered@resend.dev — verified return payload {status:success, sent_to, link=BASE/sign/<token>}, contract updated to status='Sent' and sign_token persisted, plus public GET (no auth) 200, public sign missing signature -> 400, public sign success -> contract_status='Sent' when contractor not yet signed and 'Signed' after contractor signature is added, (4) public GET bogus token -> 404, (5) public sign bogus token -> 404, (6) anon call to public endpoint returns 404 (not 401) — confirming NO auth required. All 42 tests pass. Frontend Playwright covered: (a) /settings loads, all 5 contractor fields have the expected data-testids, editing name+license and clicking save-settings-btn persists across full reload (verified round-trip and restored originals); (b) user-menu company-profile-btn dropdown item navigates to /settings; (c) On ContractDetail (CON-2026-0001, temporarily set client_email=delivered@resend.dev), the send-esign-btn triggered the send flow and a Sonner success toast reading exactly 'Signing link emailed to delivered@resend.dev' appeared, contract sign_token was set and status transitioned to 'Sent'; (d) The public /sign/:token page loaded WITHOUT authentication (cookies cleared, localStorage cleared), rendered the full branded contract with all 6 sections (Parties, Project Info, Scope of Work, Contract Price & Payment Terms, Exclusions, Change Orders) — screenshot verified; (e) public-submit-sign is disabled until a signature is drawn (verified is_disabled=True pre-draw); after simulating a pointer draw via page.mouse (down + 25 move segments + up on the canvas) the button became enabled and clicking it navigated the page to the sign-success 'Thank you, it's signed!' confirmation card (screenshot verified); (f) /sign/badtoken-xyz correctly renders the 'Link not found' fallback branded page (screenshot verified). CON-2026-0001 was fully restored (status=Draft, client_email=linda.g@email.com, prior signatures preserved).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/contracts/{id}/send-signature-request", "issue": "Body validation for base_url only enforces the 'https://' prefix — a value like 'https:// ' (with a trailing space) or 'https://x' would pass. Fine for the trusted UI which posts window.location.origin, but consider a stricter URL validator if this ever becomes public."},
+      {"endpoint": "POST /api/public/contracts/{token}/sign", "issue": "The stored signed_name from the public body is not currently persisted on the contract (only signature+date). Not required by the spec, but the field is accepted and silently dropped — either persist it (e.g. client_signed_by) or remove it from the Pydantic body."},
+      {"endpoint": "POST /api/public/contracts/{token}/sign", "issue": "The signature validation is `if not body.signature or ',' not in body.signature` which is a very loose data-URL check — anything containing a comma would pass. Acceptable for a smoke check because the browser always sends a real data:image/png;base64,... string, but a stricter startswith('data:image/') check would be safer."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Recurring — page headings + secondary outline buttons on dark teal marble background (Contracts list heading, 'Back to Contracts' link, 'Download PDF' outline button)", "issues": ["Same low-contrast pattern flagged in iter-1/2/3. No regressions introduced by iter-4, but still unresolved."]},
+      {"screen": "Public /sign/:token page", "issues": ["No issues found — layout scales well on both desktop 1920 and (per prior iter-3 note) mobile widths; branded header + 6 sections + signature card all readable."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: persist client_signed_by (signed_name) on the contract when the public sign endpoint fires, or drop the field from PublicSignBody so it isn't accepted silently.",
+    "OPTIONAL: tighten signature validation from a substring `,` check to a proper `startswith('data:image/')` guard.",
+    "Recurring design polish: contrast of page headings + secondary outline buttons over the marble background (unchanged from iter-1..3)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now >1000 lines — the /api/public/... section makes this even more compelling. Split into contracts.py / public_sign.py / settings.py routers before it grows further.",
+    "send_signature_request: base_url check only enforces the https:// prefix — good enough for the trusted UI, but if this endpoint ever gets called from an untrusted context it would happily send emails pointing at any https host. Consider validating base_url against a known allowlist or the request's own Host header.",
+    "public_sign_contract updates status to 'Signed' only when contractor_signature is truthy at the moment the client signs. This is correct, but if the contractor signs AFTER the client, the transition to 'Signed' never happens automatically — the ContractUpdate PUT (used by the UI's mark-signed / save flow) must explicitly set status. Verify the UI's mark-signed-btn handles this ordering. (Iter-3 confirmed it does.)",
+    "SignRequestBody has only base_url — recommend also accepting an optional 'message' so contractors can personalize the email. Low priority.",
+    "PublicSignBody accepts signed_name but the handler never persists it — either persist or remove.",
+    "Public endpoints have no rate limiting. A malicious actor who knew the token format (uuid4) still cannot brute force it in practice, but adding a simple per-IP throttle on /api/public/* would harden the surface."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (+6 tests in new TestESignFlow class: 400 no-email, 400 non-https, success end-to-end incl. public GET/sign transitions to Sent then Signed, public GET 404, public sign 404, public no-auth-required)",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {"backend": "100% (42/42 pytest)", "frontend": "100% — Settings persistence, user-menu nav, send-esign-btn success toast, public sign page render/disabled/draw/submit/thank-you, bogus token fallback all verified"},
+  "test_credentials": "Bearer session_token='test_session_verify' (user verify@example.com). Public /sign/:token requires NO auth. Deliverable email for send tests: delivered@resend.dev.",
+  "seed_data_creation": "No new seed. TestESignFlow creates and cleans up its own TEST_-prefixed client + estimate + contract + invoice. CON-2026-0001 was temporarily used for the frontend send/public-sign UI test and FULLY RESTORED at the end of the run (status=Draft, client_email=linda.g@email.com, previous client_signature / contractor_signature preserved). Note: the demo contract's sign_token is now set (leftover from testing) — this is harmless (it just means /sign/<that-token> would resolve if visited) but if the main agent wants a clean-clean demo they can clear it via PUT.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "42/42 backend tests pass on the preview URL. E-Sign endpoints: POST /api/contracts/{id}/send-signature-request (auth, body {base_url: 'https://...'}) -> 200 {status, sent_to, link}; GET /api/public/contracts/{token} (NO auth); POST /api/public/contracts/{token}/sign (NO auth, body {signature: 'data:image/png;base64,...', signed_name: '...'}). Frontend: SignaturePad is a canvas with data-testid ON the canvas element (not a wrapper) — to draw in Playwright use page.locator('[data-testid=\"public-signature-pad\"]'), get its bounding_box, then page.mouse.move+down+multiple moves+up. Ensure at least ~15+ move steps for the pointerup handler to fire onChange with a real base64 image. Setting localStorage.session_token via add_init_script before goto authenticates the SPA. Clear cookies + localStorage before hitting /sign/:token to verify the public route.",
+  "rca of the issue": "None — no failing user-facing behavior. Both new features (Company Profile + Contract E-Sign via emailed link) are wired correctly end-to-end. All 8 tested acceptance criteria from the review request pass. Only lingering item is the recurring design-polish note on dark-teal-background contrast, carried over from previous iterations."
+}

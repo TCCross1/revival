@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Download, Save, Plus, Trash2, FileSignature, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Download, Save, Plus, Trash2, FileSignature, CheckCircle2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 const todayISO = () => new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
@@ -56,6 +56,16 @@ export default function ContractDetail() {
       toast.success("Contract saved");
     },
     onError: () => toast.error("Could not save contract"),
+  });
+
+  const sendForSignature = useMutation({
+    mutationFn: async () => (await api.post(`/contracts/${id}/send-signature-request`, { base_url: window.location.origin })).data,
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["contract", id] });
+      qc.invalidateQueries({ queryKey: ["contracts"] });
+      toast.success(`Signing link emailed to ${res.sent_to}`);
+    },
+    onError: (err) => toast.error(err?.response?.data?.detail || "Could not send signing request"),
   });
 
   if (isLoading || !form) return <div className="text-[#4B6370]">Loading contract…</div>;
@@ -123,6 +133,7 @@ export default function ContractDetail() {
           <ArrowLeft size={16} /> Back to Contracts
         </button>
         <div className="flex items-center gap-2">
+          <Button data-testid="send-esign-btn" onClick={() => sendForSignature.mutate()} disabled={sendForSignature.isPending} variant="outline" className="gap-1.5 border-[#C9A227] text-[#8a6f17] hover:bg-[#C9A227]/10"><Mail size={16} /> {sendForSignature.isPending ? "Sending…" : "Send for e-signature"}</Button>
           <Button data-testid="contract-pdf-btn" onClick={downloadPdf} variant="outline" className="gap-1.5"><Download size={16} /> Download PDF</Button>
           <Button data-testid="save-contract-btn" onClick={doSave} disabled={save.isPending} className="gap-1.5 bg-[#0A4D68] hover:bg-[#083D53]"><Save size={16} /> {save.isPending ? "Saving…" : "Save"}</Button>
         </div>
