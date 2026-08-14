@@ -1,0 +1,78 @@
+{
+  "theme_strategy": "Light theme. Clean, spacious, and highly legible. Designed specifically for non-technical remodeling contractors to manage their business seamlessly.",
+  "typography": {
+    "headings": {
+      "font": "Outfit",
+      "import": "@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');",
+      "class": "font-['Outfit',_sans-serif]",
+      "rules": "H1 max text-4xl or text-5xl. Use tight letter spacing (tracking-tight) for sizes > text-2xl."
+    },
+    "body": {
+      "font": "Work Sans",
+      "import": "@import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap');",
+      "class": "font-['Work_Sans',_sans-serif]",
+      "rules": "High legibility. text-base for standard data, text-sm for meta data. Avoid generic Inter."
+    }
+  },
+  "colors": {
+    "primary": "#0A4D68",
+    "primary_hover": "#083D53",
+    "accent_gold": "#C9A227",
+    "accent_gold_hover": "#B38F22",
+    "background_base": "#F4F7F8",
+    "surface": "#FFFFFF",
+    "surface_hover": "#F8FAFB",
+    "text_main": "#061A23",
+    "text_muted": "#4B6370",
+    "borders": "#E2E8F0",
+    "status": {
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "danger": "#EF4444",
+      "info": "#3B82F6"
+    }
+  },
+  "visual_enhancers": {
+    "background_image_strategy": "CRITICAL: Set the provided silky teal fabric image as a fixed background on the body/main wrapper. To 'brighten' it per requirements, add a full-cover absolute inset overlay div with `bg-white/85` or `bg-white/90`. This ensures the premium texture faintly peeks through while providing a brilliant, high-contrast canvas for the app's data without looking overwhelming.",
+    "surfaces": "Use 'Solid + Crisp' surfaces. bg-white, rounded-lg (8px), border border-slate-200, shadow-sm. Avoid heavy glassmorphism for data-heavy dashboard sections to keep clarity maximum.",
+    "buttons": "Moderately rounded (rounded-md). Primary actions in Deep Teal (#0A4D68) with white text. High-visibility secondary/conversion actions (like Convert to Invoice) in Gold (#C9A227) with dark text."
+  },
+  "layouts": {
+    "navigation": "Top navigation bar. MUST HAVE a solid bg-white background (NO transparency) with border-b. Logo fixed at top left. User/Google profile on top right.",
+    "dashboard_grid": "Grid High Density (Mode B). grid-cols-1 md:grid-cols-2 lg:grid-cols-4 for KPI cards. Generous gap-6. Keep all data cards strictly aligned.",
+    "page_containers": "Use max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8. Ensure ample whitespace around the content."
+  },
+  "component_instructions": {
+    "cards": "Do not overuse the Card component for nested content. For distinct data units (KPIs, open estimates list), use solid cards with clear borders and subtle shadows.",
+    "tables": "Standard highly-legible data tables. Left-align text. Use generous padding (p-4) on cells. Add hover:bg-slate-50 to rows. Add actions (edit/view) at the end of rows.",
+    "status_badges": "Use rounded-full px-2.5 py-0.5 text-xs font-medium. Draft: gray bg/text, Sent/Active: blue bg/text, Won/Paid: emerald bg/text, Overdue/Lost: red bg/text.",
+    "forms": "Use clean and large inputs. text-base. border-slate-300 focus:border-[#0A4D68] focus:ring-1 focus:ring-[#0A4D68]."
+  },
+  "media": {
+    "logo": {
+      "url": "https://customer-assets-lxgj4vgw.emergentagent.net/job_a0b60c79-694f-4789-8f44-c88f5bec0abf/artifacts/8y6jtssj_676A1DF1-2965-47D7-B3A5-70E8A72E6D04.png",
+      "placement": "Top left of the navigation bar. Maintain aspect ratio, max height around 40px."
+    },
+    "background": {
+      "url": "https://customer-assets-lxgj4vgw.emergentagent.net/job_a0b60c79-694f-4789-8f44-c88f5bec0abf/artifacts/7b1gd1pi_29B98378-43E4-4E5E-9059-E73074B861FB.png",
+      "placement": "Global app background layer with z-index lowest, overlaid with 85% white background blend to brighten."
+    }
+  },
+  "accessibility": {
+    "contrast": "Ensure text over gold (#C9A227) is Dark/Black (#061A23), not white. Text over Teal (#0A4D68) must be white.",
+    "focus": "All interactive elements must have visible focus rings.",
+    "testing": "All interactive and key informational elements MUST include a data-testid attribute (e.g. data-testid='create-estimate-btn')."
+  },
+  "instructions_to_main_agent": [
+    "Build the application using JavaScript (.js/.jsx) instead of TypeScript.",
+    "Implement lucide-react for all iconography.",
+    "Use sonner for toast notifications regarding form submissions or status updates.",
+    "Ensure all components and buttons have data-testid attributes for testing.",
+    "Do not center-align the main app layout. Left-align data for optimal readability.",
+    "DO NOT use Inter, Roboto, Lato for headings. Stick to Outfit.",
+    "Implement Google Sign-In on the landing/login view.",
+    "Modules to build: Dashboard, Clients (CRM), Estimates, Jobs (Job costing), Invoices.",
+    "Ensure currency formats strictly use USD ($)."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": "You tend to converge toward generic, 'on distribution' outputs. Make creative, distinctive frontends that surprise and delight. Don't make generic centered layouts. Create depth through layered design elements. MUST NOT apply universal transition (transition: all). Use generous spacing. DO NOT use complete transparent backgrounds in headers or dropdowns. Ensure text is clearly visible against backgrounds."
+}

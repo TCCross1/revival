@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Work+Sans:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: "Work Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
+@layer base {
+    :root {
+        --background: 200 30% 96%;
+        --foreground: 199 70% 8%;
+        --card: 0 0% 100%;
+        --card-foreground: 199 70% 8%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 199 70% 8%;
+        --primary: 197 82% 22%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 200 30% 94%;
+        --secondary-foreground: 197 82% 22%;
+        --muted: 200 25% 94%;
+        --muted-foreground: 200 15% 37%;
+        --accent: 45 68% 47%;
+        --accent-foreground: 199 70% 8%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 214 32% 91%;
+        --input: 214 32% 91%;
+        --ring: 197 82% 22%;
+        --radius: 0.5rem;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+    h1, h2, h3, h4 {
+        font-family: "Outfit", sans-serif;
+    }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}
