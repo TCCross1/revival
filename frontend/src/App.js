@@ -6,6 +6,7 @@ import Login from "@/pages/Login";
 import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Clients from "@/pages/Clients";
+import ClientDetail from "@/pages/ClientDetail";
 import Estimates from "@/pages/Estimates";
 import Jobs from "@/pages/Jobs";
 import Invoices from "@/pages/Invoices";
@@ -44,6 +45,7 @@ function AppRouter() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/clients" element={<Clients />} />
+        <Route path="/clients/:id" element={<ClientDetail />} />
         <Route path="/estimates" element={<Estimates />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/invoices" element={<Invoices />} />

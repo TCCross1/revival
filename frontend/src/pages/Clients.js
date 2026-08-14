@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { fmtDate } from "@/lib/format";
@@ -13,7 +14,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Pencil, Trash2, Phone, Mail, MapPin } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Phone, Mail, MapPin, Eye } from "lucide-react";
 import { toast } from "sonner";
 
 const SOURCES = ["Thumbtack", "Angi", "Referral", "Website", "Google", "Facebook", "Walk-in", "Other"];
@@ -22,6 +23,7 @@ const EMPTY = { name: "", phone: "", email: "", address: "", source: "Referral",
 
 export default function Clients() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -163,7 +165,7 @@ export default function Clients() {
               {filtered.map((c) => (
                 <tr key={c.id} data-testid={`client-row-${c.id}`} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="p-4">
-                    <div className="font-medium text-[#061A23]">{c.name}</div>
+                    <button onClick={() => navigate(`/clients/${c.id}`)} data-testid={`open-client-${c.id}`} className="font-medium text-[#0A4D68] hover:underline text-left">{c.name}</button>
                     {c.address && <div className="text-xs text-[#4B6370] flex items-center gap-1 mt-0.5"><MapPin size={12} />{c.address}</div>}
                   </td>
                   <td className="p-4 text-[#4B6370]">
@@ -175,6 +177,7 @@ export default function Clients() {
                   <td className="p-4 text-[#4B6370]">{fmtDate(c.created_at)}</td>
                   <td className="p-4">
                     <div className="flex items-center justify-end gap-1">
+                      <button data-testid={`view-client-${c.id}`} onClick={() => navigate(`/clients/${c.id}`)} title="View timeline" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Eye size={16} /></button>
                       <button data-testid={`edit-client-${c.id}`} onClick={() => openEdit(c)} className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Pencil size={16} /></button>
                       <button data-testid={`delete-client-${c.id}`} onClick={() => { if (window.confirm(`Delete ${c.name}?`)) remove.mutate(c.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
                     </div>

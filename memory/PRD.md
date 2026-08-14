@@ -27,8 +27,10 @@ Full-stack web app "Revival Pro" for a residential remodeling contractor. Brandi
 6. Google auth.
 
 ## Implemented (2026-08-14)
-- All 5 modules + Google auth + dashboard aggregates + demo seed. Verified: backend 11/11 pytest, frontend 100% critical flows.
+- All 5 modules + Google auth + dashboard aggregates + demo seed. Verified: backend 20/20 pytest, frontend 100% critical flows.
 - Convert endpoint restricted to Won estimates (spec compliance).
+- Estimate PDF (reportlab) — download + email to client via Emergent Resend (attachment supported); friendly 400 error for undeliverable emails.
+- Client Timeline — /clients/:id detail page with per-client estimates, jobs, invoices + summary stats.
 
 ## Backlog / Remaining
 - P1: Estimate PDF export / send to client; invoice PDF.

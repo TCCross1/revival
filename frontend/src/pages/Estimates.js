@@ -12,7 +12,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, FileText, Receipt } from "lucide-react";
+import { Plus, Pencil, Trash2, FileText, Receipt, Download, Send } from "lucide-react";
 import { toast } from "sonner";
 
 const CATEGORIES = ["Kitchen", "Bathroom", "Roofing", "Addition", "Exterior", "Basement", "Flooring", "Other"];
@@ -64,6 +64,33 @@ export default function Estimates() {
       toast.success(`Invoice ${res.data.invoice_number} created`);
     },
     onError: () => toast.error("Could not convert to invoice"),
+  });
+
+  const downloadPdf = async (e) => {
+    try {
+      const res = await api.get(`/estimates/${e.id}/pdf`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${e.estimate_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("PDF downloaded");
+    } catch {
+      toast.error("Could not generate PDF");
+    }
+  };
+
+  const sendEmail = useMutation({
+    mutationFn: async (id) => api.post(`/estimates/${id}/send-email`),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["estimates"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(`Estimate emailed to ${res.data.sent_to}`);
+    },
+    onError: (err) => toast.error(err?.response?.data?.detail || "Could not send email"),
   });
 
   const openNew = () => {
@@ -256,6 +283,8 @@ export default function Estimates() {
                           <Receipt size={14} /> Invoice
                         </button>
                       )}
+                      <button data-testid={`pdf-estimate-${e.id}`} onClick={() => downloadPdf(e)} title="Download PDF" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Download size={16} /></button>
+                      <button data-testid={`email-estimate-${e.id}`} onClick={() => sendEmail.mutate(e.id)} disabled={sendEmail.isPending} title="Email to client" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Send size={16} /></button>
                       <button data-testid={`edit-estimate-${e.id}`} onClick={() => openEdit(e)} className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Pencil size={16} /></button>
                       <button data-testid={`delete-estimate-${e.id}`} onClick={() => { if (window.confirm(`Delete ${e.estimate_number}?`)) remove.mutate(e.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
                     </div>

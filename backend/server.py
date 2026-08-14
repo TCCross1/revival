@@ -9,7 +9,12 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 import requests
+import base64
+from html import escape
 from datetime import datetime, timezone, timedelta
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+from email_pdf import build_estimate_pdf, send_email, EMAIL_FROM_NAME, money
 
 
 ROOT_DIR = Path(__file__).parent
@@ -292,6 +297,37 @@ async def delete_client(client_id: str, user: User = Depends(get_current_user)):
     return {"success": True}
 
 
+@api_router.get("/clients/{client_id}/detail")
+async def client_detail(client_id: str, user: User = Depends(get_current_user)):
+    client = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    estimates = await db.estimates.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    jobs = await db.jobs.find({"client_name": client["name"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    invoices = await db.invoices.find({"client_name": client["name"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+    est_open = [e for e in estimates if e.get("status") in {"Draft", "Sent", "Follow-up"}]
+    won_value = round(sum(e.get("total", 0) for e in estimates if e.get("status") == "Won"), 2)
+    billed = round(sum(i.get("amount", 0) for i in invoices), 2)
+    paid = round(sum(i.get("amount_paid", 0) for i in invoices), 2)
+
+    return {
+        "client": Client(**client).model_dump(),
+        "estimates": [Estimate(**e).model_dump() for e in estimates],
+        "jobs": [Job(**j).model_dump() for j in jobs],
+        "invoices": [Invoice(**i).model_dump() for i in invoices],
+        "summary": {
+            "estimates_count": len(estimates),
+            "open_pipeline": round(sum(e.get("total", 0) for e in est_open), 2),
+            "won_value": won_value,
+            "jobs_count": len(jobs),
+            "billed": billed,
+            "collected": paid,
+            "outstanding": round(billed - paid, 2),
+        },
+    }
+
+
 # ---------------- Estimates ----------------
 def compute_totals(line_items, tax_rate):
     items = []
@@ -388,6 +424,94 @@ async def convert_estimate(estimate_id: str, user: User = Depends(get_current_us
     )
     await db.invoices.insert_one(obj.model_dump())
     return obj
+
+
+@api_router.get("/estimates/{estimate_id}/pdf")
+async def estimate_pdf(estimate_id: str, user: User = Depends(get_current_user)):
+    est = await db.estimates.find_one({"id": estimate_id}, {"_id": 0})
+    if not est:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+    client = await db.clients.find_one({"id": est.get("client_id")}, {"_id": 0}) if est.get("client_id") else None
+    pdf_bytes = build_estimate_pdf(est, client)
+    filename = f"{est.get('estimate_number', 'estimate')}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api_router.post("/estimates/{estimate_id}/send-email")
+async def send_estimate_email(estimate_id: str, user: User = Depends(get_current_user)):
+    est = await db.estimates.find_one({"id": estimate_id}, {"_id": 0})
+    if not est:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+    client = await db.clients.find_one({"id": est.get("client_id")}, {"_id": 0}) if est.get("client_id") else None
+    to = (client or {}).get("email", "").strip()
+    if not to:
+        raise HTTPException(status_code=400, detail="This client has no email address on file. Add one first.")
+
+    pdf_bytes = build_estimate_pdf(est, client)
+    b64 = base64.b64encode(pdf_bytes).decode()
+    number = est.get("estimate_number", "")
+
+    rows = ""
+    for li in est.get("line_items", []):
+        rows += (
+            f'<tr>'
+            f'<td style="padding:8px 10px;border-bottom:1px solid #E2E8F0;font-family:Arial,sans-serif;font-size:13px;color:#061A23">{escape(str(li.get("description","")))}</td>'
+            f'<td align="right" style="padding:8px 10px;border-bottom:1px solid #E2E8F0;font-family:Arial,sans-serif;font-size:13px;color:#4B6370">{("{:g}".format(float(li.get("quantity",0))))}</td>'
+            f'<td align="right" style="padding:8px 10px;border-bottom:1px solid #E2E8F0;font-family:Arial,sans-serif;font-size:13px;color:#4B6370">{escape(money(li.get("unit_price",0)))}</td>'
+            f'<td align="right" style="padding:8px 10px;border-bottom:1px solid #E2E8F0;font-family:Arial,sans-serif;font-size:13px;color:#061A23">{escape(money(li.get("amount",0)))}</td>'
+            f'</tr>'
+        )
+
+    client_name = escape((client or {}).get("name", "there"))
+    subject = f"Your estimate from {EMAIL_FROM_NAME} — {number}"
+    html = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F7F8;padding:24px 0">'
+        f'<tr><td align="center">'
+        f'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0">'
+        f'<tr><td style="background:#0A4D68;padding:24px 28px;font-family:Arial,sans-serif">'
+        f'<div style="color:#ffffff;font-size:22px;font-weight:bold;letter-spacing:1px">REVIVAL PRO</div>'
+        f'<div style="color:#C9A227;font-size:12px;margin-top:2px">Residential Remodeling</div>'
+        f'</td></tr>'
+        f'<tr><td style="padding:28px;font-family:Arial,sans-serif;color:#061A23">'
+        f'<p style="font-size:15px;margin:0 0 12px">Hi {client_name},</p>'
+        f'<p style="font-size:14px;color:#4B6370;line-height:1.5;margin:0 0 20px">'
+        f'Thank you for the opportunity to work with you. Please find your estimate '
+        f'<strong>{escape(number)}</strong> for your <strong>{escape(est.get("category",""))}</strong> project below. '
+        f'A PDF copy is attached for your records.</p>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:8px">'
+        f'<tr style="background:#0A4D68">'
+        f'<td style="padding:8px 10px;color:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:bold">Description</td>'
+        f'<td align="right" style="padding:8px 10px;color:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:bold">Qty</td>'
+        f'<td align="right" style="padding:8px 10px;color:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:bold">Unit</td>'
+        f'<td align="right" style="padding:8px 10px;color:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:bold">Amount</td>'
+        f'</tr>{rows}</table>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td></td>'
+        f'<td align="right" style="font-family:Arial,sans-serif;font-size:13px;color:#4B6370;padding:2px 10px">Subtotal: {escape(money(est.get("subtotal",0)))}</td></tr>'
+        f'<tr><td></td><td align="right" style="font-family:Arial,sans-serif;font-size:13px;color:#4B6370;padding:2px 10px">Tax ({est.get("tax_rate",0)}%): {escape(money(est.get("tax_amount",0)))}</td></tr>'
+        f'<tr><td></td><td align="right" style="font-family:Arial,sans-serif;font-size:17px;color:#0A4D68;font-weight:bold;padding:6px 10px;border-top:2px solid #0A4D68">Total: {escape(money(est.get("total",0)))}</td></tr>'
+        f'</table>'
+        f'<p style="font-size:13px;color:#4B6370;line-height:1.5;margin:22px 0 0">This estimate is valid for 30 days. '
+        f'Just reply to this email if you have any questions or would like to move forward.</p>'
+        f'</td></tr>'
+        f'<tr><td style="padding:16px 28px;background:#F4F7F8;font-family:Arial,sans-serif;font-size:11px;color:#8AA0AB">'
+        f'Sent by {escape(EMAIL_FROM_NAME)}. We never ask for your password or payment details by email.'
+        f'</td></tr>'
+        f'</table></td></tr></table>'
+    )
+
+    email_id = await send_email(
+        to=to,
+        subject=subject,
+        html=html,
+        attachments=[{"filename": f"{number}.pdf", "content": b64}],
+    )
+    if est.get("status") == "Draft":
+        await db.estimates.update_one({"id": estimate_id}, {"$set": {"status": "Sent"}})
+    return {"status": "success", "email_id": email_id, "sent_to": to}
 
 
 # ---------------- Jobs ----------------

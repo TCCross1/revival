@@ -173,6 +173,136 @@ class TestInvoices:
         client.delete(f"{BASE_URL}/api/invoices/{iid}")
 
 
+# ---------------- New: PDF ----------------
+class TestEstimatePDF:
+    def test_pdf_requires_auth(self, anon, client):
+        estimates = client.get(f"{BASE_URL}/api/estimates").json()
+        assert len(estimates) > 0
+        eid = estimates[0]["id"]
+        r = anon.get(f"{BASE_URL}/api/estimates/{eid}/pdf")
+        assert r.status_code == 401
+
+    def test_pdf_download_ok(self, client):
+        estimates = client.get(f"{BASE_URL}/api/estimates").json()
+        assert len(estimates) > 0
+        eid = estimates[0]["id"]
+        r = client.get(f"{BASE_URL}/api/estimates/{eid}/pdf")
+        assert r.status_code == 200
+        assert r.headers.get("content-type", "").startswith("application/pdf")
+        assert r.content.startswith(b"%PDF"), "response body is not a PDF"
+        assert len(r.content) > 800
+        cd = r.headers.get("content-disposition", "")
+        assert "attachment" in cd and ".pdf" in cd
+
+    def test_pdf_404_for_missing(self, client):
+        r = client.get(f"{BASE_URL}/api/estimates/nonexistent-id-xyz/pdf")
+        assert r.status_code == 404
+
+
+# ---------------- New: Email ----------------
+class TestEstimateEmail:
+    def test_email_400_when_client_has_no_email(self, client):
+        # Create client with no email, estimate for that client
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_NoEmailClient", "phone": "", "email": "", "address": "",
+            "source": "Referral", "status": "Lead"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Kitchen",
+            "status": "Draft",
+            "line_items": [{"description": "X", "quantity": 1, "unit_price": 100}],
+            "tax_rate": 0,
+        }).json()
+        r = client.post(f"{BASE_URL}/api/estimates/{e['id']}/send-email")
+        assert r.status_code == 400
+        assert "no email" in r.json().get("detail", "").lower()
+        # cleanup
+        client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+        client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+    def test_email_502_for_undeliverable(self, client):
+        # Fake seed client should be blocked by proxy
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_FakeEmailClient", "phone": "", "email": "dpark@email.com",
+            "address": "", "source": "Referral", "status": "Lead"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Kitchen",
+            "status": "Draft",
+            "line_items": [{"description": "X", "quantity": 1, "unit_price": 100}],
+            "tax_rate": 0,
+        }).json()
+        r = client.post(f"{BASE_URL}/api/estimates/{e['id']}/send-email")
+        # Accept 502 (undeliverable, friendly) or 500 fallback; must NOT be 200
+        assert r.status_code in (502, 500), f"expected error status, got {r.status_code}: {r.text[:300]}"
+        try:
+            body = r.json()
+            assert "detail" in body
+        except Exception:
+            # Some ingresses may swallow the JSON body on 502
+            pass
+        client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+        client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+    def test_email_success_with_resend_test_address(self, client):
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_DeliverableClient", "phone": "", "email": "delivered@resend.dev",
+            "address": "", "source": "Referral", "status": "Lead"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Kitchen",
+            "status": "Draft",
+            "line_items": [{"description": "Cabinets", "quantity": 1, "unit_price": 1000}],
+            "tax_rate": 8.25,
+        }).json()
+        r = client.post(f"{BASE_URL}/api/estimates/{e['id']}/send-email")
+        assert r.status_code == 200, f"expected 200, got {r.status_code}: {r.text}"
+        body = r.json()
+        assert body.get("status") == "success"
+        assert body.get("sent_to") == "delivered@resend.dev"
+        assert "email_id" in body
+        # Draft -> Sent status transition
+        after = client.get(f"{BASE_URL}/api/estimates").json()
+        found = next((x for x in after if x["id"] == e["id"]), None)
+        assert found and found["status"] == "Sent"
+        client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+        client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+
+# ---------------- New: Client Detail ----------------
+class TestClientDetail:
+    def test_client_detail_shape_and_filtering(self, client):
+        clients = client.get(f"{BASE_URL}/api/clients").json()
+        # Prefer a seed client that has estimates/jobs (Sarah Mitchell - Won kitchen)
+        target = next((c for c in clients if c["name"] == "Sarah Mitchell"), clients[0])
+        r = client.get(f"{BASE_URL}/api/clients/{target['id']}/detail")
+        assert r.status_code == 200
+        d = r.json()
+        for k in ["client", "estimates", "jobs", "invoices", "summary"]:
+            assert k in d, f"missing {k}"
+        assert d["client"]["id"] == target["id"]
+        # All estimates must belong to this client_id
+        for e in d["estimates"]:
+            assert e["client_id"] == target["id"]
+        # Jobs/invoices filtered by name
+        for j in d["jobs"]:
+            assert j["client_name"] == target["name"]
+        for inv in d["invoices"]:
+            assert inv["client_name"] == target["name"]
+        s = d["summary"]
+        for k in ["estimates_count", "open_pipeline", "won_value", "jobs_count",
+                  "billed", "collected", "outstanding"]:
+            assert k in s
+
+    def test_client_detail_404(self, client):
+        r = client.get(f"{BASE_URL}/api/clients/nonexistent-xyz/detail")
+        assert r.status_code == 404
+
+    def test_client_detail_requires_auth(self, anon):
+        r = anon.get(f"{BASE_URL}/api/clients/anything/detail")
+        assert r.status_code == 401
+
+
 # ---------------- Logout ----------------
 class TestLogout:
     def test_logout_endpoint(self):

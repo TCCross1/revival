@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 2 focused on the two new features: (1) Estimate PDF download + email, and (2) Client Timeline detail page. Backend pytest suite expanded from 11 → 20 tests (all PASS): PDF returns valid application/pdf with %PDF signature + attachment disposition and requires auth; 404 for missing estimate; POST /api/estimates/{id}/send-email returns 400 (no client email), success (200 with email_id + sent_to) for delivered@resend.dev with Draft→Sent status transition, and 502 for undeliverable seed emails; GET /api/clients/{id}/detail returns client + filtered estimates (by client_id) + jobs/invoices (by client_name) + full summary object, plus 401/404 branches. Frontend Playwright verified: Clients page name & eye buttons navigate to /clients/:id; ClientDetail page renders header, 4 stat cards, and 3 sections + back-to-clients-btn works; Estimates rows expose pdf-estimate-{id} (Playwright download event fires with EST-2026-*.pdf filename) and email-estimate-{id} (fires backend call, Draft estimate transitions to Sent on success for delivered@resend.dev). No regressions on dashboard/nav.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/estimates/{id}/send-email", "issue": "Returns 502 for undeliverable client emails, but Cloudflare/ingress intercepts 5xx responses and replaces the friendly JSON body ('That client's email address looks undeliverable...') with a generic HTML 'origin web server returned an invalid or incomplete response' page. Frontend toast then surfaces that Cloudflare text instead of the intended friendly message. Recommendation: return 400 or 422 (4xx) with the same detail payload so the ingress does not rewrite the body."},
+      {"endpoint": "/api/estimates/{id}/send-email", "issue": "Draft→Sent status transition happens even if the estimate was already Sent/Won/Lost (only skipped when currently Draft). Consider only auto-transitioning from Draft."},
+      {"endpoint": "/api/clients/{id}/detail", "issue": "Jobs & invoices are matched by client_name (string) instead of client_id — renaming a client would orphan its jobs/invoices from the timeline. Consider persisting client_id on Job and Invoice."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Send Estimate Email (undeliverable)", "issue": "Toast shows raw Cloudflare error HTML text instead of the friendly backend detail message due to ingress rewriting the 502 body. See backend minor item — best fix is to return 4xx on the server so the JSON body passes through.", "affected_selectors": ["[data-testid^='email-estimate-']"]}
+    ],
+    "design_issues": [
+      {"screen": "Estimates page heading", "issues": ["Same low-contrast issue as iteration 1 — 'Estimates' heading text blends into dark teal marble background."]},
+      {"screen": "ClientDetail", "issues": ["No visible issues — layout, stats, and sections render cleanly on white cards."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Change send-email undeliverable failure from HTTP 502 → 400/422 so ingress doesn't overwrite the JSON detail (real UX fix).",
+    "Consider client_id linkage for Jobs/Invoices instead of client_name (data-integrity improvement).",
+    "Optional: only transition Draft→Sent on the FIRST successful send (currently only skipped when not-Draft, so re-sending a Draft that already got status Sent from a prior send is fine — but if user manually set Follow-up, next send won't touch it, which is correct)."
+  ],
+  "critical_code_review_comments": [
+    "email_pdf.send_email raises HTTPException(502) on upstream 4xx/5xx — this is caught by ingress and stripped of body. Prefer 4xx for client-side email errors.",
+    "server.py still monolithic (760+ lines) — split by domain when time allows.",
+    "client_detail joins jobs/invoices by client_name rather than client_id — fragile to renames.",
+    "next_number still uses count_documents (race-condition prone) — same finding as iteration 1.",
+    "Estimates.js downloadPdf uses window.URL.createObjectURL/click pattern — works, but consider adding try/finally to always revokeObjectURL even on click errors."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (added 9 new tests: PDF x3, Email x3, ClientDetail x3)",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {"backend": "100% (20/20 pytest)", "frontend": "100% of critical flows verified"},
+  "test_credentials": "Bearer/Cookie session_token='test_session_verify' for user verify@example.com. Restored after any logout test.",
+  "seed_data_creation": "No new seed added. Backend still auto-seeds 6 clients / 6 estimates / 2 jobs / 2 invoices on empty DB. Cleaned up TEST_-prefixed leftovers and reverted David Park's email back to dpark@email.com after the success-toast verification.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Frontend uses REACT_APP_BACKEND_URL and Bearer localStorage fallback. Inject session_token before boot: page.add_init_script(\"window.localStorage.setItem('session_token','test_session_verify');\") then navigate directly to protected route. All new data-testids present: pdf-estimate-{id}, email-estimate-{id}, open-client-{id}, view-client-{id}, client-detail-page, back-to-clients-btn, detail-estimate-{id}, detail-job-{id}, detail-invoice-{id}. To verify email success, temporarily PUT a client's email to 'delivered@resend.dev' — the Resend test address always succeeds. Fake seed emails (dpark@email.com etc.) return 502 by design."
+}
