@@ -30,6 +30,10 @@ export default function PublicSign() {
     retry: false,
   });
 
+  const role = c?.sign_role === "contractor" ? "contractor" : "client";
+  const signerName = role === "contractor" ? c?.contractor_name : c?.client_name;
+  const roleLabel = role === "contractor" ? "Contractor" : "Client";
+
   const sign = useMutation({
     mutationFn: async () => (await api.post(`/public/contracts/${token}/sign`, { signature, signed_name: name })).data,
     onSuccess: () => { setDone(true); window.scrollTo({ top: 0, behavior: "smooth" }); },
@@ -144,11 +148,11 @@ export default function PublicSign() {
 
             {/* Signature */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mt-6 p-6" data-testid="public-sign-box">
-              <h3 className="text-lg font-semibold font-['Outfit'] mb-1">Your Signature</h3>
+              <h3 className="text-lg font-semibold font-['Outfit'] mb-1">{roleLabel} Signature</h3>
               <p className="text-sm text-[#4B6370] mb-4">By signing below you agree to the terms of this contract.</p>
               <div className="mb-4">
                 <Label className="text-xs text-[#4B6370]">Your full name</Label>
-                <Input className="mt-1" data-testid="public-sign-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={c.client_name} />
+                <Input className="mt-1" data-testid="public-sign-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={signerName} />
               </div>
               <SignaturePad testid="public-signature-pad" value={signature} onChange={setSignature} />
               <Button data-testid="public-submit-sign" onClick={() => sign.mutate()} disabled={sign.isPending || !signature}

@@ -191,8 +191,11 @@ class Contract(BaseModel):
     client_signed_by: str = ""
     contractor_signature: str = ""
     contractor_signed_date: str = ""
+    contractor_signed_by: str = ""
     status: str = "Draft"
     sign_token: str = ""
+    contractor_sign_token: str = ""
+    signed_copies_sent: bool = False
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -806,7 +809,9 @@ async def update_contract(contract_id: str, payload: ContractUpdate, user: User 
     merged = {**existing, **updates}
     if updates:
         await db.contracts.update_one({"id": contract_id}, {"$set": updates})
-    return Contract(**merged)
+    await maybe_send_signed_copies(merged)
+    fresh = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    return Contract(**fresh)
 
 
 @api_router.delete("/contracts/{contract_id}")
@@ -834,6 +839,65 @@ class SignRequestBody(BaseModel):
 class PublicSignBody(BaseModel):
     signature: str
     signed_name: str = ""
+
+
+async def find_contract_by_token(token: str):
+    doc = await db.contracts.find_one(
+        {"$or": [{"sign_token": token}, {"contractor_sign_token": token}]}, {"_id": 0}
+    )
+    if not doc:
+        return None, None
+    role = "contractor" if doc.get("contractor_sign_token") == token else "client"
+    return doc, role
+
+
+async def maybe_send_signed_copies(contract: dict):
+    """When both parties have signed, email a signed PDF copy to both (best effort, once)."""
+    if not (contract.get("client_signature") and contract.get("contractor_signature")):
+        return
+    if contract.get("signed_copies_sent"):
+        return
+    company = await get_company()
+    number = contract.get("contract_number", "")
+    try:
+        pdf = build_contract_pdf(contract, company)
+        b64 = base64.b64encode(pdf).decode()
+    except Exception as ex:
+        logger.error(f"Signed copy PDF build failed: {ex}")
+        return
+    recipients = []
+    if contract.get("client_email"):
+        recipients.append(contract["client_email"])
+    contractor_email = (company.get("email") or OWNER_EMAIL or "").strip()
+    if contractor_email:
+        recipients.append(contractor_email)
+    subject = f"Signed contract {number} — {EMAIL_FROM_NAME}"
+    html = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F7F8;padding:24px 0"><tr><td align="center">'
+        f'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0">'
+        f'<tr><td style="background:#0A4D68;padding:24px 28px;font-family:Arial,sans-serif">'
+        f'<div style="color:#ffffff;font-size:22px;font-weight:bold;letter-spacing:1px">REVIVAL PRO</div>'
+        f'<div style="color:#C9A227;font-size:12px;margin-top:2px">Residential Remodeling</div></td></tr>'
+        f'<tr><td style="padding:28px;font-family:Arial,sans-serif;color:#061A23">'
+        f'<p style="font-size:15px;margin:0 0 12px">Good news — it\'s official!</p>'
+        f'<p style="font-size:14px;color:#4B6370;line-height:1.6;margin:0 0 8px">'
+        f'Contract <strong>{escape(number)}</strong> has now been signed by both parties. '
+        f'A copy of the fully signed contract is attached for your records.</p>'
+        f'</td></tr>'
+        f'<tr><td style="padding:16px 28px;background:#F4F7F8;font-family:Arial,sans-serif;font-size:11px;color:#8AA0AB">'
+        f'Sent by {escape(EMAIL_FROM_NAME)}. We never ask for your password or payment details by email.</td></tr>'
+        f'</table></td></tr></table>'
+    )
+    sent_any = False
+    for to in list(dict.fromkeys(recipients)):
+        try:
+            await send_email(to=to, subject=subject, html=html,
+                             attachments=[{"filename": f"{number}.pdf", "content": b64}])
+            sent_any = True
+        except Exception as ex:
+            logger.error(f"Signed copy email to {to} failed: {ex}")
+    if sent_any:
+        await db.contracts.update_one({"id": contract["id"]}, {"$set": {"signed_copies_sent": True}})
 
 
 @api_router.post("/contracts/{contract_id}/send-signature-request")
@@ -879,31 +943,79 @@ async def send_signature_request(contract_id: str, body: SignRequestBody, user: 
     return {"status": "success", "email_id": email_id, "sent_to": to, "link": link}
 
 
-@api_router.get("/public/contracts/{token}", response_model=Contract)
+@api_router.post("/contracts/{contract_id}/send-countersign-request")
+async def send_countersign_request(contract_id: str, body: SignRequestBody, user: User = Depends(get_current_user)):
+    doc = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    company = await get_company()
+    to = (company.get("email") or OWNER_EMAIL or "").strip()
+    if not to:
+        raise HTTPException(status_code=400, detail="Add your company email in Company Profile first.")
+    base = (body.base_url or "").rstrip("/")
+    if not base.startswith("https://"):
+        raise HTTPException(status_code=400, detail="Invalid signing link.")
+    token = doc.get("contractor_sign_token") or new_id()
+    link = f"{base}/sign/{token}"
+    number = escape(doc.get("contract_number", ""))
+    subject = f"Countersign contract {doc.get('contract_number','')} — {EMAIL_FROM_NAME}"
+    html = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F7F8;padding:24px 0"><tr><td align="center">'
+        f'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0">'
+        f'<tr><td style="background:#0A4D68;padding:24px 28px;font-family:Arial,sans-serif">'
+        f'<div style="color:#ffffff;font-size:22px;font-weight:bold;letter-spacing:1px">REVIVAL PRO</div>'
+        f'<div style="color:#C9A227;font-size:12px;margin-top:2px">Residential Remodeling</div></td></tr>'
+        f'<tr><td style="padding:28px;font-family:Arial,sans-serif;color:#061A23">'
+        f'<p style="font-size:15px;margin:0 0 12px">Your turn to sign.</p>'
+        f'<p style="font-size:14px;color:#4B6370;line-height:1.6;margin:0 0 22px">'
+        f'Contract <strong>{number}</strong> is ready for you to countersign. '
+        f'Open the link on any device and add your signature.</p>'
+        f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 22px"><tr>'
+        f'<td style="border-radius:10px;background:#C9A227">'
+        f'<a href="{link}" style="display:inline-block;padding:14px 28px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#061A23;text-decoration:none">Review &amp; Countersign</a>'
+        f'</td></tr></table>'
+        f'<p style="font-size:12px;color:#8AA0AB;line-height:1.5;margin:0">Or paste this secure link into your browser:<br/>{escape(link)}</p>'
+        f'</td></tr>'
+        f'<tr><td style="padding:16px 28px;background:#F4F7F8;font-family:Arial,sans-serif;font-size:11px;color:#8AA0AB">'
+        f'Sent by {escape(EMAIL_FROM_NAME)}.</td></tr>'
+        f'</table></td></tr></table>'
+    )
+    email_id = await send_email(to=to, subject=subject, html=html)
+    await db.contracts.update_one({"id": contract_id}, {"$set": {"contractor_sign_token": token}})
+    return {"status": "success", "email_id": email_id, "sent_to": to, "link": link}
+
+
+@api_router.get("/public/contracts/{token}")
 async def public_get_contract(token: str):
-    doc = await db.contracts.find_one({"sign_token": token}, {"_id": 0})
+    doc, role = await find_contract_by_token(token)
     if not doc:
         raise HTTPException(status_code=404, detail="This signing link is invalid or has expired.")
-    return Contract(**doc)
+    return {**Contract(**doc).model_dump(), "sign_role": role}
 
 
 @api_router.post("/public/contracts/{token}/sign")
 async def public_sign_contract(token: str, body: PublicSignBody):
-    doc = await db.contracts.find_one({"sign_token": token}, {"_id": 0})
+    doc, role = await find_contract_by_token(token)
     if not doc:
         raise HTTPException(status_code=404, detail="This signing link is invalid or has expired.")
     if not body.signature or not body.signature.startswith("data:image/"):
         raise HTTPException(status_code=400, detail="Please add your signature before submitting.")
     signed_date = datetime.now(timezone.utc).strftime("%B %d, %Y")
-    new_status = "Signed" if doc.get("contractor_signature") else "Sent"
+    prefix = "contractor" if role == "contractor" else "client"
+    default_name = doc.get("contractor_name", "") if role == "contractor" else doc.get("client_name", "")
     updates = {
-        "client_signature": body.signature,
-        "client_signed_date": signed_date,
-        "client_signed_by": body.signed_name.strip() or doc.get("client_name", ""),
-        "status": new_status,
+        f"{prefix}_signature": body.signature,
+        f"{prefix}_signed_date": signed_date,
+        f"{prefix}_signed_by": body.signed_name.strip() or default_name,
     }
-    await db.contracts.update_one({"sign_token": token}, {"$set": updates})
-    return {"status": "success", "contract_status": new_status, "signed_date": signed_date}
+    other_sig = doc.get("client_signature") if role == "contractor" else doc.get("contractor_signature")
+    new_status = "Signed" if other_sig else "Sent"
+    updates["status"] = new_status
+    await db.contracts.update_one({"id": doc["id"]}, {"$set": updates})
+    if new_status == "Signed":
+        merged = {**doc, **updates}
+        await maybe_send_signed_copies(merged)
+    return {"status": "success", "contract_status": new_status, "signed_date": signed_date, "role": role}
 
 
 # ---------------- Dashboard ----------------
