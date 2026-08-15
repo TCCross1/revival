@@ -13,6 +13,7 @@ import Invoices from "@/pages/Invoices";
 import Contracts from "@/pages/Contracts";
 import ContractDetail from "@/pages/ContractDetail";
 import Settings from "@/pages/Settings";
+import Profile from "@/pages/Profile";
 import PublicSign from "@/pages/PublicSign";
 import ChangePassword from "@/pages/ChangePassword";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -64,6 +65,7 @@ function AppRouter() {
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/contracts/:id" element={<ContractDetail />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/team" element={<Team />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

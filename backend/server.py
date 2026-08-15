@@ -272,6 +272,13 @@ class ResetPasswordBody(BaseModel):
     new_password: str
 
 
+class UpdateProfileBody(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+
 # ---------------- Password + JWT helpers ----------------
 JWT_ALGORITHM = "HS256"
 
@@ -468,6 +475,39 @@ async def reset_password(body: ResetPasswordBody):
     await db.users.update_one({"user_id": rec["user_id"]}, {"$set": {"password_hash": hash_password(body.new_password)}})
     await db.password_reset_tokens.update_one({"token": body.token}, {"$set": {"used": True}})
     return {"status": "success"}
+
+
+@api_router.post("/auth/update-profile")
+async def update_profile(body: UpdateProfileBody, response: Response, user: User = Depends(get_current_user)):
+    udoc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not udoc:
+        raise HTTPException(status_code=404, detail="User not found")
+    updates = {}
+    if body.name is not None and body.name.strip():
+        updates["name"] = body.name.strip()
+    if body.email:
+        new_email = body.email.strip().lower()
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", new_email):
+            raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+        if new_email != udoc["email"]:
+            clash = await db.users.find_one({"email": new_email})
+            if clash and clash.get("user_id") != user.user_id:
+                raise HTTPException(status_code=400, detail="That email is already in use.")
+            updates["email"] = new_email
+    if body.new_password:
+        if len(body.new_password) < 6:
+            raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+        ph = udoc.get("password_hash")
+        if ph and (not body.current_password or not verify_password(body.current_password, ph)):
+            raise HTTPException(status_code=400, detail="Your current password is incorrect.")
+        updates["password_hash"] = hash_password(body.new_password)
+    if updates:
+        await db.users.update_one({"user_id": user.user_id}, {"$set": updates})
+    fresh = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    token = create_access_token(fresh["user_id"], fresh["email"])
+    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
+                        path="/", max_age=7 * 24 * 60 * 60)
+    return {**User(**fresh).model_dump(), "session_token": token}
 
 
 @api_router.post("/auth/session")

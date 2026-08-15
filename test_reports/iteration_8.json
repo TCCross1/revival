@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 8 validated the admin credential change to tccross1179@gmail.com / Cmc0103$$ and the new My Profile feature. Backend: updated backend_test.py ADMIN_EMAIL/ADMIN_PASSWORD constants and added 8 new TestUpdateProfile cases (attached as methods on TestEmailPasswordAuthAndChange via monkey-patch so pytest-xdist loadscope pins them onto the same worker as change-password — otherwise concurrent admin-password mutation causes flake). All 17 admin-account tests now PASS on one worker. Full suite: 69 passed, 3 failed, 1 skipped — the 3 failures are pre-existing external Resend rate-limit flakes (test_email_success_with_resend_test_address) OR transient concurrent race between TestForgotResetPassword and other tests (test_reset_password_expired_400 + test_reset_password_success_and_reuse_400 both PASS when re-run in isolation; not related to this iteration's changes). Frontend (Playwright, 1920x1080): login with tccross1179@gmail.com / Cmc0103$$ lands on Dashboard, stores JWT in localStorage 'session_token'; user-menu-btn → my-profile-btn navigates to /profile; profile-page shows profile-name / profile-email / profile-current / profile-new / profile-confirm / save-profile-btn; saving a name change fires the 'Profile updated' toast and the change persists after a full reload; mismatched new/confirm shows 'do not match' error toast (client-side, no request sent); name reverted at end. Regression: nav-team visible, team-page loads, /clients, /estimates, /contracts, / all load. Admin credentials RESTORED to tccross1179@gmail.com / Cmc0103$$ (verified by successful login at end of tests).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/estimates/{id}/send-email", "issue": "Resend external quota returns 400 'email rate limit exceeded' intermittently — pre-existing (iter-5/6/7). Not related to this iteration."},
+      {"endpoint": "POST /api/auth/reset-password (via TestForgotResetPassword success + expired tests)", "issue": "Failed in full-suite parallel run because both tests create/delete throwaway team members concurrently with other admin-scope tests; pass 100% when run alone. Consider serializing tests that mutate /api/team via xdist_group."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: On /profile, the 'Login email' input has no explicit validation preview — bad format is only caught on submit as a red toast. Consider inline validation state.",
+    "OPTIONAL: The Profile form uses a shared `current_password` field even when the user only edits name/email (no password change intended). This is fine, but the UI could visually collapse the 'Change password' section behind a toggle to reduce accidental input.",
+    "OPTIONAL: /api/auth/update-profile does not require current_password when changing email — only when changing password. This is standard, but higher-security apps re-prompt for the current password on email change to prevent session-hijack privilege escalation. Consider adding.",
+    "OPTIONAL (pre-existing, from iter-7): server.py is now ~1447 lines; consider router split. TeamCreate should use EmailStr. base_url for /auth/forgot-password should be pinned server-side.",
+    "OPTIONAL: /api/auth/update-profile does not invalidate other outstanding JWTs when the password changes (same issue as change-password / team set-password — flagged in iter-6/7). A password_changed_at field + JWT iat check would close this."
+  ],
+  "critical_code_review_comments": [
+    "update_profile returns User(**fresh).model_dump() but also spreads session_token — good pattern. However the response does NOT set a fresh access_token httpOnly cookie, so if a user rotates their password and only uses the cookie (not localStorage Bearer), the OLD cookie still authorises them until it naturally expires. Consider response.set_cookie('access_token', new_token, ...) mirroring the login endpoint.",
+    "UpdateProfileBody uses Optional[str] for all fields — a client posting {} passes validation and this endpoint becomes a no-op (200 with same data). Not a bug, but consider rejecting empty payloads with 400.",
+    "Profile.js sends `name` and `email` on every submit even when unchanged. Server correctly no-ops if new email == current, but this makes email uniqueness lookup run on every save. Minor; consider only sending changed fields.",
+    "Profile.js: mismatch/short password checks return early via toast BUT do not clear submitting=false via finally — currently OK because setSubmitting(true) happens AFTER the early return, but this is order-sensitive. Move the guards into a try/finally or guard before setSubmitting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (updated ADMIN_EMAIL/ADMIN_PASSWORD constants to tccross1179@gmail.com / Cmc0103$$; added 8 TestUpdateProfile methods attached to TestEmailPasswordAuthAndChange via monkey-patch for xdist loadscope grouping)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated)"
+  ],
+  "success_rate": {
+    "backend": "96% — 69/73 pytest cases pass on full suite (the 3 failures are pre-existing Resend rate-limit + a transient concurrent flake in TestForgotResetPassword that passes when run alone; all 8 new update-profile tests + all 9 change-password/login tests PASS 17/17 when the admin-account class is targeted).",
+    "frontend": "100% — 15/15 UI checks pass: login (case-insensitive), JWT stored, user-menu → my-profile-btn, /profile page renders all 6 testids, save name → toast → reload persists, mismatched pw shows 'do not match' error, revert works, nav-team + team-page still work for admin, /clients /estimates /contracts /dashboard all load."
+  },
+  "test_credentials": "Owner/admin: tccross1179@gmail.com / Cmc0103$$ — VERIFIED WORKING at end of run (200). Legacy test_session_verify still valid.",
+  "seed_data_creation": "None persistent. Temporary TEST_conflict_* team member was created and deleted within the test's finally block.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Admin creds are now tccross1179@gmail.com / Cmc0103$$ (case-insensitive at login). /api/auth/update-profile is authenticated (Bearer JWT or cookie) — supports partial updates of name / email (unique, valid format) / new_password (requires correct current_password, min 6 chars). Response includes a fresh session_token JWT — the frontend Profile.js writes it to localStorage. When adding new admin-scope tests, MUST group with TestEmailPasswordAuthAndChange (loadscope) OR the change-password test will race the admin login. Frontend testids: user-menu-btn, my-profile-btn, profile-page, profile-name, profile-email, profile-current, profile-new, profile-confirm, save-profile-btn. All pre-existing minor issues from iter-7 (Resend rate limits, DialogDescription a11y warning, TeamCreate lacks EmailStr, server.py size) remain — none regressed.",
+  "rca of the issue": "N/A — no functional bugs introduced by this iteration. The 3 backend failures are (a) Resend rate-limit (external, pre-existing, iterations 5-7 flagged it) and (b) TestForgotResetPassword concurrent-worker race unrelated to update-profile changes."
+}

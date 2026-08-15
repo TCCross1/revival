@@ -880,13 +880,14 @@ class TestCountersignFlow:
 
 
 # ---------------- New: Email/Password JWT Auth ----------------
-ADMIN_EMAIL = "tccrossmusic@gmail.com"
-ADMIN_PASSWORD = "RevivalPro2026!"
+ADMIN_EMAIL = "tccross1179@gmail.com"
+ADMIN_PASSWORD = "Cmc0103$$"
 
 
 # Merged into a single class so pytest-xdist's loadscope pins all admin-account
 # tests to ONE worker (change-password mutates the same admin row that login
 # tests exercise, so they must not run in parallel).
+@pytest.mark.xdist_group(name="admin_account")
 class TestEmailPasswordAuthAndChange:
     def test_login_success_returns_jwt(self):
         r = requests.post(f"{BASE_URL}/api/auth/login",
@@ -1206,3 +1207,131 @@ class TestForgotResetPassword:
             db.password_reset_tokens.delete_one({"token": token})
             requests.delete(f"{BASE_URL}/api/team/{uid}", headers=headers)
             cli.close()
+
+
+
+
+
+# ---------------- Update Profile (My Profile) ----------------
+# NOTE: These tests mutate the admin account and MUST run on the same xdist
+# worker as TestEmailPasswordAuthAndChange::test_change_then_login_then_revert.
+# We inject them as methods on that class (via monkey-patching below) so
+# pytest-xdist's loadscope pins them together.
+def _test_login_case_insensitive_email(self):
+    r = requests.post(f"{BASE_URL}/api/auth/login",
+                      json={"email": ADMIN_EMAIL.upper(), "password": ADMIN_PASSWORD})
+    assert r.status_code == 200, r.text
+    assert r.json().get("email") == ADMIN_EMAIL.lower()
+
+
+def _test_update_profile_requires_auth(self):
+    r = requests.post(f"{BASE_URL}/api/auth/update-profile", json={"name": "X"})
+    assert r.status_code == 401
+
+
+def _test_update_name_persists(self):
+    tok = _admin_token()
+    h = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+    me = requests.get(f"{BASE_URL}/api/auth/me", headers=h).json()
+    original_name = me.get("name") or "Admin"
+    new_name = f"TEST_Name_{_uuid.uuid4().hex[:6]}"
+    try:
+        r = requests.post(f"{BASE_URL}/api/auth/update-profile",
+                          json={"name": new_name}, headers=h)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["name"] == new_name
+        assert "session_token" in body and body["session_token"].count(".") == 2
+        h2 = {"Authorization": f"Bearer {body['session_token']}"}
+        me2 = requests.get(f"{BASE_URL}/api/auth/me", headers=h2).json()
+        assert me2["name"] == new_name
+    finally:
+        requests.post(f"{BASE_URL}/api/auth/update-profile",
+                      json={"name": original_name}, headers=h)
+
+
+def _test_update_password_wrong_current_400(self):
+    tok = _admin_token()
+    h = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+    r = requests.post(f"{BASE_URL}/api/auth/update-profile",
+                      json={"current_password": "definitely-wrong",
+                            "new_password": "SomethingNew_1!"}, headers=h)
+    assert r.status_code == 400
+    assert "current password" in r.json().get("detail", "").lower()
+
+
+def _test_update_password_short_400(self):
+    tok = _admin_token()
+    h = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+    r = requests.post(f"{BASE_URL}/api/auth/update-profile",
+                      json={"current_password": ADMIN_PASSWORD,
+                            "new_password": "abc"}, headers=h)
+    assert r.status_code == 400
+
+
+def _test_update_password_success_fresh_token_and_revert(self):
+    tok = _admin_token()
+    h = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+    new_pw = "TmpProfilePw_1!"
+    r = requests.post(f"{BASE_URL}/api/auth/update-profile",
+                      json={"current_password": ADMIN_PASSWORD,
+                            "new_password": new_pw}, headers=h)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    fresh = body.get("session_token")
+    assert fresh and fresh.count(".") == 2
+    try:
+        rlog = requests.post(f"{BASE_URL}/api/auth/login",
+                             json={"email": ADMIN_EMAIL, "password": new_pw})
+        assert rlog.status_code == 200, rlog.text
+        rold = requests.post(f"{BASE_URL}/api/auth/login",
+                             json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+        assert rold.status_code == 401
+    finally:
+        hf = {"Authorization": f"Bearer {fresh}", "Content-Type": "application/json"}
+        rev = requests.post(f"{BASE_URL}/api/auth/update-profile",
+                            json={"current_password": new_pw,
+                                  "new_password": ADMIN_PASSWORD}, headers=hf)
+        assert rev.status_code == 200, f"REVERT FAILED: {rev.text}"
+        check = requests.post(f"{BASE_URL}/api/auth/login",
+                              json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+        assert check.status_code == 200
+
+
+def _test_update_email_conflict_400(self):
+    tok = _admin_token()
+    h = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+    other_email = f"TEST_conflict_{_uuid.uuid4().hex[:6]}@example.com"
+    rc = requests.post(f"{BASE_URL}/api/team",
+                       json={"email": other_email, "password": "Whatever_1!",
+                             "name": "Conflict QA", "role": "member"},
+                       headers=h)
+    assert rc.status_code == 200, rc.text
+    other_uid = rc.json()["user_id"]
+    try:
+        r = requests.post(f"{BASE_URL}/api/auth/update-profile",
+                          json={"email": other_email}, headers=h)
+        assert r.status_code == 400
+        assert "already in use" in r.json().get("detail", "").lower()
+    finally:
+        requests.delete(f"{BASE_URL}/api/team/{other_uid}", headers=h)
+
+
+def _test_update_email_invalid_format_400(self):
+    tok = _admin_token()
+    h = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+    r = requests.post(f"{BASE_URL}/api/auth/update-profile",
+                      json={"email": "not-an-email"}, headers=h)
+    assert r.status_code == 400
+
+
+# Attach as methods on TestEmailPasswordAuthAndChange so pytest-xdist loadscope
+# groups them onto the same worker as the change-password test.
+TestEmailPasswordAuthAndChange.test_login_case_insensitive_email = _test_login_case_insensitive_email
+TestEmailPasswordAuthAndChange.test_update_profile_requires_auth = _test_update_profile_requires_auth
+TestEmailPasswordAuthAndChange.test_update_name_persists = _test_update_name_persists
+TestEmailPasswordAuthAndChange.test_update_password_wrong_current_400 = _test_update_password_wrong_current_400
+TestEmailPasswordAuthAndChange.test_update_password_short_400 = _test_update_password_short_400
+TestEmailPasswordAuthAndChange.test_update_password_success_fresh_token_and_revert = _test_update_password_success_fresh_token_and_revert
+TestEmailPasswordAuthAndChange.test_update_email_conflict_400 = _test_update_email_conflict_400
+TestEmailPasswordAuthAndChange.test_update_email_invalid_format_400 = _test_update_email_invalid_format_400

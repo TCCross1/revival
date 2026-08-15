@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { BRAND } from "@/lib/format";
-import { LayoutDashboard, Users, FileText, HardHat, Receipt, LogOut, FileSignature, Building2, KeyRound, UserPlus } from "lucide-react";
+import { LayoutDashboard, Users, FileText, HardHat, Receipt, LogOut, FileSignature, Building2, KeyRound, UserPlus, UserCog } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,6 +83,9 @@ export default function Layout() {
                   <div className="text-xs text-[#4B6370] font-normal truncate">{user?.email}</div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem data-testid="my-profile-btn" onClick={() => navigate("/profile")} className="gap-2 cursor-pointer">
+                  <UserCog size={16} /> My Profile
+                </DropdownMenuItem>
                 <DropdownMenuItem data-testid="company-profile-btn" onClick={() => navigate("/settings")} className="gap-2 cursor-pointer">
                   <Building2 size={16} /> Company Profile
                 </DropdownMenuItem>
