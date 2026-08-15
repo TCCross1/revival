@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { BRAND } from "@/lib/format";
-import { LayoutDashboard, Users, FileText, HardHat, Receipt, LogOut, FileSignature, Building2, KeyRound } from "lucide-react";
+import { LayoutDashboard, Users, FileText, HardHat, Receipt, LogOut, FileSignature, Building2, KeyRound, UserPlus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +19,7 @@ const NAV = [
   { to: "/jobs", label: "Jobs", icon: HardHat, testid: "nav-jobs" },
   { to: "/invoices", label: "Invoices", icon: Receipt, testid: "nav-invoices" },
   { to: "/contracts", label: "Contracts", icon: FileSignature, testid: "nav-contracts" },
+  { to: "/team", label: "Team", icon: UserPlus, testid: "nav-team", admin: true },
 ];
 
 export default function Layout() {
@@ -43,7 +44,7 @@ export default function Layout() {
                 <img src={BRAND.logo} alt="Revival Pro" className="h-10 w-auto" />
               </button>
               <nav className="hidden md:flex items-center gap-1">
-                {NAV.map((item) => (
+                {NAV.filter((it) => !it.admin || user?.role === "admin").map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
@@ -97,7 +98,7 @@ export default function Layout() {
 
           {/* Mobile nav */}
           <nav className="md:hidden flex items-center gap-1 overflow-x-auto pb-2 -mt-1">
-            {NAV.map((item) => (
+            {NAV.filter((it) => !it.admin || user?.role === "admin").map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}

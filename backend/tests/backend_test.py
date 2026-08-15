@@ -988,3 +988,221 @@ class TestEmailPasswordAuthAndChange:
             check = requests.post(f"{BASE_URL}/api/auth/login",
                                   json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
             assert check.status_code == 200
+
+
+# ---------------- Team Members (admin-gated) ----------------
+import uuid as _uuid
+from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+from pymongo import MongoClient as _MongoClient
+
+_MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+_DB_NAME = os.environ.get("DB_NAME", "test_database")
+
+
+def _admin_token():
+    r = requests.post(f"{BASE_URL}/api/auth/login",
+                      json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    assert r.status_code == 200, r.text
+    return r.json()["session_token"]
+
+
+def _admin_headers():
+    return {"Authorization": f"Bearer {_admin_token()}", "Content-Type": "application/json"}
+
+
+class TestTeamAndPasswordReset:
+    def test_list_team_admin_ok(self):
+        r = requests.get(f"{BASE_URL}/api/team", headers=_admin_headers())
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert isinstance(data, list)
+        assert any(m.get("email") == ADMIN_EMAIL for m in data)
+
+    def test_list_team_anon_401(self):
+        r = requests.get(f"{BASE_URL}/api/team")
+        assert r.status_code == 401
+
+    def test_full_team_flow_create_member_login_setpw_delete(self):
+        """Create member -> member can login -> non-admin blocked -> admin set pw -> new pw works -> delete member."""
+        headers = _admin_headers()
+        email = f"TEST_qa_{_uuid.uuid4().hex[:8]}@example.com"
+        pw = "MemberPass_1!"
+
+        # 1) short password -> 400
+        r_bad = requests.post(f"{BASE_URL}/api/team",
+                              json={"email": email, "password": "abc", "name": "QA", "role": "member"},
+                              headers=headers)
+        assert r_bad.status_code == 400
+
+        # 2) create ok
+        r = requests.post(f"{BASE_URL}/api/team",
+                          json={"email": email, "password": pw, "name": "QA Member", "role": "member"},
+                          headers=headers)
+        assert r.status_code == 200, r.text
+        member = r.json()
+        assert member["email"] == email.lower()
+        assert member["role"] == "member"
+        uid = member["user_id"]
+
+        try:
+            # 3) duplicate email -> 400
+            r_dup = requests.post(f"{BASE_URL}/api/team",
+                                  json={"email": email, "password": pw, "name": "dup", "role": "member"},
+                                  headers=headers)
+            assert r_dup.status_code == 400
+
+            # 4) member can login
+            r_login = requests.post(f"{BASE_URL}/api/auth/login",
+                                    json={"email": email, "password": pw})
+            assert r_login.status_code == 200, r_login.text
+            m_token = r_login.json()["session_token"]
+
+            # 5) member blocked from /api/team (403)
+            r_denied = requests.get(f"{BASE_URL}/api/team",
+                                    headers={"Authorization": f"Bearer {m_token}"})
+            assert r_denied.status_code == 403
+
+            # 6) admin sets new password (< 6 => 400)
+            r_short = requests.post(f"{BASE_URL}/api/team/{uid}/set-password",
+                                    json={"password": "aaa"}, headers=headers)
+            assert r_short.status_code == 400
+
+            new_pw = "MemberPass_2!"
+            r_setpw = requests.post(f"{BASE_URL}/api/team/{uid}/set-password",
+                                    json={"password": new_pw}, headers=headers)
+            assert r_setpw.status_code == 200
+
+            # 7) old pw fails, new pw works
+            r_old = requests.post(f"{BASE_URL}/api/auth/login",
+                                  json={"email": email, "password": pw})
+            assert r_old.status_code == 401
+            r_new = requests.post(f"{BASE_URL}/api/auth/login",
+                                  json={"email": email, "password": new_pw})
+            assert r_new.status_code == 200
+
+            # 8) admin cannot delete themselves
+            me = requests.get(f"{BASE_URL}/api/auth/me", headers=headers).json()
+            r_self = requests.delete(f"{BASE_URL}/api/team/{me['user_id']}", headers=headers)
+            assert r_self.status_code == 400
+        finally:
+            # 9) delete member (cleanup)
+            r_del = requests.delete(f"{BASE_URL}/api/team/{uid}", headers=headers)
+            assert r_del.status_code in (200, 204)
+
+        # 10) confirm gone -> next login fails
+        r_gone = requests.post(f"{BASE_URL}/api/auth/login",
+                               json={"email": email, "password": "MemberPass_2!"})
+        assert r_gone.status_code == 401
+
+
+class TestForgotResetPassword:
+    def test_forgot_password_always_200_unknown_email(self):
+        r = requests.post(f"{BASE_URL}/api/auth/forgot-password",
+                          json={"email": f"nobody_{_uuid.uuid4().hex[:6]}@nowhere.test",
+                                "base_url": BASE_URL})
+        assert r.status_code == 200
+        assert r.json().get("status") == "success"
+
+    def test_forgot_password_real_email_returns_200(self):
+        # Should also return 200 and not reveal existence; we don't send email in test to avoid quota
+        r = _post_with_email_retry(requests.Session(),
+                                   f"{BASE_URL}/api/auth/forgot-password",
+                                   json={"email": ADMIN_EMAIL, "base_url": BASE_URL})
+        assert r.status_code == 200
+
+    def test_reset_password_bad_token_400(self):
+        r = requests.post(f"{BASE_URL}/api/auth/reset-password",
+                          json={"token": "not-a-real-token", "new_password": "NewStrongPw1!"})
+        assert r.status_code == 400
+
+    def test_reset_password_short_password_400_via_direct_token(self):
+        """Insert a token in Mongo, try short password -> 400, revert."""
+        cli = _MongoClient(_MONGO_URL)
+        db = cli[_DB_NAME]
+        headers = _admin_headers()
+        # create throwaway member
+        email = f"TEST_reset_{_uuid.uuid4().hex[:6]}@example.com"
+        orig_pw = "OrigMemberPw_1!"
+        rc = requests.post(f"{BASE_URL}/api/team",
+                           json={"email": email, "password": orig_pw, "name": "Reset QA", "role": "member"},
+                           headers=headers)
+        assert rc.status_code == 200, rc.text
+        uid = rc.json()["user_id"]
+
+        token = f"tok_{_uuid.uuid4().hex}"
+        db.password_reset_tokens.insert_one({
+            "token": token, "user_id": uid, "email": email.lower(),
+            "expires_at": (_dt.now(_tz.utc) + _td(hours=1)).isoformat(), "used": False,
+        })
+        try:
+            r_short = requests.post(f"{BASE_URL}/api/auth/reset-password",
+                                    json={"token": token, "new_password": "abc"})
+            assert r_short.status_code == 400
+        finally:
+            db.password_reset_tokens.delete_one({"token": token})
+            requests.delete(f"{BASE_URL}/api/team/{uid}", headers=headers)
+            cli.close()
+
+    def test_reset_password_expired_400(self):
+        cli = _MongoClient(_MONGO_URL)
+        db = cli[_DB_NAME]
+        headers = _admin_headers()
+        email = f"TEST_reset_{_uuid.uuid4().hex[:6]}@example.com"
+        rc = requests.post(f"{BASE_URL}/api/team",
+                           json={"email": email, "password": "OrigMemberPw_1!", "name": "Exp QA", "role": "member"},
+                           headers=headers)
+        assert rc.status_code == 200, rc.text
+        uid = rc.json()["user_id"]
+
+        token = f"tok_{_uuid.uuid4().hex}"
+        db.password_reset_tokens.insert_one({
+            "token": token, "user_id": uid, "email": email.lower(),
+            "expires_at": (_dt.now(_tz.utc) - _td(hours=1)).isoformat(), "used": False,
+        })
+        try:
+            r = requests.post(f"{BASE_URL}/api/auth/reset-password",
+                              json={"token": token, "new_password": "GoodEnough_1!"})
+            assert r.status_code == 400
+            assert "expired" in r.json().get("detail", "").lower()
+        finally:
+            db.password_reset_tokens.delete_one({"token": token})
+            requests.delete(f"{BASE_URL}/api/team/{uid}", headers=headers)
+            cli.close()
+
+    def test_reset_password_success_and_reuse_400(self):
+        """Insert token -> reset works -> new pw logs in -> token reuse -> 400. Cleans up member."""
+        cli = _MongoClient(_MONGO_URL)
+        db = cli[_DB_NAME]
+        headers = _admin_headers()
+        email = f"TEST_reset_{_uuid.uuid4().hex[:6]}@example.com"
+        orig_pw = "OrigMemberPw_1!"
+        rc = requests.post(f"{BASE_URL}/api/team",
+                           json={"email": email, "password": orig_pw, "name": "Success QA", "role": "member"},
+                           headers=headers)
+        assert rc.status_code == 200, rc.text
+        uid = rc.json()["user_id"]
+
+        token = f"tok_{_uuid.uuid4().hex}"
+        db.password_reset_tokens.insert_one({
+            "token": token, "user_id": uid, "email": email.lower(),
+            "expires_at": (_dt.now(_tz.utc) + _td(hours=1)).isoformat(), "used": False,
+        })
+        try:
+            new_pw = "BrandNewPw_9!"
+            r = requests.post(f"{BASE_URL}/api/auth/reset-password",
+                              json={"token": token, "new_password": new_pw})
+            assert r.status_code == 200, r.text
+
+            # new pw works
+            rl = requests.post(f"{BASE_URL}/api/auth/login",
+                               json={"email": email, "password": new_pw})
+            assert rl.status_code == 200
+
+            # reuse -> 400
+            r2 = requests.post(f"{BASE_URL}/api/auth/reset-password",
+                               json={"token": token, "new_password": "OtherPw_1!"})
+            assert r2.status_code == 400
+        finally:
+            db.password_reset_tokens.delete_one({"token": token})
+            requests.delete(f"{BASE_URL}/api/team/{uid}", headers=headers)
+            cli.close()

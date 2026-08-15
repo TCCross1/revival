@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import re
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -12,6 +13,7 @@ import requests
 import base64
 import bcrypt
 import jwt
+import secrets
 from html import escape
 from datetime import datetime, timezone, timedelta
 from fastapi.responses import StreamingResponse
@@ -235,6 +237,7 @@ class User(BaseModel):
     email: str
     name: str
     picture: str = ""
+    role: str = "member"
 
 
 class LoginBody(BaseModel):
@@ -245,6 +248,27 @@ class LoginBody(BaseModel):
 class ChangePasswordBody(BaseModel):
     email: str
     current_password: str
+    new_password: str
+
+
+class TeamCreate(BaseModel):
+    name: str = ""
+    email: str
+    password: str
+    role: str = "member"
+
+
+class SetPasswordBody(BaseModel):
+    password: str
+
+
+class ForgotPasswordBody(BaseModel):
+    email: str
+    base_url: str = ""
+
+
+class ResetPasswordBody(BaseModel):
+    token: str
     new_password: str
 
 
@@ -339,6 +363,110 @@ async def change_password(body: ChangePasswordBody):
     if len(body.new_password) < 6:
         raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
     await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password(body.new_password)}})
+    return {"status": "success"}
+
+
+def require_admin(user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+@api_router.get("/team")
+async def list_team(admin: User = Depends(require_admin)):
+    docs = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    return [{
+        "user_id": d["user_id"], "email": d["email"], "name": d.get("name", ""),
+        "role": d.get("role", "member"), "created_at": d.get("created_at", ""),
+    } for d in docs]
+
+
+@api_router.post("/team")
+async def create_team_member(body: TeamCreate, admin: User = Depends(require_admin)):
+    email = body.email.strip().lower()
+    if not email or not body.password:
+        raise HTTPException(status_code=400, detail="Email and password are required.")
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="A user with that email already exists.")
+    role = body.role if body.role in ("admin", "member") else "member"
+    doc = {
+        "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email,
+        "name": body.name.strip() or email, "picture": "", "role": role,
+        "password_hash": hash_password(body.password), "created_at": now_iso(),
+    }
+    await db.users.insert_one(doc)
+    return {"user_id": doc["user_id"], "email": email, "name": doc["name"], "role": role}
+
+
+@api_router.post("/team/{user_id}/set-password")
+async def set_member_password(user_id: str, body: SetPasswordBody, admin: User = Depends(require_admin)):
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    res = await db.users.update_one({"user_id": user_id}, {"$set": {"password_hash": hash_password(body.password)}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "success"}
+
+
+@api_router.delete("/team/{user_id}")
+async def delete_team_member(user_id: str, admin: User = Depends(require_admin)):
+    if user_id == admin.user_id:
+        raise HTTPException(status_code=400, detail="You can't remove your own account.")
+    await db.users.delete_one({"user_id": user_id})
+    return {"status": "success"}
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordBody):
+    email = body.email.strip().lower()
+    base = (body.base_url or "").rstrip("/")
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if user and base.startswith("https://"):
+        token = secrets.token_urlsafe(32)
+        await db.password_reset_tokens.insert_one({
+            "token": token, "user_id": user["user_id"], "email": email,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(), "used": False,
+        })
+        link = f"{base}/reset-password?token={token}"
+        html = (
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F7F8;padding:24px 0"><tr><td align="center">'
+            f'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0">'
+            f'<tr><td style="background:#0A4D68;padding:24px 28px;font-family:Arial,sans-serif">'
+            f'<div style="color:#ffffff;font-size:22px;font-weight:bold;letter-spacing:1px">REVIVAL PRO</div></td></tr>'
+            f'<tr><td style="padding:28px;font-family:Arial,sans-serif;color:#061A23">'
+            f'<p style="font-size:15px;margin:0 0 12px">Reset your password</p>'
+            f'<p style="font-size:14px;color:#4B6370;line-height:1.6;margin:0 0 22px">We received a request to reset your Revival Pro password. This link expires in 1 hour. If you didn\'t ask for this, you can safely ignore this email.</p>'
+            f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 22px"><tr><td style="border-radius:10px;background:#C9A227">'
+            f'<a href="{link}" style="display:inline-block;padding:14px 28px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#061A23;text-decoration:none">Reset Password</a>'
+            f'</td></tr></table>'
+            f'<p style="font-size:12px;color:#8AA0AB;line-height:1.5;margin:0">Or paste this secure link into your browser:<br/>{escape(link)}</p>'
+            f'</td></tr></table></td></tr></table>'
+        )
+        try:
+            await send_email(to=email, subject="Reset your Revival Pro password", html=html)
+        except Exception as ex:
+            logger.error(f"Forgot-password email failed: {ex}")
+    return {"status": "success"}
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordBody):
+    rec = await db.password_reset_tokens.find_one({"token": body.token}, {"_id": 0})
+    if not rec or rec.get("used"):
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has already been used.")
+    exp = datetime.fromisoformat(rec["expires_at"])
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+    await db.users.update_one({"user_id": rec["user_id"]}, {"$set": {"password_hash": hash_password(body.new_password)}})
+    await db.password_reset_tokens.update_one({"token": body.token}, {"$set": {"used": True}})
     return {"status": "success"}
 
 

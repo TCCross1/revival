@@ -1,0 +1,53 @@
+{
+  "summary": "Iteration 7 validated the two new features: (A) Team Members (admin-only CRUD + set-password) and (B) Forgot/Reset Password. Backend: added TestTeamAndPasswordReset (3 tests) + TestForgotResetPassword (6 tests) — 9 new pytest cases, all pass. Full suite now 62 passed / 2 failed / 1 skipped (the 2 failures are pre-existing external email delivery flakes on Resend rate-limits, unrelated to these features). Frontend (Playwright, 1920x1080): verified login shows both change-password-link and forgot-password-link; /forgot-password shows forgot-success after submit; /reset-password with no token shows reset-no-token; mismatched passwords show reset-error 'Passwords do not match.'; bad token shows reset-error 'This reset link is invalid…'; admin sees nav-team and can invite (invite-teammate-btn → team-name/team-email/team-password/team-role/save-teammate-btn) → new row appears in team-page table; reset-pw-{id} opens dialog and set-password succeeds; delete-member-{id} removes the row. Non-admin (member) has nav-team hidden and visiting /team shows team-not-admin. Regression: admin can access /, /clients, /estimates, /contracts. Owner password RevivalPro2026! verified working at end (200). All TEST_ members created during runs were deleted; no password_reset_tokens rows left behind (tests clean up in finally).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/estimates/{id}/email", "issue": "Resend external quota returns 400 'email rate limit exceeded' intermittently — pre-existing (also mentioned in iter-5/6). Not related to new features."},
+      {"endpoint": "POST /api/contracts/{id}/send-signature + countersign flow", "issue": "test_full_sequence_client_then_contractor_signed_copy_and_idempotent flakes when Resend is rate-limited (signed_copies_sent stays False because the email step fails). Pre-existing. Not related to team/forgot-password."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Team invite dialog + set-password dialog", "issues": ["React a11y warning: 'Missing Description or aria-describedby for DialogContent'. Cosmetic; add DialogDescription for accessibility."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Add <DialogDescription> to the Invite Teammate and Set Password dialogs to silence the a11y console warning.",
+    "OPTIONAL: /api/auth/forgot-password requires base_url to start with 'https://' or it silently no-ops (no token stored, no email sent) even when the account exists. This is defensive against arbitrary host phishing but is undocumented; consider a 400 on non-https base_url so the frontend gets a real signal.",
+    "OPTIONAL: password_reset_tokens are stored forever after use (only marked used:true). Consider a TTL index on expires_at + a periodic cleanup of used tokens older than 24h.",
+    "OPTIONAL: POST /api/team returns 200 (not 201) on create — the rest of the app uses 200 for creates too, but 201 would be more RESTful.",
+    "OPTIONAL: On the frontend Team page, invited members are shown a temporary password in plain text in the invite dialog (type='text'). No mechanism auto-emails the invitee their creds — the admin must communicate them out-of-band. Consider auto-emailing an invite/reset link like a real SaaS.",
+    "PRE-EXISTING: Resend rate limits keep making test_email_success_with_resend_test_address + countersign full-sequence flake. Consider mocking Resend in tests OR adding a stronger backoff/skip in the countersign test."
+  ],
+  "critical_code_review_comments": [
+    "server.py POST /api/team does not validate email format (only 'not empty') — Pydantic model TeamCreate uses `str` not `EmailStr`, so 'foo' would be accepted and then never usable at login. Use EmailStr.",
+    "POST /api/team/{user_id}/set-password does NOT invalidate that member's existing JWTs — a member whose password was reset by an admin can keep using a stolen 7-day JWT. Same issue exists for change-password (already flagged in iter-6). Consider a `password_changed_at` field + JWT iat check.",
+    "POST /api/auth/forgot-password: the base_url is taken from the request body (client-controlled). A malicious caller can trigger a real reset email that links to attacker.tld/reset-password?token=<real token>. The token is only ever sent to the account's real email address so the attacker still needs mailbox access, but consider server-side pinning of base_url (from env / FRONTEND_URL) instead of trusting the client.",
+    "Reset-password token uniqueness: no unique index on password_reset_tokens.token — collisions are astronomically unlikely with token_urlsafe(32) but a unique index would harden it.",
+    "Team.js: type='text' on the temp-password input keeps the value in the DOM in cleartext — fine for admin UX (they need to copy/paste it out to the invitee) but consider a copy-to-clipboard + auto-clear.",
+    "server.py is now ~1405 lines (still growing) — router split (auth/team/contracts/public_sign/settings) is overdue.",
+    "Team.js: window.confirm() is used for delete confirmation — inconsistent with the AlertDialog pattern likely used elsewhere in the app.",
+    "GET /api/team returns ALL users including admins — fine for a small tenant but the query has no pagination and no tenant/workspace filter. If multi-tenant is ever added this becomes a data-leak."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (+ TestTeamAndPasswordReset with 3 tests, + TestForgotResetPassword with 6 tests — 9 new tests; uses pymongo direct insert into password_reset_tokens for expired/success paths, cleans up in finally)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated)"
+  ],
+  "success_rate": {
+    "backend": "97% — 62/64 pytest cases pass (the 2 failures are pre-existing Resend external rate-limit flakes on estimate-email and countersign; 1 test skipped on Resend rate-limit). All 9 new team/forgot/reset tests PASS.",
+    "frontend": "100% on new features — 12/12 UI checks pass (login links, forgot-success, reset no-token, reset-error mismatch, reset-error bad token, admin nav-team + team-page render, invite flow, set-password dialog, delete member, non-admin nav-team hidden, non-admin /team → team-not-admin). Regression: /, /clients, /estimates, /contracts all load for admin."
+  },
+  "test_credentials": "Owner: tccrossmusic@gmail.com / RevivalPro2026! — VERIFIED WORKING at end of run (200). No test member accounts left in DB (all cleaned up in test finally blocks).",
+  "seed_data_creation": "None persistent. Temporary TEST_ members (qa.member/qa.nonadmin/TEST_qa/TEST_reset with random suffixes) and password_reset_tokens rows were created and DELETED within each test's finally block.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both new feature groups (Team + Forgot/Reset password) are fully covered by pytest in /app/backend/tests/backend_test.py under TestTeamAndPasswordReset and TestForgotResetPassword. The forgot-password endpoint requires base_url to start with 'https://' (validated in server.py line ~425) or it silently no-ops — pass BASE_URL when testing the real-email path. To exercise the reset-password SUCCESS path insert directly into MongoDB (`password_reset_tokens`) with {token, user_id, email, expires_at (future ISO, tz-aware), used: false}; the tests already do this via pymongo. Only the pre-existing Resend rate-limit flakes on estimate-email + countersign remain — NOT regressions. Owner password is back to RevivalPro2026!.",
+  "rca of the issue": "N/A — no functional bugs found. Only cosmetic (DialogDescription a11y warning) and hardening suggestions (EmailStr for TeamCreate, server-pinned base_url for forgot-password, password_changed_at for JWT invalidation on set-password, unique index on password_reset_tokens.token)."
+}

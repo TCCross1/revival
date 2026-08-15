@@ -102,8 +102,9 @@ export default function Login() {
               </Button>
             </form>
 
-            <div className="text-center mt-3">
+            <div className="text-center mt-3 flex items-center justify-center gap-4">
               <Link to="/change-password" data-testid="change-password-link" className="text-sm font-medium text-[#0A4D68] hover:underline">Change password</Link>
+              <Link to="/forgot-password" data-testid="forgot-password-link" className="text-sm font-medium text-[#0A4D68] hover:underline">Forgot password?</Link>
             </div>
 
             <div className="flex items-center gap-3 my-6">

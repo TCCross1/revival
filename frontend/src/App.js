@@ -15,6 +15,9 @@ import ContractDetail from "@/pages/ContractDetail";
 import Settings from "@/pages/Settings";
 import PublicSign from "@/pages/PublicSign";
 import ChangePassword from "@/pages/ChangePassword";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
+import Team from "@/pages/Team";
 import { Toaster } from "@/components/ui/sonner";
 import { BRAND } from "@/lib/format";
 
@@ -42,6 +45,8 @@ function AppRouter() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/change-password" element={<ChangePassword />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/sign/:token" element={<PublicSign />} />
       <Route
         element={
@@ -59,6 +64,7 @@ function AppRouter() {
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/contracts/:id" element={<ContractDetail />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/team" element={<Team />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

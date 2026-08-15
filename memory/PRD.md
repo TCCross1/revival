@@ -36,6 +36,9 @@ Full-stack web app "Revival Pro" for a residential remodeling contractor. Brandi
 - Contract E-Sign — "Send for e-signature" emails the client a secure link (/sign/:token, no login) to review the full contract on mobile and sign; public endpoints GET/POST /api/public/contracts/{token}. Client signing marks Signed when contractor has also signed, else Sent.
 - Contractor Countersign — "Countersign" emails the owner (company email) a secure link to the same role-aware public sign page (sign_role client/contractor via sign_token vs contractor_sign_token). Both signatures present → status Signed.
 - Signed Copy Email — when a contract becomes fully Signed (both parties), a PDF copy is auto-emailed to client + company (best-effort, idempotent via signed_copies_sent). Triggered from both the public sign path and the authenticated PUT/Mark-as-Signed path.
+- Email + password login (JWT/bcrypt) coexisting with Google; owner seeded from env (ADMIN_EMAIL/ADMIN_PASSWORD). Change-password page + user-menu item.
+- Team Members — admin-only /team screen to invite teammates (own email/password login), reset a member's password, remove members; role field (admin/member) gates nav + endpoints (require_admin); teammate email format validated.
+- Forgot/Reset Password — "Forgot password?" emails a secure 1-hour reset link (Resend) to /reset-password?token=...; reset sets a new bcrypt password and marks the token used.
 
 ## Backlog / Remaining
 - P1: Estimate PDF export / send to client; invoice PDF.
