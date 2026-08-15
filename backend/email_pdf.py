@@ -2,6 +2,7 @@ import os
 import re
 import ipaddress
 import logging
+import base64
 import httpx
 from io import BytesIO
 from html.parser import HTMLParser
@@ -130,6 +131,116 @@ def build_estimate_pdf(est: dict, client: dict | None) -> bytes:
     elems.append(Spacer(1, 30))
     elems.append(Paragraph(
         "Thank you for the opportunity. This estimate is valid for 30 days. "
+        "Prepared by Revival Pro — we never ask for payment details by email.", footer))
+
+    doc.build(elems)
+    return buf.getvalue()
+
+
+def build_invoice_pdf(inv: dict, client: dict | None) -> bytes:
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.7 * inch, bottomMargin=0.7 * inch,
+                            leftMargin=0.75 * inch, rightMargin=0.75 * inch)
+    styles = getSampleStyleSheet()
+    h_brand = ParagraphStyle("inv_brand", parent=styles["Title"], textColor=TEAL, fontSize=26, leading=30, spaceAfter=0)
+    h_tag = ParagraphStyle("inv_tag", parent=styles["Normal"], textColor=GOLD, fontSize=10, spaceAfter=0)
+    label = ParagraphStyle("inv_label", parent=styles["Normal"], textColor=GREY, fontSize=8, leading=11)
+    val = ParagraphStyle("inv_val", parent=styles["Normal"], textColor=DARK, fontSize=10, leading=14)
+    footer = ParagraphStyle("inv_footer", parent=styles["Normal"], textColor=GREY, fontSize=8, leading=11)
+
+    elems = []
+    header = Table([[
+        Paragraph("REVIVAL PRO", h_brand),
+        Paragraph(f"<b>INVOICE</b><br/>{inv.get('invoice_number','')}", ParagraphStyle("inv_meta", parent=val, alignment=2)),
+    ]], colWidths=[3.7 * inch, 3.3 * inch])
+    header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    elems.append(header)
+    elems.append(Paragraph("Residential Remodeling · Capture. Organize. Close.", h_tag))
+    elems.append(Spacer(1, 16))
+
+    client = client or {}
+    bill_name = client.get("name") or inv.get("client_name") or "—"
+    bill = f"<b>{bill_name}</b>"
+    if client.get("address"):
+        bill += f"<br/>{client['address']}"
+    if client.get("phone"):
+        bill += f"<br/>{client['phone']}"
+    if client.get("email"):
+        bill += f"<br/>{client['email']}"
+
+    created = (inv.get("created_at", "") or "")[:10]
+    due = (inv.get("due_date", "") or "")[:10]
+    status = inv.get("status") or "Draft"
+    meta = Table([[
+        [Paragraph("BILL TO", label), Paragraph(bill, val)],
+        [Paragraph("STATUS", label), Paragraph(status, val),
+         Spacer(1, 6), Paragraph("INVOICE DATE", label), Paragraph(created or "—", val),
+         Spacer(1, 6), Paragraph("DUE DATE", label), Paragraph(due or "—", val)],
+    ]], colWidths=[3.7 * inch, 3.3 * inch])
+    meta.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    elems.append(meta)
+    elems.append(Spacer(1, 18))
+
+    data = [["Description", "Qty", "Unit Price", "Amount"]]
+    line_items = inv.get("line_items") or []
+    if line_items:
+        for li in line_items:
+            data.append([
+                li.get("description", ""),
+                "{:g}".format(float(li.get("quantity", 0) or 0)),
+                money(li.get("unit_price", 0)),
+                money(li.get("amount", 0)),
+            ])
+    else:
+        data.append(["Services", "1", money(inv.get("amount", 0)), money(inv.get("amount", 0))])
+
+    tbl = Table(data, colWidths=[3.7 * inch, 0.8 * inch, 1.25 * inch, 1.25 * inch], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), TEAL),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F7F8")]),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+    ]))
+    elems.append(tbl)
+    elems.append(Spacer(1, 12))
+
+    amount = float(inv.get("amount", 0) or 0)
+    paid = float(inv.get("amount_paid", 0) or 0)
+    balance = round(max(amount - paid, 0), 2)
+    totals = Table([
+        ["Amount", money(amount)],
+        ["Amount paid", money(paid)],
+        ["BALANCE DUE", money(balance)],
+    ], colWidths=[1.5 * inch, 1.25 * inch], hAlign="RIGHT")
+    totals.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+        ("TEXTCOLOR", (0, 0), (-1, 1), GREY),
+        ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 2), (-1, 2), 12),
+        ("TEXTCOLOR", (0, 2), (-1, 2), TEAL),
+        ("LINEABOVE", (0, 2), (-1, 2), 1, TEAL),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    elems.append(totals)
+
+    if balance <= 0 and amount > 0:
+        elems.append(Spacer(1, 10))
+        paid_style = ParagraphStyle("inv_paid", parent=val, textColor=TEAL, alignment=2, fontName="Helvetica-Bold")
+        elems.append(Paragraph("PAID IN FULL", paid_style))
+
+    elems.append(Spacer(1, 30))
+    elems.append(Paragraph(
+        "Thank you for your business. Please remit payment by the due date. "
         "Prepared by Revival Pro — we never ask for payment details by email.", footer))
 
     doc.build(elems)

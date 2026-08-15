@@ -72,12 +72,13 @@ class TestClients:
         assert isinstance(r.json(), list)
 
     def test_crud(self, client):
-        payload = {"name": "TEST_Client_X", "phone": "555", "email": "t@t.com",
+        payload = {"name": "TEST_Client_X", "phone": "(512) 555-0100", "email": "t@t.com",
                    "address": "1 St", "source": "Website", "status": "Lead"}
         r = client.post(f"{BASE_URL}/api/clients", json=payload)
         assert r.status_code == 200
         cid = r.json()["id"]
         assert r.json()["name"] == "TEST_Client_X"
+        assert r.json()["phone"] == "+15125550100"
 
         # verify persistence via list
         listed = client.get(f"{BASE_URL}/api/clients").json()
@@ -93,6 +94,255 @@ class TestClients:
         assert rd.status_code == 200
         listed = client.get(f"{BASE_URL}/api/clients").json()
         assert not any(c["id"] == cid for c in listed)
+
+    def test_rejects_invalid_phone(self, client):
+        r = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_Bad_Phone", "phone": "555", "email": "t@t.com",
+            "address": "1 St", "source": "Website", "status": "Lead",
+        })
+        assert r.status_code == 400
+        assert "phone" in (r.text or "").lower()
+
+
+class TestLeads:
+    def test_list_requires_auth(self, anon):
+        r = anon.get(f"{BASE_URL}/api/leads")
+        assert r.status_code == 401
+
+    def test_list_and_stats(self, client):
+        r = client.get(f"{BASE_URL}/api/leads")
+        assert r.status_code == 200
+        rows = r.json()
+        assert isinstance(rows, list)
+        if rows:
+            lead = rows[0]
+            for key in ["name", "phone", "source", "status", "project_type", "wait_label", "is_live"]:
+                assert key in lead
+        stats = client.get(f"{BASE_URL}/api/leads/stats")
+        assert stats.status_code == 200
+        assert "live" in stats.json() and "total" in stats.json()
+
+    def test_crud_and_filters(self, client):
+        payload = {
+            "name": "TEST_Lead_Jordan",
+            "phone": "(512) 555-0999",
+            "email": "jordan@test.com",
+            "address": "1 Test Rd",
+            "project_type": "Kitchen Remodel",
+            "source": "Thumbtack",
+            "status": "New",
+            "notes": "Needs cabinets",
+        }
+        r = client.post(f"{BASE_URL}/api/leads", json=payload)
+        assert r.status_code == 200, r.text
+        lid = r.json()["id"]
+        assert r.json()["name"] == "TEST_Lead_Jordan"
+        assert r.json()["phone"] == "+15125550999"
+        assert r.json()["is_live"] is True
+        try:
+            listed = client.get(f"{BASE_URL}/api/leads", params={"q": "TEST_Lead_Jordan"}).json()
+            assert any(l["id"] == lid for l in listed)
+            sourced = client.get(f"{BASE_URL}/api/leads", params={"source": "Thumbtack", "q": "TEST_Lead_Jordan"}).json()
+            assert any(l["id"] == lid for l in sourced)
+
+            payload["status"] = "Contacted"
+            r2 = client.put(f"{BASE_URL}/api/leads/{lid}", json=payload)
+            assert r2.status_code == 200
+            assert r2.json()["status"] == "Contacted"
+            assert r2.json()["first_response_at"]
+
+            one = client.get(f"{BASE_URL}/api/leads/{lid}")
+            assert one.status_code == 200
+            assert one.json()["id"] == lid
+        finally:
+            rd = client.delete(f"{BASE_URL}/api/leads/{lid}")
+            assert rd.status_code == 200
+            gone = client.get(f"{BASE_URL}/api/leads", params={"q": "TEST_Lead_Jordan"}).json()
+            assert not any(l["id"] == lid for l in gone)
+
+    def test_lead_404(self, client):
+        r = client.get(f"{BASE_URL}/api/leads/no-such-lead")
+        assert r.status_code == 404
+
+    def test_convert_creates_client_and_job_idempotently(self, client):
+        payload = {
+            "name": "TEST_Lead_Convert",
+            "phone": "(512) 555-0111",
+            "email": "convert@test.com",
+            "address": "88 Convert Ln",
+            "project_type": "Kitchen Remodel",
+            "source": "Angi",
+            "status": "New",
+            "notes": "Full kitchen, wants cabinets",
+        }
+        created = client.post(f"{BASE_URL}/api/leads", json=payload)
+        assert created.status_code == 200, created.text
+        lid = created.json()["id"]
+        cid = jid = None
+        try:
+            first = client.post(f"{BASE_URL}/api/leads/{lid}/convert")
+            assert first.status_code == 200, first.text
+            body = first.json()
+            cid = body["client"]["id"]
+            jid = body["job"]["id"]
+            assert body["created"]["client"] is True
+            assert body["created"]["job"] is True
+            assert body["lead"]["client_id"] == cid
+            assert body["lead"]["job_id"] == jid
+            assert body["lead"]["converted"] is True
+            assert body["lead"]["converted_at"]
+            assert body["lead"]["status"] == "Booked"
+            assert body["client"]["name"] == "TEST_Lead_Convert"
+            assert body["client"]["phone"] == "+15125550111"
+            assert body["client"]["email"] == "convert@test.com"
+            assert body["client"]["address"] == "88 Convert Ln"
+            assert body["client"]["source"] == "Angi"
+            assert body["client"]["lead_id"] == lid
+            assert body["job"]["client_id"] == cid
+            assert body["job"]["lead_id"] == lid
+            assert "Kitchen Remodel" in body["job"]["name"]
+            assert body["job"]["job_number"].startswith("JOB-")
+
+            second = client.post(f"{BASE_URL}/api/leads/{lid}/convert")
+            assert second.status_code == 200, second.text
+            again = second.json()
+            assert again["client"]["id"] == cid
+            assert again["job"]["id"] == jid
+            assert again["created"]["client"] is False
+            assert again["created"]["job"] is False
+
+            clients = client.get(f"{BASE_URL}/api/clients").json()
+            assert sum(1 for c in clients if c.get("lead_id") == lid) == 1
+            jobs = client.get(f"{BASE_URL}/api/jobs").json()
+            assert sum(1 for j in jobs if j.get("lead_id") == lid) == 1
+
+            payload["status"] = "Booked"
+            edited = client.put(f"{BASE_URL}/api/leads/{lid}", json=payload)
+            assert edited.status_code == 200, edited.text
+            assert edited.json()["client_id"] == cid
+            assert edited.json()["job_id"] == jid
+            assert edited.json()["converted_at"]
+        finally:
+            if jid:
+                client.delete(f"{BASE_URL}/api/jobs/{jid}")
+            if cid:
+                client.delete(f"{BASE_URL}/api/clients/{cid}")
+            client.delete(f"{BASE_URL}/api/leads/{lid}")
+
+    def test_convert_unknown_lead_404(self, client):
+        r = client.post(f"{BASE_URL}/api/leads/no-such-lead/convert")
+        assert r.status_code == 404
+
+    def test_call_requires_auth(self, anon):
+        r = anon.post(f"{BASE_URL}/api/vapi/outbound-call", json={"phone": "5125550100", "name": "A"})
+        assert r.status_code == 401
+        r2 = anon.post(f"{BASE_URL}/api/leads/no-such-lead/call")
+        assert r2.status_code == 401
+
+    def test_call_unknown_lead_404(self, client):
+        r = client.post(f"{BASE_URL}/api/leads/no-such-lead/call")
+        assert r.status_code == 404
+
+    def test_call_rejects_missing_and_invalid_phone(self, client):
+        payload = {
+            "name": "TEST_Lead_Call",
+            "phone": "",
+            "email": "call@test.com",
+            "address": "1 Call St",
+            "project_type": "Kitchen Remodel",
+            "source": "Thumbtack",
+            "status": "New",
+            "notes": "Do not actually dial",
+        }
+        created = client.post(f"{BASE_URL}/api/leads", json=payload)
+        assert created.status_code == 200, created.text
+        lid = created.json()["id"]
+        try:
+            missing = client.post(f"{BASE_URL}/api/leads/{lid}/call")
+            assert missing.status_code == 400, missing.text
+            bad = client.post(
+                f"{BASE_URL}/api/vapi/outbound-call",
+                json={"phone": "not-a-number", "name": "TEST_Lead_Call", "lead_id": lid},
+            )
+            assert bad.status_code == 400, bad.text
+        finally:
+            client.delete(f"{BASE_URL}/api/leads/{lid}")
+
+
+class TestPhoneNormalization:
+    def test_to_e164_and_display(self):
+        import sys
+        from pathlib import Path
+        backend = str(Path(__file__).resolve().parents[1])
+        if backend not in sys.path:
+            sys.path.insert(0, backend)
+        from phone import to_e164, format_display
+        from vapi_client import to_e164 as vapi_to_e164
+        assert to_e164("(859) 227-0340") == "+18592270340"
+        assert to_e164("8592270340") == "+18592270340"
+        assert to_e164("18592270340") == "+18592270340"
+        assert to_e164("+1 859 227-0340") == "+18592270340"
+        assert to_e164("") == ""
+        assert format_display("+18592270340") == "(859) 227-0340"
+        assert format_display("(859) 227-0340") == "(859) 227-0340"
+        assert vapi_to_e164("(859) 997-8212") == "+18599978212"
+        try:
+            to_e164("123")
+            assert False, "expected invalid phone"
+        except ValueError:
+            pass
+        try:
+            vapi_to_e164("")
+            assert False, "expected required phone"
+        except ValueError:
+            pass
+
+
+class TestVapiHelpers:
+    def test_to_e164(self):
+        import sys
+        from pathlib import Path
+        backend = str(Path(__file__).resolve().parents[1])
+        if backend not in sys.path:
+            sys.path.insert(0, backend)
+        from vapi_client import to_e164
+        assert to_e164("(859) 997-8212") == "+18599978212"
+        assert to_e164("+1 859 997-8212") == "+18599978212"
+        assert to_e164("18599978212") == "+18599978212"
+        try:
+            to_e164("123")
+            assert False, "expected invalid phone"
+        except ValueError:
+            pass
+
+    def test_vapi_error_message_extraction(self):
+        import sys
+        from pathlib import Path
+        backend = str(Path(__file__).resolve().parents[1])
+        if backend not in sys.path:
+            sys.path.insert(0, backend)
+        import httpx
+        from vapi_client import _extract_vapi_message, _vapi_message
+
+        assert _extract_vapi_message({
+            "message": "Couldn't Start Call. Daily Outbound Call Limit.",
+            "error": "Bad Request",
+            "statusCode": 400,
+        }) == "Couldn't Start Call. Daily Outbound Call Limit."
+        assert _extract_vapi_message({"message": ["phoneNumberId is invalid", "assistantId is invalid"]}) == (
+            "phoneNumberId is invalid assistantId is invalid"
+        )
+        assert _extract_vapi_message({"error": {"message": "Missing assistantId"}}) == "Missing assistantId"
+
+        req = httpx.Request("POST", "https://api.vapi.ai/call")
+        resp = httpx.Response(
+            400,
+            request=req,
+            json={"message": "Couldn't Start Call. Daily Outbound Call Limit.", "error": "Bad Request"},
+        )
+        assert "Daily Outbound Call Limit" in _vapi_message(resp)
+        raw = httpx.Response(502, request=req, text="upstream unavailable")
+        assert _vapi_message(raw) == "upstream unavailable"
 
 
 # ---------------- Estimates ----------------
@@ -169,6 +419,47 @@ class TestJobs:
 
         client.delete(f"{BASE_URL}/api/jobs/{jid}")
 
+    def test_job_update_name_status_budget_keeps_expenses(self, client):
+        r = client.post(f"{BASE_URL}/api/jobs", json={"name": "TEST_Job_Edit", "status": "Active", "budget": 1000})
+        assert r.status_code == 200
+        job = r.json()
+        jid = job["id"]
+        try:
+            exp = {"category": "Labor", "description": "crew", "amount": 250, "kind": "actual"}
+            r2 = client.post(f"{BASE_URL}/api/jobs/{jid}/expenses", json=exp)
+            assert r2.status_code == 200
+            assert len(r2.json()["expenses"]) == 1
+
+            r3 = client.put(f"{BASE_URL}/api/jobs/{jid}", json={
+                "name": "TEST_Job_Renamed",
+                "status": "On Hold",
+                "budget": 2750,
+                "estimate_id": job.get("estimate_id", ""),
+                "client_id": job.get("client_id", ""),
+                "client_name": job.get("client_name", ""),
+            })
+            assert r3.status_code == 200
+            updated = r3.json()
+            assert updated["name"] == "TEST_Job_Renamed"
+            assert updated["status"] == "On Hold"
+            assert updated["budget"] == 2750
+            assert len(updated["expenses"]) == 1
+            assert updated["expenses"][0]["amount"] == 250
+        finally:
+            client.delete(f"{BASE_URL}/api/jobs/{jid}")
+
+    def test_expense_rejects_zero_amount(self, client):
+        r = client.post(f"{BASE_URL}/api/jobs", json={"name": "TEST_Job_ZeroExp", "budget": 100})
+        assert r.status_code == 200
+        jid = r.json()["id"]
+        try:
+            bad = client.post(f"{BASE_URL}/api/jobs/{jid}/expenses", json={
+                "category": "Materials", "description": "none", "amount": 0, "kind": "actual"
+            })
+            assert bad.status_code == 400
+        finally:
+            client.delete(f"{BASE_URL}/api/jobs/{jid}")
+
 
 # ---------------- Invoices ----------------
 class TestInvoices:
@@ -186,6 +477,112 @@ class TestInvoices:
         assert r2.json()["amount_paid"] == 500
 
         client.delete(f"{BASE_URL}/api/invoices/{iid}")
+
+    def test_record_payment_partial_then_paid(self, client):
+        payload = {"client_name": "TEST_PayFlow", "status": "Sent", "amount": 500, "amount_paid": 0}
+        r = client.post(f"{BASE_URL}/api/invoices", json=payload)
+        assert r.status_code == 200
+        iid = r.json()["id"]
+        try:
+            p1 = client.post(f"{BASE_URL}/api/invoices/{iid}/payments", json={"amount": 200})
+            assert p1.status_code == 200, p1.text
+            assert p1.json()["amount_paid"] == 200
+            assert p1.json()["status"] == "Partial"
+
+            p2 = client.post(f"{BASE_URL}/api/invoices/{iid}/payments", json={"amount": 300})
+            assert p2.status_code == 200, p2.text
+            assert p2.json()["amount_paid"] == 500
+            assert p2.json()["status"] == "Paid"
+
+            zero = client.post(f"{BASE_URL}/api/invoices/{iid}/payments", json={"amount": 0})
+            assert zero.status_code == 400
+        finally:
+            client.delete(f"{BASE_URL}/api/invoices/{iid}")
+
+    def test_record_payment_404(self, client):
+        r = client.post(f"{BASE_URL}/api/invoices/no-such-invoice/payments", json={"amount": 10})
+        assert r.status_code == 404
+
+    def test_put_amount_paid_auto_status(self, client):
+        payload = {"client_name": "TEST_PayPut", "status": "Sent", "amount": 400, "amount_paid": 0}
+        r = client.post(f"{BASE_URL}/api/invoices", json=payload)
+        assert r.status_code == 200
+        iid = r.json()["id"]
+        try:
+            payload["amount_paid"] = 150
+            r2 = client.put(f"{BASE_URL}/api/invoices/{iid}", json=payload)
+            assert r2.status_code == 200
+            assert r2.json()["status"] == "Partial"
+            payload["amount_paid"] = 400
+            r3 = client.put(f"{BASE_URL}/api/invoices/{iid}", json=payload)
+            assert r3.status_code == 200
+            assert r3.json()["status"] == "Paid"
+        finally:
+            client.delete(f"{BASE_URL}/api/invoices/{iid}")
+
+
+# ---------------- Invoice PDF + email ----------------
+class TestInvoicePDF:
+    def test_pdf_requires_auth(self, anon, client):
+        invoices = client.get(f"{BASE_URL}/api/invoices").json()
+        assert len(invoices) > 0
+        iid = invoices[0]["id"]
+        r = anon.get(f"{BASE_URL}/api/invoices/{iid}/pdf")
+        assert r.status_code == 401
+
+    def test_pdf_download_ok(self, client):
+        invoices = client.get(f"{BASE_URL}/api/invoices").json()
+        assert len(invoices) > 0
+        iid = invoices[0]["id"]
+        r = client.get(f"{BASE_URL}/api/invoices/{iid}/pdf")
+        assert r.status_code == 200
+        assert r.headers.get("content-type", "").startswith("application/pdf")
+        assert r.content.startswith(b"%PDF"), "response body is not a PDF"
+        assert len(r.content) > 800
+        cd = r.headers.get("content-disposition", "")
+        assert "attachment" in cd and ".pdf" in cd
+
+    def test_pdf_404_for_missing(self, client):
+        r = client.get(f"{BASE_URL}/api/invoices/nonexistent-id-xyz/pdf")
+        assert r.status_code == 404
+
+
+class TestInvoiceEmail:
+    def test_email_400_when_client_has_no_email(self, client):
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_InvNoEmailClient", "phone": "", "email": "", "address": "",
+            "source": "Referral", "status": "Lead"
+        }).json()
+        inv = client.post(f"{BASE_URL}/api/invoices", json={
+            "client_id": c["id"], "client_name": c["name"], "status": "Draft", "amount": 250, "amount_paid": 0,
+            "line_items": [{"description": "Labor", "quantity": 1, "unit_price": 250, "amount": 250}],
+        }).json()
+        r = client.post(f"{BASE_URL}/api/invoices/{inv['id']}/send-email")
+        assert r.status_code == 400
+        assert "no email" in r.json().get("detail", "").lower()
+        client.delete(f"{BASE_URL}/api/invoices/{inv['id']}")
+        client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+    def test_email_success_with_resend_test_address(self, client):
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_InvDeliverableClient", "phone": "", "email": "delivered@resend.dev",
+            "address": "", "source": "Referral", "status": "Lead"
+        }).json()
+        inv = client.post(f"{BASE_URL}/api/invoices", json={
+            "client_id": c["id"], "client_name": c["name"], "status": "Draft", "amount": 1000, "amount_paid": 0,
+            "line_items": [{"description": "Deposit", "quantity": 1, "unit_price": 1000, "amount": 1000}],
+        }).json()
+        r = _post_with_email_retry(client, f"{BASE_URL}/api/invoices/{inv['id']}/send-email")
+        assert r.status_code == 200, f"expected 200, got {r.status_code}: {r.text}"
+        body = r.json()
+        assert body.get("status") == "success"
+        assert body.get("sent_to") == "delivered@resend.dev"
+        assert "email_id" in body
+        after = client.get(f"{BASE_URL}/api/invoices").json()
+        found = next((x for x in after if x["id"] == inv["id"]), None)
+        assert found and found["status"] == "Sent"
+        client.delete(f"{BASE_URL}/api/invoices/{inv['id']}")
+        client.delete(f"{BASE_URL}/api/clients/{c['id']}")
 
 
 # ---------------- New: PDF ----------------
@@ -299,11 +696,15 @@ class TestClientDetail:
         # All estimates must belong to this client_id
         for e in d["estimates"]:
             assert e["client_id"] == target["id"]
-        # Jobs/invoices filtered by name
+        # Jobs/invoices linked by client_id (name is display-only)
         for j in d["jobs"]:
-            assert j["client_name"] == target["name"]
+            assert j.get("client_id") == target["id"] or (
+                not j.get("client_id") and j["client_name"] == target["name"]
+            )
         for inv in d["invoices"]:
-            assert inv["client_name"] == target["name"]
+            assert inv.get("client_id") == target["id"] or (
+                not inv.get("client_id") and inv["client_name"] == target["name"]
+            )
         s = d["summary"]
         for k in ["estimates_count", "open_pipeline", "won_value", "jobs_count",
                   "billed", "collected", "outstanding"]:
@@ -379,6 +780,8 @@ class TestContractGenerate:
 
     def _cleanup(self, client, c, e, gen):
         if gen:
+            if gen.get("job"):
+                client.delete(f"{BASE_URL}/api/jobs/{gen['job']['id']}")
             if gen.get("contract"):
                 client.delete(f"{BASE_URL}/api/contracts/{gen['contract']['id']}")
             if gen.get("invoice"):
@@ -416,9 +819,10 @@ class TestContractGenerate:
             r = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate")
             assert r.status_code == 200, r.text
             gen = r.json()
-            assert "contract" in gen and "invoice" in gen
+            assert "contract" in gen and "invoice" in gen and "job" in gen
             ct = gen["contract"]
             inv = gen["invoice"]
+            job = gen["job"]
 
             # contract number format
             assert ct["contract_number"].startswith("CON-")
@@ -446,6 +850,14 @@ class TestContractGenerate:
             assert ct["invoice_id"] == inv["id"]
             assert inv["estimate_id"] == e["id"]
             assert inv["amount"] == e["total"]
+            assert inv.get("client_id") == c["id"]
+            assert job["estimate_id"] == e["id"]
+            assert job["job_number"].startswith("JOB-")
+            assert job.get("client_id") == c["id"]
+            assert job["client_name"] == "TEST_ContractClient"
+            assert job["status"] == "Active"
+            assert job["budget"] == e["total"]
+            assert ct.get("client_id") == c["id"]
         finally:
             self._cleanup(client, c, e, gen)
 
@@ -457,6 +869,10 @@ class TestContractGenerate:
             r2 = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate").json()
             assert r1["contract"]["id"] == r2["contract"]["id"]
             assert r1["invoice"]["id"] == r2["invoice"]["id"]
+            assert r1["job"]["id"] == r2["job"]["id"]
+            jobs = client.get(f"{BASE_URL}/api/jobs").json()
+            job_matches = [x for x in jobs if x["estimate_id"] == e["id"]]
+            assert len(job_matches) == 1
             # no duplicates in list
             contracts = client.get(f"{BASE_URL}/api/contracts").json()
             matches = [x for x in contracts if x["estimate_id"] == e["id"]]
@@ -528,6 +944,8 @@ class TestContractCRUD:
             assert b2["client_signature"].startswith("data:image/png")
             assert b2["change_order_markup"] == 25.5  # prior update preserved
         finally:
+            if gen.get("job"):
+                client.delete(f"{BASE_URL}/api/jobs/{gen['job']['id']}")
             client.delete(f"{BASE_URL}/api/contracts/{cid}")
             client.delete(f"{BASE_URL}/api/invoices/{gen['invoice']['id']}")
             client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
@@ -550,6 +968,8 @@ class TestContractCRUD:
         assert r.status_code == 200
         assert client.get(f"{BASE_URL}/api/contracts/{cid}").status_code == 404
         # cleanup
+        if gen.get("job"):
+            client.delete(f"{BASE_URL}/api/jobs/{gen['job']['id']}")
         client.delete(f"{BASE_URL}/api/invoices/{gen['invoice']['id']}")
         client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
         client.delete(f"{BASE_URL}/api/clients/{c['id']}")
@@ -599,6 +1019,8 @@ class TestESignFlow:
         return c, e, gen
 
     def _cleanup(self, client, c, e, gen):
+        if gen and gen.get("job"):
+            client.delete(f"{BASE_URL}/api/jobs/{gen['job']['id']}")
         if gen and gen.get("contract"):
             client.delete(f"{BASE_URL}/api/contracts/{gen['contract']['id']}")
         if gen and gen.get("invoice"):
@@ -728,6 +1150,8 @@ class TestCountersignFlow:
         return c, e, gen
 
     def _cleanup(self, client, c, e, gen):
+        if gen and gen.get("job"):
+            client.delete(f"{BASE_URL}/api/jobs/{gen['job']['id']}")
         if gen and gen.get("contract"):
             client.delete(f"{BASE_URL}/api/contracts/{gen['contract']['id']}")
         if gen and gen.get("invoice"):
@@ -1335,3 +1759,346 @@ TestEmailPasswordAuthAndChange.test_update_password_short_400 = _test_update_pas
 TestEmailPasswordAuthAndChange.test_update_password_success_fresh_token_and_revert = _test_update_password_success_fresh_token_and_revert
 TestEmailPasswordAuthAndChange.test_update_email_conflict_400 = _test_update_email_conflict_400
 TestEmailPasswordAuthAndChange.test_update_email_invalid_format_400 = _test_update_email_invalid_format_400
+
+
+class TestClientLinking:
+    def test_related_docs_use_client_id_and_survive_rename(self, client):
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_LinkClient", "phone": "555-9", "email": "link@t.com",
+            "address": "1 Link St", "source": "Referral", "status": "Active"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Kitchen",
+            "status": "Won",
+            "line_items": [{"description": "Work", "quantity": 1, "unit_price": 800}],
+            "tax_rate": 0,
+        }).json()
+        gr = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate")
+        assert gr.status_code == 200, gr.text
+        gen = gr.json()
+        try:
+            assert gen["invoice"]["client_id"] == c["id"]
+            assert gen["contract"]["client_id"] == c["id"]
+            assert gen["job"]["client_id"] == c["id"]
+
+            renamed = {**c, "name": "TEST_LinkClient_Renamed"}
+            ru = client.put(f"{BASE_URL}/api/clients/{c['id']}", json={
+                "name": renamed["name"], "phone": c["phone"], "email": c["email"],
+                "address": c["address"], "source": c["source"], "status": c["status"],
+            })
+            assert ru.status_code == 200
+
+            detail = client.get(f"{BASE_URL}/api/clients/{c['id']}/detail").json()
+            job_ids = [j["id"] for j in detail["jobs"]]
+            inv_ids = [i["id"] for i in detail["invoices"]]
+            assert gen["job"]["id"] in job_ids
+            assert gen["invoice"]["id"] in inv_ids
+            for j in detail["jobs"]:
+                if j["id"] == gen["job"]["id"]:
+                    assert j["client_id"] == c["id"]
+                    assert j["client_name"] == "TEST_LinkClient_Renamed"
+            for inv in detail["invoices"]:
+                if inv["id"] == gen["invoice"]["id"]:
+                    assert inv["client_id"] == c["id"]
+                    assert inv["client_name"] == "TEST_LinkClient_Renamed"
+        finally:
+            if gen.get("job"):
+                client.delete(f"{BASE_URL}/api/jobs/{gen['job']['id']}")
+            if gen.get("contract"):
+                client.delete(f"{BASE_URL}/api/contracts/{gen['contract']['id']}")
+            if gen.get("invoice"):
+                client.delete(f"{BASE_URL}/api/invoices/{gen['invoice']['id']}")
+            client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+            client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+
+class TestNumbering:
+    def test_estimate_numbers_are_unique_and_prefixed(self, client):
+        created = []
+        try:
+            for _ in range(3):
+                r = client.post(f"{BASE_URL}/api/estimates", json={
+                    "client_name": "TEST_NumberClient",
+                    "category": "Other",
+                    "status": "Draft",
+                    "line_items": [{"description": "N", "quantity": 1, "unit_price": 10}],
+                    "tax_rate": 0,
+                })
+                assert r.status_code == 200
+                created.append(r.json())
+            nums = [e["estimate_number"] for e in created]
+            assert len(set(nums)) == 3
+            for n in nums:
+                assert n.startswith("EST-")
+        finally:
+            for e in created:
+                client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+
+
+class TestSignedContractActivatesWork:
+    def test_full_sign_sends_draft_invoice_and_activates_on_hold_job(self, client):
+        c = client.post(f"{BASE_URL}/api/clients", json={
+            "name": "TEST_SignActivateClient", "phone": "555-9", "email": "signactivate@example.com",
+            "address": "1 Sign Ave", "source": "Referral", "status": "Active"
+        }).json()
+        e = client.post(f"{BASE_URL}/api/estimates", json={
+            "client_id": c["id"], "client_name": c["name"], "category": "Kitchen",
+            "status": "Won",
+            "line_items": [{"description": "Cabinets", "quantity": 1, "unit_price": 800}],
+            "tax_rate": 0,
+        }).json()
+        gen = client.post(f"{BASE_URL}/api/estimates/{e['id']}/generate").json()
+        try:
+            invoice = gen["invoice"]
+            job = gen["job"]
+            contract = gen["contract"]
+            assert invoice["status"] == "Draft"
+
+            hold = client.put(f"{BASE_URL}/api/jobs/{job['id']}", json={
+                "name": job["name"],
+                "estimate_id": job.get("estimate_id", ""),
+                "client_id": job.get("client_id", ""),
+                "client_name": job.get("client_name", ""),
+                "status": "On Hold",
+                "budget": job.get("budget", 0),
+            })
+            assert hold.status_code == 200
+            assert hold.json()["status"] == "On Hold"
+
+            signed = client.put(f"{BASE_URL}/api/contracts/{contract['id']}", json={
+                "client_signature": "data:image/png;base64,AAAA",
+                "client_signed_date": "August 14, 2026",
+                "client_signed_by": "TEST Client",
+                "contractor_signature": "data:image/png;base64,BBBB",
+                "contractor_signed_date": "August 14, 2026",
+                "contractor_signed_by": "TEST Contractor",
+                "status": "Signed",
+            })
+            assert signed.status_code == 200
+            assert signed.json()["status"] == "Signed"
+
+            invoices = client.get(f"{BASE_URL}/api/invoices").json()
+            inv_after = next(i for i in invoices if i["id"] == invoice["id"])
+            assert inv_after["status"] == "Sent"
+
+            jobs = client.get(f"{BASE_URL}/api/jobs").json()
+            job_after = next(j for j in jobs if j["id"] == job["id"])
+            assert job_after["status"] == "Active"
+        finally:
+            if gen.get("job"):
+                client.delete(f"{BASE_URL}/api/jobs/{gen['job']['id']}")
+            if gen.get("contract"):
+                client.delete(f"{BASE_URL}/api/contracts/{gen['contract']['id']}")
+            if gen.get("invoice"):
+                client.delete(f"{BASE_URL}/api/invoices/{gen['invoice']['id']}")
+            client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+            client.delete(f"{BASE_URL}/api/clients/{c['id']}")
+
+
+class TestFinancials:
+    def test_overview_requires_auth(self, anon):
+        r = anon.get(f"{BASE_URL}/api/financials/overview")
+        assert r.status_code == 401
+
+    def test_overview_shape(self, client):
+        r = client.get(f"{BASE_URL}/api/financials/overview")
+        assert r.status_code == 200
+        body = r.json()
+        for key in ["year", "income_ytd", "invoice_income_ytd", "other_income_ytd",
+                    "expenses_ytd", "overhead_ytd", "job_costs_ytd",
+                    "net_profit", "outstanding", "outstanding_count", "jobs_profit", "square"]:
+            assert key in body
+        assert body["net_profit"] == round(body["income_ytd"] - body["expenses_ytd"], 2)
+        assert body["income_ytd"] == round(body["invoice_income_ytd"] + body["other_income_ytd"], 2)
+        assert body["expenses_ytd"] == round(body["overhead_ytd"] + body["job_costs_ytd"], 2)
+        assert isinstance(body["jobs_profit"], list)
+        assert body["square"]["status"] == "coming_soon"
+
+    def test_default_categories_seeded(self, client):
+        r = client.get(f"{BASE_URL}/api/financials/categories")
+        assert r.status_code == 200
+        cats = r.json()
+        assert isinstance(cats, list)
+        assert len(cats) >= 1
+        names = {c["name"] for c in cats}
+        assert "Insurance" in names or any(c.get("expenses") is not None for c in cats)
+
+    def test_category_and_expense_crud_updates_overview(self, client):
+        created = client.post(f"{BASE_URL}/api/financials/categories", json={"name": "TEST_FinCat"})
+        assert created.status_code == 200, created.text
+        cat = created.json()
+        cid = cat["id"]
+        exp_id = None
+        try:
+            before = client.get(f"{BASE_URL}/api/financials/overview").json()
+            exp = client.post(f"{BASE_URL}/api/financials/expenses", json={
+                "category_id": cid,
+                "description": "TEST liability premium",
+                "amount": 125.5,
+                "date": "2026-03-15",
+                "notes": "Annual policy",
+            })
+            assert exp.status_code == 200, exp.text
+            body = exp.json()
+            exp_id = body["id"]
+            assert body["amount"] == 125.5
+            assert body["notes"] == "Annual policy"
+            assert body["date"].startswith("2026-03-15")
+
+            listed = client.get(f"{BASE_URL}/api/financials/categories").json()
+            match = next(c for c in listed if c["id"] == cid)
+            assert match["total"] == 125.5
+            assert any(e["id"] == exp_id for e in match["expenses"])
+
+            after = client.get(f"{BASE_URL}/api/financials/overview").json()
+            assert after["overhead_ytd"] == round(before["overhead_ytd"] + 125.5, 2)
+            assert after["expenses_ytd"] == round(before["expenses_ytd"] + 125.5, 2)
+
+            upd = client.put(f"{BASE_URL}/api/financials/expenses/{exp_id}", json={
+                "category_id": cid,
+                "description": "TEST liability premium updated",
+                "amount": 200,
+                "date": "2026-03-15",
+                "notes": "Adjusted",
+            })
+            assert upd.status_code == 200
+            assert upd.json()["amount"] == 200
+            assert upd.json()["description"] == "TEST liability premium updated"
+
+            renamed = client.put(f"{BASE_URL}/api/financials/categories/{cid}", json={"name": "TEST_FinCat_Renamed"})
+            assert renamed.status_code == 200
+            assert renamed.json()["name"] == "TEST_FinCat_Renamed"
+
+            zero = client.post(f"{BASE_URL}/api/financials/expenses", json={
+                "category_id": cid, "description": "bad", "amount": 0, "date": "2026-01-01"
+            })
+            assert zero.status_code == 400
+        finally:
+            if exp_id:
+                client.delete(f"{BASE_URL}/api/financials/expenses/{exp_id}")
+            client.delete(f"{BASE_URL}/api/financials/categories/{cid}")
+
+    def test_delete_category_cascades_expenses(self, client):
+        cat = client.post(f"{BASE_URL}/api/financials/categories", json={"name": "TEST_CascadeCat"}).json()
+        cid = cat["id"]
+        exp = client.post(f"{BASE_URL}/api/financials/expenses", json={
+            "category_id": cid, "description": "temp", "amount": 10, "date": "2026-01-02"
+        }).json()
+        rd = client.delete(f"{BASE_URL}/api/financials/categories/{cid}")
+        assert rd.status_code == 200
+        gone = client.get(f"{BASE_URL}/api/financials/expenses").json()
+        assert not any(e["id"] == exp["id"] for e in gone)
+
+    def test_expense_404(self, client):
+        r = client.put(f"{BASE_URL}/api/financials/expenses/no-such", json={
+            "category_id": "x", "description": "n", "amount": 1, "date": "2026-01-01"
+        })
+        assert r.status_code in (400, 404)
+
+    def test_job_actual_expense_flows_into_overview_and_profit(self, client):
+        before = client.get(f"{BASE_URL}/api/financials/overview").json()
+        job = client.post(f"{BASE_URL}/api/jobs", json={"name": "TEST_FinJob", "status": "Active", "budget": 1000}).json()
+        jid = job["id"]
+        try:
+            actual = client.post(f"{BASE_URL}/api/jobs/{jid}/expenses", json={
+                "category": "Materials", "description": "lumber", "amount": 80, "kind": "actual"
+            })
+            assert actual.status_code == 200
+            committed = client.post(f"{BASE_URL}/api/jobs/{jid}/expenses", json={
+                "category": "Materials", "description": "pending order", "amount": 40, "kind": "committed"
+            })
+            assert committed.status_code == 200
+
+            after = client.get(f"{BASE_URL}/api/financials/overview").json()
+            assert after["job_costs_ytd"] == round(before["job_costs_ytd"] + 80, 2)
+            assert after["expenses_ytd"] == round(before["expenses_ytd"] + 80, 2)
+            row = next(r for r in after["jobs_profit"] if r["id"] == jid)
+            assert row["costs"] == 80
+            assert row["income"] == 0
+            assert row["profit"] == -80
+        finally:
+            client.delete(f"{BASE_URL}/api/jobs/{jid}")
+
+    def test_other_income_updates_overview(self, client):
+        before = client.get(f"{BASE_URL}/api/financials/overview").json()
+        created = client.post(f"{BASE_URL}/api/financials/other-income", json={
+            "description": "TEST cash deposit",
+            "amount": 50,
+            "date": "2026-04-01",
+            "notes": "misc",
+        })
+        assert created.status_code == 200, created.text
+        iid = created.json()["id"]
+        try:
+            after = client.get(f"{BASE_URL}/api/financials/overview").json()
+            assert after["other_income_ytd"] == round(before["other_income_ytd"] + 50, 2)
+            assert after["income_ytd"] == round(before["income_ytd"] + 50, 2)
+        finally:
+            client.delete(f"{BASE_URL}/api/financials/other-income/{iid}")
+
+    def test_tax_summary_requires_auth(self, anon):
+        r = anon.get(f"{BASE_URL}/api/financials/tax/summary")
+        assert r.status_code == 401
+
+    def test_tax_summary_shape_and_classification_sync(self, client):
+        cat = client.post(f"{BASE_URL}/api/financials/categories", json={"name": "TEST_TaxCat"}).json()
+        cid = cat["id"]
+        exp = client.post(f"{BASE_URL}/api/financials/expenses", json={
+            "category_id": cid, "description": "TEST tax insurance", "amount": 90, "date": "2026-05-01"
+        }).json()
+        try:
+            summary = client.get(f"{BASE_URL}/api/financials/tax/summary")
+            assert summary.status_code == 200, summary.text
+            body = summary.json()
+            for key in ["year", "income_total", "deductions_total", "estimated_tax",
+                        "pending_count", "classified_count", "open_questions"]:
+                assert key in body
+            assert body["estimated_tax"] == 0
+
+            rows = client.get(f"{BASE_URL}/api/financials/tax/classifications").json()
+            match = next((r for r in rows if r["source_id"] == exp["id"]), None)
+            assert match is not None
+            assert match["status"] == "pending"
+            assert match["description"] == "TEST tax insurance"
+        finally:
+            client.delete(f"{BASE_URL}/api/financials/expenses/{exp['id']}")
+            client.delete(f"{BASE_URL}/api/financials/categories/{cid}")
+
+    def test_tax_question_and_answer_and_classification_update(self, client):
+        created = client.post(f"{BASE_URL}/api/financials/tax/classifications", json={
+            "description": "TEST meal",
+            "amount": 40,
+            "date": "2026-06-01",
+            "source": "overhead",
+        })
+        assert created.status_code == 200, created.text
+        class_id = created.json()["id"]
+        q = client.post(f"{BASE_URL}/api/financials/tax/questions", json={
+            "classification_id": class_id,
+            "question": "Was this meal with a client?",
+            "asked_by": "ai",
+        })
+        assert q.status_code == 200, q.text
+        qid = q.json()["id"]
+        assert q.json()["status"] == "open"
+
+        ans = client.post(f"{BASE_URL}/api/financials/tax/questions/{qid}/answer", json={"answer": "Yes, job walkthrough"})
+        assert ans.status_code == 200
+        assert ans.json()["status"] == "answered"
+        assert ans.json()["answer"] == "Yes, job walkthrough"
+
+        upd = client.put(f"{BASE_URL}/api/financials/tax/classifications/{class_id}", json={
+            "tax_category": "meals",
+            "deductibility": "partial",
+            "deductible_amount": 20,
+            "status": "classified",
+            "classified_by": "user",
+        })
+        assert upd.status_code == 200
+        assert upd.json()["deductible_amount"] == 20
+        assert upd.json()["status"] == "classified"
+
+        summary = client.get(f"{BASE_URL}/api/financials/tax/summary").json()
+        assert summary["deductions_total"] >= 20
+        listed_q = client.get(f"{BASE_URL}/api/financials/tax/questions").json()
+        assert next(x for x in listed_q if x["id"] == qid)["status"] == "answered"
