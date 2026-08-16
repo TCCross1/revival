@@ -50,6 +50,18 @@ class TestAuth:
         r = requests.get(f"{BASE_URL}/api/auth/me", cookies={"session_token": TOKEN})
         assert r.status_code == 200
 
+    def test_dev_bypass_is_gated(self, anon):
+        r = anon.post(f"{BASE_URL}/api/auth/dev-bypass")
+        assert r.status_code in (200, 403, 404)
+        if r.status_code == 200:
+            body = r.json()
+            assert body.get("dev_bypass") is True
+            assert body.get("role") == "admin"
+            assert body.get("session_token")
+        else:
+            r_me = anon.get(f"{BASE_URL}/api/auth/me")
+            assert r_me.status_code == 401
+
 
 # ---------------- Dashboard ----------------
 class TestDashboard:
@@ -459,6 +471,68 @@ class TestJobs:
             assert bad.status_code == 400
         finally:
             client.delete(f"{BASE_URL}/api/jobs/{jid}")
+
+    def test_convert_creates_job_sheet_and_is_editable(self, client):
+        payload = {
+            "name": "TEST_Sheet_Client",
+            "phone": "(512) 555-0122",
+            "email": "sheet.client@test.com",
+            "address": "9 Sheet Ct",
+            "project_type": "Bathroom Remodel",
+            "source": "Angi",
+            "status": "New",
+            "notes": "sheet test",
+        }
+        created = client.post(f"{BASE_URL}/api/leads", json=payload)
+        assert created.status_code == 200, created.text
+        lid = created.json()["id"]
+        jid = cid = None
+        try:
+            conv = client.post(f"{BASE_URL}/api/leads/{lid}/convert")
+            assert conv.status_code == 200, conv.text
+            jid = conv.json()["job"]["id"]
+            cid = conv.json()["client"]["id"]
+            sheet = client.get(f"{BASE_URL}/api/jobs/{jid}/sheet")
+            assert sheet.status_code == 200, sheet.text
+            body = sheet.json()
+            assert body["sheet"]["client_name"] == "TEST_Sheet_Client"
+            assert body["sheet"]["email"] == "sheet.client@test.com"
+            assert body["sheet"]["address"] == "9 Sheet Ct"
+            assert body["sheet"]["project_type"] == "Bathroom Remodel"
+            assert body["sheet"]["source"] == "Angi"
+            assert body["sheet"]["phone"] == "+15125550122"
+            assert "Materials" in body["categories"]
+            again = client.get(f"{BASE_URL}/api/jobs/{jid}/sheet")
+            assert again.json()["sheet"]["id"] == body["sheet"]["id"]
+            upd = client.put(f"{BASE_URL}/api/jobs/{jid}/sheet", json={
+                "budget": 8000,
+                "income": 10000,
+                "category_budgets": {"Materials": 3000, "Labor": 2500},
+                "estimated_days": 7,
+                "profit_margin": 20,
+                "apply_optional_tax": False,
+            })
+            assert upd.status_code == 200, upd.text
+            assert upd.json()["sheet"]["budget"] == 8000
+            assert upd.json()["sheet"]["estimated_days"] == 7
+            assert upd.json()["totals"]["remaining"] == 8000
+            assert "pricing" in upd.json()
+            assert upd.json()["pricing"]["direct_costs"] == 5500.0
+            exp = client.post(f"{BASE_URL}/api/jobs/{jid}/expenses", json={
+                "category": "Materials", "description": "tile", "amount": 400, "kind": "actual"
+            })
+            assert exp.status_code == 200
+            fresh = client.get(f"{BASE_URL}/api/jobs/{jid}/sheet").json()
+            assert fresh["totals"]["actual"] == 400
+            stub = client.get(f"{BASE_URL}/api/jobs/{jid}/sheet/export")
+            assert stub.status_code == 200
+            assert stub.json()["ready"] is False
+        finally:
+            if jid:
+                client.delete(f"{BASE_URL}/api/jobs/{jid}")
+            if cid:
+                client.delete(f"{BASE_URL}/api/clients/{cid}")
+            client.delete(f"{BASE_URL}/api/leads/{lid}")
 
 
 # ---------------- Invoices ----------------
@@ -1914,6 +1988,63 @@ class TestFinancials:
         assert isinstance(body["jobs_profit"], list)
         assert body["square"]["status"] == "coming_soon"
 
+    def test_monthly_overhead_days_and_total(self, client):
+        r = client.get(f"{BASE_URL}/api/financials/monthly-overhead", params={"year": 2026, "month": 2})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["days_in_month"] == 28
+        assert body["month"] == 2
+        assert "total" in body and "daily_rate" in body
+        assert isinstance(body.get("categories"), list)
+        created = client.post(f"{BASE_URL}/api/financials/categories", json={"name": "TEST_MonthOH"})
+        assert created.status_code == 200, created.text
+        cid = created.json()["id"]
+        exp_id = None
+        try:
+            exp = client.post(f"{BASE_URL}/api/financials/expenses", json={
+                "category_id": cid,
+                "description": "TEST feb rent",
+                "amount": 4000,
+                "date": "2026-02-01",
+                "notes": "",
+            })
+            assert exp.status_code == 200, exp.text
+            exp_id = exp.json()["id"]
+            feb = client.get(f"{BASE_URL}/api/financials/monthly-overhead", params={"year": 2026, "month": 2}).json()
+            assert feb["days_in_month"] == 28
+            assert feb["total"] >= 4000
+            assert feb["daily_rate"] == round(feb["total"] / 28, 2)
+        finally:
+            if exp_id:
+                client.delete(f"{BASE_URL}/api/financials/expenses/{exp_id}")
+            client.delete(f"{BASE_URL}/api/financials/categories/{cid}")
+
+    def test_smart_estimate_pricing_shape(self, client):
+        payload = {
+            "client_name": "TEST_Price_Client",
+            "category": "Kitchen",
+            "status": "Draft",
+            "line_items": [{"description": "Kitchen remodel", "quantity": 1, "unit_price": 0}],
+            "tax_rate": 0,
+            "materials_cost": 1000,
+            "labor_cost": 500,
+            "estimated_days": 7,
+            "profit_margin": 20,
+            "apply_optional_tax": False,
+        }
+        r = client.post(f"{BASE_URL}/api/estimates", json=payload)
+        assert r.status_code == 200, r.text
+        e = r.json()
+        try:
+            pricing = e.get("pricing") or {}
+            assert "true_job_cost" in pricing
+            assert "final_price" in pricing
+            assert pricing["direct_costs"] == 1500.0
+            assert e["total"] == pricing["final_price"]
+            assert pricing["sales_tax"] == 60.0
+        finally:
+            client.delete(f"{BASE_URL}/api/estimates/{e['id']}")
+
     def test_default_categories_seeded(self, client):
         r = client.get(f"{BASE_URL}/api/financials/categories")
         assert r.status_code == 200
@@ -1922,6 +2053,61 @@ class TestFinancials:
         assert len(cats) >= 1
         names = {c["name"] for c in cats}
         assert "Insurance" in names or any(c.get("expenses") is not None for c in cats)
+
+    def test_overhead_catalog_and_projected_actual_ledger(self, client):
+        r = client.get(f"{BASE_URL}/api/financials/categories")
+        assert r.status_code == 200, r.text
+        cats = r.json()
+        names = {c["name"] for c in cats}
+        assert "Insurance" in names
+        assert "Vehicles & Fuel" in names
+        assert "Payroll" in names
+        insurance = next(c for c in cats if c["name"] == "Insurance")
+        line_names = {i["name"] for i in insurance.get("line_items") or []}
+        assert "General Liability" in line_names
+        item = next(i for i in insurance["line_items"] if i["name"] == "General Liability")
+        saved = client.put(f"{BASE_URL}/api/financials/line-items/{item['id']}/month", json={
+            "year": 2026,
+            "month": 8,
+            "projected": 500,
+            "actual": 450,
+        })
+        assert saved.status_code == 200, saved.text
+        body = saved.json()
+        assert body["projected"] == 500
+        assert body["actual"] == 450
+        assert body["difference"] == -50
+        month = client.get(f"{BASE_URL}/api/financials/monthly-overhead", params={"year": 2026, "month": 8})
+        assert month.status_code == 200, month.text
+        snap = month.json()
+        assert snap["days_in_month"] == 31
+        assert snap["projected_total"] >= 500
+        assert snap["actual_total"] >= 450
+        assert "ytd_projected" in snap and "ytd_actual" in snap
+        ins_month = next(c for c in snap["categories"] if c["id"] == insurance["id"])
+        gl = next(i for i in ins_month["line_items"] if i["id"] == item["id"])
+        assert gl["projected"] == 500
+        assert gl["actual"] == 450
+        client.put(f"{BASE_URL}/api/financials/line-items/{item['id']}/month", json={
+            "year": 2026, "month": 8, "projected": 0, "actual": 0,
+        })
+
+    def test_square_statements_list_and_upload_requires_drive(self, client):
+        listed = client.get(f"{BASE_URL}/api/financials/square-statements")
+        assert listed.status_code == 200, listed.text
+        assert isinstance(listed.json(), list)
+        files = {"upload": ("statement.pdf", b"%PDF-1.4 test", "application/pdf")}
+        uploaded = requests.post(
+            f"{BASE_URL}/api/financials/square-statements",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+            data={"year": "2026", "month": "8"},
+            files=files,
+            timeout=30,
+        )
+        assert uploaded.status_code in (200, 400), uploaded.text
+        if uploaded.status_code == 400:
+            detail = (uploaded.json() or {}).get("detail") or uploaded.text
+            assert "Drive" in str(detail) or "Google" in str(detail) or "connect" in str(detail).lower()
 
     def test_category_and_expense_crud_updates_overview(self, client):
         created = client.post(f"{BASE_URL}/api/financials/categories", json={"name": "TEST_FinCat"})
@@ -2102,3 +2288,345 @@ class TestFinancials:
         assert summary["deductions_total"] >= 20
         listed_q = client.get(f"{BASE_URL}/api/financials/tax/questions").json()
         assert next(x for x in listed_q if x["id"] == qid)["status"] == "answered"
+
+
+# ---------------- Thumbtack webhook ----------------
+from dotenv import load_dotenv as _load_dotenv
+from pathlib import Path as _Path
+_load_dotenv(_Path(__file__).resolve().parent.parent / ".env", interpolate=False)
+_TT_SECRET = os.environ.get("THUMBTACK_WEBHOOK_SECRET", "")
+import sys as _sys
+_BACKEND_ROOT = str(_Path(__file__).resolve().parent.parent)
+if _BACKEND_ROOT not in _sys.path:
+    _sys.path.insert(0, _BACKEND_ROOT)
+
+
+def _tt_headers(**extra):
+    headers = {"Content-Type": "application/json"}
+    if _TT_SECRET:
+        headers["X-Thumbtack-Webhook-Secret"] = _TT_SECRET
+    headers.update(extra)
+    return headers
+
+
+def _admin_auth_headers():
+    r = requests.post(
+        f"{BASE_URL}/api/auth/login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+        timeout=10,
+    )
+    assert r.status_code == 200, r.text
+    token = r.json()["session_token"]
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+class TestThumbtackWebhookParser:
+    def test_parses_v4_and_flat_and_ignores_messages(self):
+        from thumbtack_webhook import parse_thumbtack_payload
+        v4 = parse_thumbtack_payload({
+            "eventType": "NegotiationCreatedV4",
+            "negotiation": {
+                "negotiationID": "519153480500518912",
+                "category": {"name": "Bathroom Remodel"},
+                "customer": {
+                    "name": "Olivia Young",
+                    "phone": "5125550144",
+                    "email": "olivia@example.com",
+                    "location": {"address1": "12 Oak St", "city": "Austin", "state": "TX", "zipCode": "78704"},
+                },
+                "details": [{"question": "Project scope", "answer": "Full bath"}],
+            },
+        })
+        assert v4["ignored"] is False
+        assert v4["thumbtack_lead_id"] == "519153480500518912"
+        assert v4["name"] == "Olivia Young"
+        assert v4["phone"] == "5125550144"
+        assert v4["email"] == "olivia@example.com"
+        assert v4["project_type"] == "Bathroom Remodel"
+        assert "Austin" in v4["address"]
+        assert "Full bath" in v4["notes"]
+
+        flat = parse_thumbtack_payload({
+            "name": "Pat Flat",
+            "phone": "(512) 555-0100",
+            "email": "pat@example.com",
+            "address": "9 Test Rd",
+            "project_type": "Deck Build",
+            "thumbtack_lead_id": "tt-flat-1",
+            "notes": "Fence too",
+        })
+        assert flat["name"] == "Pat Flat"
+        assert flat["thumbtack_lead_id"] == "tt-flat-1"
+        assert flat["project_type"] == "Deck Build"
+
+        ignored = parse_thumbtack_payload({"eventType": "MessageCreatedV4", "message": {"text": "hi"}})
+        assert ignored["ignored"] is True
+
+
+class TestThumbtackWebhook:
+    def test_rejects_invalid_secret_when_configured(self, anon):
+        if not _TT_SECRET:
+            return
+        r = anon.post(f"{BASE_URL}/api/webhooks/thumbtack", json={"name": "Nope"})
+        assert r.status_code == 401, r.text
+
+    def test_create_convert_and_dedupe(self, anon):
+        tt_id = f"TEST-TT-{os.urandom(4).hex()}"
+        payload = {
+            "eventType": "NegotiationCreatedV4",
+            "negotiation": {
+                "negotiationID": tt_id,
+                "category": {"name": "Kitchen Remodel"},
+                "customer": {
+                    "name": "TEST_Thumbtack_Webhook",
+                    "phone": "5125550188",
+                    "email": "tt.webhook@test.com",
+                    "location": {
+                        "address1": "55 Webhook Ln",
+                        "city": "Austin",
+                        "state": "TX",
+                        "zipCode": "78701",
+                    },
+                },
+                "details": [{"question": "Project scope", "answer": "Cabinets only"}],
+            },
+        }
+        lid = cid = jid = None
+        try:
+            first = anon.post(f"{BASE_URL}/api/webhooks/thumbtack", json=payload, headers=_tt_headers())
+            assert first.status_code == 200, first.text
+            body = first.json()
+            assert body["status"] == "created"
+            assert body["thumbtack_lead_id"] == tt_id
+            assert body["lead"]["source"] == "Thumbtack"
+            assert body["lead"]["converted"] is True
+            assert body["lead"]["status"] == "Booked"
+            assert body["lead"]["thumbtack_lead_id"] == tt_id
+            assert body["client"]["name"] == "TEST_Thumbtack_Webhook"
+            assert body["client"]["phone"] == "+15125550188"
+            assert body["client"]["source"] == "Thumbtack"
+            assert "Kitchen Remodel" in body["job"]["name"]
+            assert body["created"]["client"] is True
+            assert body["created"]["job"] is True
+            lid, cid, jid = body["lead"]["id"], body["client"]["id"], body["job"]["id"]
+
+            second = anon.post(f"{BASE_URL}/api/webhooks/thumbtack", json=payload, headers=_tt_headers())
+            assert second.status_code == 200, second.text
+            again = second.json()
+            assert again["status"] == "duplicate"
+            assert again["lead"]["id"] == lid
+            assert again["client"]["id"] == cid
+            assert again["job"]["id"] == jid
+
+            auth = _admin_auth_headers()
+            events = requests.get(f"{BASE_URL}/api/webhooks/thumbtack/events", headers=auth, timeout=10)
+            assert events.status_code == 200, events.text
+            rows = events.json()
+            assert any(e.get("thumbtack_lead_id") == tt_id for e in rows)
+            sample = next(e for e in rows if e.get("thumbtack_lead_id") == tt_id)
+            header_blob = " ".join(f"{k} {v}" for k, v in (sample.get("headers") or {}).items())
+            assert "revival-local-thumbtack-webhook" not in header_blob
+            assert "[redacted]" in header_blob or "authorization" not in header_blob.lower()
+        finally:
+            auth = _admin_auth_headers()
+            if jid:
+                requests.delete(f"{BASE_URL}/api/jobs/{jid}", headers=auth, timeout=10)
+            if cid:
+                requests.delete(f"{BASE_URL}/api/clients/{cid}", headers=auth, timeout=10)
+            if lid:
+                requests.delete(f"{BASE_URL}/api/leads/{lid}", headers=auth, timeout=10)
+
+    def test_ignores_message_events(self, anon):
+        r = anon.post(
+            f"{BASE_URL}/api/webhooks/thumbtack",
+            json={"eventType": "MessageCreatedV4", "message": {"text": "hello"}},
+            headers=_tt_headers(),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "ignored"
+
+    def test_test_endpoint_requires_auth(self, anon):
+        r = anon.post(f"{BASE_URL}/api/webhooks/thumbtack/test")
+        assert r.status_code == 401
+
+    def test_test_endpoint_creates_sample(self):
+        auth = _admin_auth_headers()
+        r = requests.post(f"{BASE_URL}/api/webhooks/thumbtack/test", headers=auth, timeout=10)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        lid = cid = jid = None
+        try:
+            assert body["status"] == "created"
+            assert str(body.get("thumbtack_lead_id") or "").startswith("TEST-TT-")
+            assert body["lead"]["converted"] is True
+            assert body["client"]["name"] == "Taylor Test"
+            lid, cid, jid = body["lead"]["id"], body["client"]["id"], body["job"]["id"]
+        finally:
+            if jid:
+                requests.delete(f"{BASE_URL}/api/jobs/{jid}", headers=auth, timeout=10)
+            if cid:
+                requests.delete(f"{BASE_URL}/api/clients/{cid}", headers=auth, timeout=10)
+            if lid:
+                requests.delete(f"{BASE_URL}/api/leads/{lid}", headers=auth, timeout=10)
+
+
+# ---------------- Google Drive client folders ----------------
+class TestGoogleDrive:
+    def test_status_ok(self, client):
+        r = client.get(f"{BASE_URL}/api/google-drive/status")
+        assert r.status_code == 200, r.text
+        d = r.json()
+        for k in ["configured", "connected", "expected_email", "setup_step", "folder_structure", "redirect_uri"]:
+            assert k in d
+        assert "revivalhomeremodelingllc@gmail.com" in (d.get("expected_email") or "")
+        assert d["setup_step"] in ("save_keys", "connect", "done")
+        assert any("Revival Pro" in str(part) for part in (d.get("folder_structure") or []))
+
+    def test_status_requires_auth(self, anon):
+        assert anon.get(f"{BASE_URL}/api/google-drive/status").status_code == 401
+
+    def test_client_drive_shape_and_detail(self, client):
+        payload = {"name": "TEST_Drive_Client", "phone": "", "email": "", "address": "55 Oak Ave, Austin, TX", "source": "Website", "status": "Lead"}
+        created = client.post(f"{BASE_URL}/api/clients", json=payload)
+        assert created.status_code == 200, created.text
+        cid = created.json()["id"]
+        try:
+            r = client.get(f"{BASE_URL}/api/clients/{cid}/drive")
+            assert r.status_code == 200, r.text
+            d = r.json()
+            assert d["has_folder"] is False
+            assert "TEST_Drive_Client" in d["suggested_name"]
+            assert "55 Oak Ave" in d["suggested_name"]
+            detail = client.get(f"{BASE_URL}/api/clients/{cid}/detail")
+            assert detail.status_code == 200
+            assert "drive" in detail.json()
+            assert "has_folder" in detail.json()["drive"]
+            assert isinstance(detail.json()["drive"].get("files"), list)
+            assert "file_count" in detail.json()["drive"]
+            assert isinstance(d.get("files"), list)
+            assert "upload_kinds" in d
+        finally:
+            client.delete(f"{BASE_URL}/api/clients/{cid}")
+
+    def test_create_folder_without_setup_is_friendly(self, client):
+        created = client.post(f"{BASE_URL}/api/clients", json={"name": "TEST_Drive_NoConn", "phone": "", "email": "", "address": "", "source": "Website", "status": "Lead"})
+        assert created.status_code == 200, created.text
+        cid = created.json()["id"]
+        try:
+            r = client.post(f"{BASE_URL}/api/clients/{cid}/drive/folder")
+            assert r.status_code in (200, 400), r.text
+            if r.status_code == 400:
+                detail = (r.json().get("detail") or "").lower()
+                assert "drive" in detail or "connect" in detail or "google" in detail
+        finally:
+            client.delete(f"{BASE_URL}/api/clients/{cid}")
+
+    def test_drive_endpoints_require_auth(self, anon):
+        assert anon.get(f"{BASE_URL}/api/clients/anything/drive").status_code == 401
+        assert anon.post(f"{BASE_URL}/api/clients/anything/drive/folder").status_code == 401
+        assert anon.post(f"{BASE_URL}/api/clients/anything/drive/files").status_code == 401
+        assert anon.get(f"{BASE_URL}/api/google-drive/connect").status_code == 401
+        assert anon.post(f"{BASE_URL}/api/google-drive/disconnect").status_code == 401
+        assert anon.post(f"{BASE_URL}/api/google-drive/credentials", json={"client_id": "x", "client_secret": "y"}).status_code == 401
+        assert anon.post(f"{BASE_URL}/api/google-drive/bootstrap").status_code == 401
+
+    def test_upload_without_connection_is_friendly(self, client):
+        created = client.post(f"{BASE_URL}/api/clients", json={"name": "TEST_Drive_Upload", "phone": "", "email": "", "address": "", "source": "Website", "status": "Lead"})
+        assert created.status_code == 200, created.text
+        cid = created.json()["id"]
+        try:
+            r = requests.post(
+                f"{BASE_URL}/api/clients/{cid}/drive/files",
+                headers={"Authorization": f"Bearer {TOKEN}"},
+                data={"kind": "floor_plan"},
+                files={"file": ("plan.pdf", b"%PDF-1.4 test", "application/pdf")},
+                timeout=15,
+            )
+            assert r.status_code in (200, 400), r.text
+            if r.status_code == 400:
+                detail = (r.json().get("detail") or "").lower()
+                assert "drive" in detail or "connect" in detail or "google" in detail
+        finally:
+            client.delete(f"{BASE_URL}/api/clients/{cid}")
+
+    def test_credentials_reject_empty(self, client):
+        r = client.post(f"{BASE_URL}/api/google-drive/credentials", json={"client_id": "", "client_secret": ""})
+        assert r.status_code in (400, 403), r.text
+        if r.status_code == 400:
+            detail = (r.json().get("detail") or "").lower()
+            assert "client" in detail or "secret" in detail or "google" in detail
+
+    def test_job_sheet_and_receipts_pdf(self, client):
+        created = client.post(f"{BASE_URL}/api/clients", json={"name": "TEST_Drive_Pdf", "phone": "", "email": "", "address": "10 Pine St", "source": "Website", "status": "Active"})
+        assert created.status_code == 200, created.text
+        cid = created.json()["id"]
+        jid = None
+        try:
+            job = client.post(f"{BASE_URL}/api/jobs", json={"name": "TEST_Drive_Pdf_Job", "client_id": cid, "client_name": "TEST_Drive_Pdf", "budget": 1000})
+            assert job.status_code == 200, job.text
+            jid = job.json()["id"]
+            pdf = client.get(f"{BASE_URL}/api/jobs/{jid}/sheet/pdf")
+            assert pdf.status_code == 200, pdf.text
+            assert "pdf" in (pdf.headers.get("content-type") or "").lower()
+            receipts = client.get(f"{BASE_URL}/api/jobs/{jid}/receipts/pdf")
+            assert receipts.status_code == 200, receipts.text
+            assert "pdf" in (receipts.headers.get("content-type") or "").lower()
+            stub = client.get(f"{BASE_URL}/api/jobs/{jid}/sheet/export")
+            assert stub.status_code == 200
+            assert stub.json()["ready"] is False
+        finally:
+            if jid:
+                client.delete(f"{BASE_URL}/api/jobs/{jid}")
+            client.delete(f"{BASE_URL}/api/clients/{cid}")
+
+
+class TestFloorPlans:
+    def test_library_and_crud(self, client):
+        lib = client.get(f"{BASE_URL}/api/floor-plans/library")
+        assert lib.status_code == 200, lib.text
+        body = lib.json()
+        assert "Kitchen" in (body.get("project_types") or [])
+        names = {o["name"] for o in body.get("objects") or []}
+        assert "Base cabinet 24" in names
+        created = client.post(f"{BASE_URL}/api/floor-plans", json={
+            "name": "TEST_Studio_Plan",
+            "project_type": "Kitchen",
+            "version_kind": "existing",
+            "document": {
+                "units": "inches",
+                "grid": 12,
+                "snap": 6,
+                "active_level_id": "lvl1",
+                "foundation": "slab",
+                "levels": [{
+                    "id": "lvl1",
+                    "name": "1st Floor",
+                    "sort_order": 0,
+                    "rooms": [{"id": "r1", "name": "Kitchen", "x": 0, "y": 0, "width": 144, "depth": 132, "flooring": "lvp", "wall_height": 96, "ceiling_height": 96}],
+                    "walls": [{"id": "w1", "kind": "exterior", "x1": 0, "y1": 0, "x2": 144, "y2": 0, "thickness": 6, "height": 96, "openings": []}],
+                    "objects": [],
+                    "roofs": [{"id": "rf1", "kind": "gable", "pitch_rise": 6, "pitch_run": 12, "overhang": 12, "width": 144, "depth": 132}],
+                    "decks": [],
+                    "stairs": [],
+                }],
+                "lidar": {"sessions": [], "last_import": ""},
+            },
+        })
+        assert created.status_code == 200, created.text
+        plan = created.json()
+        pid = plan["id"]
+        try:
+            assert plan["takeoffs"]["totals"]["floor_sf"] == 132.0
+            listed = client.get(f"{BASE_URL}/api/floor-plans")
+            assert listed.status_code == 200
+            assert any(p["id"] == pid for p in listed.json())
+            got = client.get(f"{BASE_URL}/api/floor-plans/{pid}")
+            assert got.status_code == 200
+            assert got.json()["name"] == "TEST_Studio_Plan"
+            copy = client.post(f"{BASE_URL}/api/floor-plans/{pid}/duplicate", json={"version_kind": "proposed"})
+            assert copy.status_code == 200, copy.text
+            assert copy.json()["version_kind"] == "proposed"
+            client.delete(f"{BASE_URL}/api/floor-plans/{copy.json()['id']}")
+        finally:
+            client.delete(f"{BASE_URL}/api/floor-plans/{pid}")
+

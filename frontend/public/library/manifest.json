@@ -1,0 +1,134 @@
+{
+  "heroes": {
+    "sinks": "/library/heroes/sinks.jpg",
+    "lighting": "/library/heroes/lighting.jpg",
+    "showers-tubs": "/library/heroes/showers-tubs.jpg",
+    "vanities-lib": "/library/heroes/vanities-lib.jpg",
+    "appliances-premium": "/library/heroes/appliances-premium.jpg",
+    "bath-components": "/library/heroes/bath-components.jpg",
+    "vanities-luxury": "/library/heroes/vanities-luxury.jpg",
+    "islands": "/library/heroes/islands.jpg",
+    "kitchen-components": "/library/heroes/kitchen-components.jpg",
+    "cabinets-styles": "/library/heroes/cabinets-styles.jpg",
+    "appliances": "/library/heroes/appliances.jpg",
+    "ref-white-kitchen": "/library/heroes/ref-white-kitchen.jpg",
+    "ref-navy-kitchen": "/library/heroes/ref-navy-kitchen.jpg",
+    "ref-oak-kitchen": "/library/heroes/ref-oak-kitchen.jpg",
+    "ref-walnut-kitchen": "/library/heroes/ref-walnut-kitchen.jpg",
+    "ref-bath-luxury": "/library/heroes/ref-bath-luxury.jpg",
+    "ref-bath-modern": "/library/heroes/ref-bath-modern.jpg"
+  },
+  "crops": {
+    "sinks": [
+      "/library/catalog/sinks-00.jpg",
+      "/library/catalog/sinks-01.jpg",
+      "/library/catalog/sinks-10.jpg",
+      "/library/catalog/sinks-11.jpg",
+      "/library/catalog/sinks-20.jpg",
+      "/library/catalog/sinks-21.jpg"
+    ],
+    "lighting": [
+      "/library/catalog/lighting-00.jpg",
+      "/library/catalog/lighting-01.jpg",
+      "/library/catalog/lighting-02.jpg",
+      "/library/catalog/lighting-10.jpg",
+      "/library/catalog/lighting-11.jpg",
+      "/library/catalog/lighting-12.jpg",
+      "/library/catalog/lighting-20.jpg",
+      "/library/catalog/lighting-21.jpg"
+    ],
+    "showers-tubs": [
+      "/library/catalog/showers-tubs-00.jpg",
+      "/library/catalog/showers-tubs-01.jpg",
+      "/library/catalog/showers-tubs-02.jpg",
+      "/library/catalog/showers-tubs-10.jpg",
+      "/library/catalog/showers-tubs-11.jpg",
+      "/library/catalog/showers-tubs-12.jpg",
+      "/library/catalog/showers-tubs-20.jpg",
+      "/library/catalog/showers-tubs-21.jpg",
+      "/library/catalog/showers-tubs-22.jpg"
+    ],
+    "vanities-lib": [
+      "/library/catalog/vanities-lib-00.jpg",
+      "/library/catalog/vanities-lib-01.jpg",
+      "/library/catalog/vanities-lib-02.jpg",
+      "/library/catalog/vanities-lib-10.jpg",
+      "/library/catalog/vanities-lib-11.jpg",
+      "/library/catalog/vanities-lib-12.jpg",
+      "/library/catalog/vanities-lib-20.jpg",
+      "/library/catalog/vanities-lib-21.jpg",
+      "/library/catalog/vanities-lib-22.jpg"
+    ],
+    "appliances-premium": [
+      "/library/catalog/appliances-premium-00.jpg",
+      "/library/catalog/appliances-premium-01.jpg",
+      "/library/catalog/appliances-premium-02.jpg",
+      "/library/catalog/appliances-premium-10.jpg",
+      "/library/catalog/appliances-premium-11.jpg",
+      "/library/catalog/appliances-premium-12.jpg",
+      "/library/catalog/appliances-premium-20.jpg",
+      "/library/catalog/appliances-premium-21.jpg",
+      "/library/catalog/appliances-premium-22.jpg"
+    ],
+    "bath-components": [
+      "/library/catalog/bath-components-00.jpg",
+      "/library/catalog/bath-components-01.jpg",
+      "/library/catalog/bath-components-10.jpg",
+      "/library/catalog/bath-components-11.jpg",
+      "/library/catalog/bath-components-20.jpg",
+      "/library/catalog/bath-components-21.jpg",
+      "/library/catalog/bath-components-30.jpg",
+      "/library/catalog/bath-components-31.jpg",
+      "/library/catalog/bath-components-40.jpg"
+    ],
+    "vanities-luxury": [
+      "/library/catalog/vanities-luxury-00.jpg",
+      "/library/catalog/vanities-luxury-01.jpg",
+      "/library/catalog/vanities-luxury-10.jpg",
+      "/library/catalog/vanities-luxury-11.jpg",
+      "/library/catalog/vanities-luxury-20.jpg",
+      "/library/catalog/vanities-luxury-21.jpg"
+    ],
+    "islands": [
+      "/library/catalog/islands-00.jpg",
+      "/library/catalog/islands-01.jpg",
+      "/library/catalog/islands-02.jpg",
+      "/library/catalog/islands-10.jpg",
+      "/library/catalog/islands-11.jpg",
+      "/library/catalog/islands-12.jpg"
+    ],
+    "kitchen-components": [
+      "/library/catalog/kitchen-components-00.jpg",
+      "/library/catalog/kitchen-components-01.jpg",
+      "/library/catalog/kitchen-components-02.jpg",
+      "/library/catalog/kitchen-components-10.jpg",
+      "/library/catalog/kitchen-components-11.jpg",
+      "/library/catalog/kitchen-components-12.jpg",
+      "/library/catalog/kitchen-components-20.jpg",
+      "/library/catalog/kitchen-components-21.jpg",
+      "/library/catalog/kitchen-components-22.jpg",
+      "/library/catalog/kitchen-components-30.jpg",
+      "/library/catalog/kitchen-components-31.jpg",
+      "/library/catalog/kitchen-components-32.jpg"
+    ],
+    "cabinets-styles": [
+      "/library/catalog/cabinets-styles-00.jpg",
+      "/library/catalog/cabinets-styles-01.jpg",
+      "/library/catalog/cabinets-styles-10.jpg",
+      "/library/catalog/cabinets-styles-11.jpg",
+      "/library/catalog/cabinets-styles-20.jpg",
+      "/library/catalog/cabinets-styles-21.jpg"
+    ],
+    "appliances": [
+      "/library/catalog/appliances-00.jpg",
+      "/library/catalog/appliances-01.jpg",
+      "/library/catalog/appliances-02.jpg",
+      "/library/catalog/appliances-10.jpg",
+      "/library/catalog/appliances-11.jpg",
+      "/library/catalog/appliances-12.jpg",
+      "/library/catalog/appliances-20.jpg",
+      "/library/catalog/appliances-21.jpg",
+      "/library/catalog/appliances-22.jpg"
+    ]
+  }
+}

@@ -17,6 +17,17 @@ export const STATUS_STYLES = {
   Overdue: "bg-red-100 text-red-700",
   // Contracts
   Signed: "bg-emerald-100 text-emerald-700",
+  // Tax
+  Pending: "bg-slate-100 text-slate-700",
+  Classified: "bg-emerald-100 text-emerald-700",
+  "Needs review": "bg-amber-100 text-amber-800",
+  // Leads
+  New: "bg-[#C9A227]/20 text-[#8a6f17]",
+  Hot: "bg-[#C9A227]/25 text-[#7a6114]",
+  Warm: "bg-amber-100 text-amber-800",
+  Contacted: "bg-sky-100 text-sky-800",
+  Booked: "bg-emerald-100 text-emerald-800",
+  "Not Interested": "bg-slate-100 text-slate-600",
 };
 
 export default function StatusBadge({ status }) {

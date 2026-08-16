@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import api from "@/lib/api";
-import { fmtDate } from "@/lib/format";
+import api, { formatApiError } from "@/lib/api";
+import { fmtDate, formatPhone } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,7 @@ export default function Clients() {
       toast.success(editing ? "Client updated" : "Client added");
       setOpen(false);
     },
-    onError: () => toast.error("Something went wrong"),
+    onError: async (err) => toast.error(await formatApiError(err, "Could not save the client. Please try again.")),
   });
 
   const remove = useMutation({
@@ -56,7 +56,7 @@ export default function Clients() {
   });
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
-  const openEdit = (c) => { setEditing(c); setForm({ ...EMPTY, ...c }); setOpen(true); };
+  const openEdit = (c) => { setEditing(c); setForm({ ...EMPTY, ...c, phone: formatPhone(c.phone) || c.phone || "" }); setOpen(true); };
 
   const submit = (e) => {
     e.preventDefault();
@@ -65,7 +65,7 @@ export default function Clients() {
   };
 
   const filtered = clients.filter((c) =>
-    [c.name, c.email, c.phone, c.source].join(" ").toLowerCase().includes(search.toLowerCase())
+    [c.name, c.email, c.phone, formatPhone(c.phone), c.source].join(" ").toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -169,7 +169,7 @@ export default function Clients() {
                     {c.address && <div className="text-xs text-[#4B6370] flex items-center gap-1 mt-0.5"><MapPin size={12} />{c.address}</div>}
                   </td>
                   <td className="p-4 text-[#4B6370]">
-                    {c.phone && <div className="flex items-center gap-1"><Phone size={13} />{c.phone}</div>}
+                    {c.phone && <div className="flex items-center gap-1"><Phone size={13} />{formatPhone(c.phone)}</div>}
                     {c.email && <div className="flex items-center gap-1 mt-0.5"><Mail size={13} />{c.email}</div>}
                   </td>
                   <td className="p-4"><span className="text-[#0A4D68] font-medium">{c.source}</span></td>

@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 from phone import digits_only as _digits, to_e164 as normalize_e164
 
 _HERE = Path(__file__).resolve().parent
-load_dotenv(_HERE.parent / ".env")
-load_dotenv(_HERE / ".env")
+load_dotenv(_HERE.parent / ".env", interpolate=False)
+load_dotenv(_HERE / ".env", interpolate=False)
 
 logger = logging.getLogger(__name__)
 

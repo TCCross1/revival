@@ -24,6 +24,11 @@ export default function Dashboard() {
     queryKey: ["dashboard"],
     queryFn: async () => (await api.get("/dashboard")).data,
   });
+  const { data: jobs = [] } = useQuery({
+    queryKey: ["jobs"],
+    queryFn: async () => (await api.get("/jobs")).data,
+  });
+  const activeJobs = jobs.filter((j) => (j.status || "Active") === "Active").slice(0, 6);
 
   if (isLoading || !data) {
     return <div className="text-[#4B6370]">Loading dashboard…</div>;
@@ -33,8 +38,39 @@ export default function Dashboard() {
     <div className="space-y-8" data-testid="dashboard-page">
       <div>
         <h1 className="text-3xl sm:text-4xl font-semibold font-['Outfit'] tracking-tight">Dashboard</h1>
-        <p className="text-[#4B6370] mt-1">Here's the health of your remodeling business at a glance.</p>
+        <p className="text-[#4B6370] mt-1">Open a job and stay in that remodel. Office numbers stay here.</p>
       </div>
+
+      {activeJobs.length ? (
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="dashboard-jobs">
+          <div className="flex items-center justify-between p-6 border-b border-slate-200">
+            <div>
+              <h2 className="text-lg font-semibold font-['Outfit']">Active jobs</h2>
+              <p className="text-sm text-[#4B6370]">The workshop. Design, scope, money, and crew live on the job.</p>
+            </div>
+            <button type="button" onClick={() => navigate("/jobs")} className="text-sm font-medium text-[#0A4D68] hover:underline flex items-center gap-1">
+              All jobs <ArrowRight size={14} />
+            </button>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {activeJobs.map((job) => (
+              <button
+                key={job.id}
+                type="button"
+                onClick={() => navigate(`/jobs/${job.id}`)}
+                className="w-full text-left flex items-center justify-between p-4 hover:bg-slate-50"
+                data-testid={`dash-job-${job.id}`}
+              >
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{job.name}</div>
+                  <div className="text-sm text-[#4B6370]">{job.job_number} · {job.client_name}</div>
+                </div>
+                <StatusBadge status={job.status} />
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard testid="kpi-pipeline" icon={DollarSign} label="Pipeline Value" value={usd(data.pipeline_value)} sub="Total in open estimates" accent="bg-[#0A4D68]/10 text-[#0A4D68]" />

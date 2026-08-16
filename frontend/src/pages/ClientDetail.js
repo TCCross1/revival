@@ -1,9 +1,11 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import api from "@/lib/api";
-import { usd, usdCents, fmtDate } from "@/lib/format";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import api, { formatApiError } from "@/lib/api";
+import { usd, usdCents, fmtDate, formatPhone } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
-import { ArrowLeft, Phone, Mail, MapPin, FileText, HardHat, Receipt, User as UserIcon } from "lucide-react";
+import ClientDriveCard from "@/components/ClientDriveCard";
+import { ArrowLeft, Phone, Mail, MapPin, FileText, HardHat, Receipt, User as UserIcon, PenTool } from "lucide-react";
+import { toast } from "sonner";
 
 const Stat = ({ label, value, color }) => (
   <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
@@ -15,16 +17,26 @@ const Stat = ({ label, value, color }) => (
 export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const qc = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["client-detail", id],
     queryFn: async () => (await api.get(`/clients/${id}/detail`)).data,
   });
 
+  const createFolder = useMutation({
+    mutationFn: async () => (await api.post(`/clients/${id}/drive/folder`)).data,
+    onSuccess: (drive) => {
+      qc.setQueryData(["client-detail", id], (old) => (old ? { ...old, drive } : old));
+      toast.success("Google Drive folder is ready");
+    },
+    onError: async (err) => toast.error(await formatApiError(err, "Could not create the Google Drive folder. Please try again.")),
+  });
+
   if (isLoading) return <div className="text-[#4B6370]">Loading client…</div>;
   if (isError || !data) return <div className="text-[#4B6370]">Client not found.</div>;
 
-  const { client, estimates, jobs, invoices, summary } = data;
+  const { client, estimates, jobs, invoices, summary, drive } = data;
 
   return (
     <div className="space-y-6" data-testid="client-detail-page">
@@ -46,15 +58,26 @@ export default function ClientDetail() {
               </div>
               <div className="text-sm text-[#4B6370] mt-1">Lead source: <span className="text-[#0A4D68] font-medium">{client.source}</span></div>
               <div className="flex flex-wrap gap-4 mt-3 text-sm text-[#4B6370]">
-                {client.phone && <span className="flex items-center gap-1"><Phone size={14} />{client.phone}</span>}
+                {client.phone && <span className="flex items-center gap-1"><Phone size={14} />{formatPhone(client.phone)}</span>}
                 {client.email && <span className="flex items-center gap-1"><Mail size={14} />{client.email}</span>}
                 {client.address && <span className="flex items-center gap-1"><MapPin size={14} />{client.address}</span>}
               </div>
             </div>
           </div>
+          <button type="button" className="inline-flex items-center gap-2 rounded-md bg-[#0A4D68] hover:bg-[#083D53] text-white px-3 py-2 text-sm font-medium" onClick={() => navigate(`/floor-plans/new`)}>
+            <PenTool size={16} /> Floor plan
+          </button>
         </div>
         {client.notes && <p className="mt-4 text-sm text-[#4B6370] bg-slate-50 rounded-lg p-3">{client.notes}</p>}
       </div>
+
+      <ClientDriveCard
+        drive={drive}
+        clientId={id}
+        onCreate={() => createFolder.mutate()}
+        creating={createFolder.isPending}
+        onRefresh={(next) => qc.setQueryData(["client-detail", id], (old) => (old ? { ...old, drive: next } : old))}
+      />
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -102,7 +125,7 @@ export default function ClientDetail() {
             </tr></thead>
             <tbody>
               {jobs.map((j) => (
-                <tr key={j.id} data-testid={`detail-job-${j.id}`} className="border-b border-slate-100">
+                <tr key={j.id} data-testid={`detail-job-${j.id}`} className="border-b border-slate-100 cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/jobs/${j.id}/sheet`)}>
                   <td className="p-3 font-medium text-[#0A4D68]">{j.job_number}</td>
                   <td className="p-3">{j.name}</td>
                   <td className="p-3"><StatusBadge status={j.status} /></td>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -13,10 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserPlus, Trash2, KeyRound, ShieldCheck, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 
-const EMPTY = { name: "", email: "", password: "", role: "member" };
+const EMPTY = { name: "", email: "", password: "", role: "field", hourly_rate: "" };
 
 export default function Team() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
@@ -42,6 +44,11 @@ export default function Team() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["team"] }); toast.success("Teammate removed"); },
     onError: (err) => toast.error(err?.response?.data?.detail || "Could not remove"),
   });
+  const setRole = useMutation({
+    mutationFn: async ({ id, role, hourly_rate }) => api.put(`/team/${id}/role`, { role, hourly_rate }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["team"] }); toast.success("Role updated"); },
+    onError: (err) => toast.error(err?.response?.data?.detail || "Could not update role"),
+  });
   const setPw = useMutation({
     mutationFn: async ({ id, password }) => api.post(`/team/${id}/set-password`, { password }),
     onSuccess: () => { toast.success("Password updated"); setPwOpen(false); setNewPw(""); },
@@ -61,7 +68,7 @@ export default function Team() {
     e.preventDefault();
     if (!form.email.trim() || !form.password.trim()) return toast.error("Email and password are required");
     if (form.password.length < 6) return toast.error("Password must be at least 6 characters");
-    create.mutate({ ...form, email: form.email.trim() });
+    create.mutate({ ...form, email: form.email.trim(), hourly_rate: Number(form.hourly_rate || 0) });
   };
 
   return (
@@ -69,8 +76,10 @@ export default function Team() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl sm:text-4xl font-semibold font-['Outfit'] tracking-tight">Team Members</h1>
-          <p className="text-[#4B6370] mt-1">Invite your team and give each person their own login.</p>
+          <p className="text-[#4B6370] mt-1">Invite the office and the crew. Field workers only see the jobs you assign.</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" onClick={() => navigate("/permissions")}>Roles & permissions</Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button data-testid="invite-teammate-btn" onClick={() => setForm(EMPTY)} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2"><UserPlus size={18} /> Invite Teammate</Button>
@@ -86,10 +95,15 @@ export default function Team() {
                 <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
                   <SelectTrigger data-testid="team-role" className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-white">
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="field">Field Worker / Crew</SelectItem>
+                    <SelectItem value="manager">Project Manager</SelectItem>
+                    <SelectItem value="admin">Owner / Admin</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label>Hourly rate (labor costing)</Label>
+                <Input data-testid="team-rate" className="mt-1" type="number" step="any" value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} placeholder="0" />
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -98,6 +112,7 @@ export default function Team() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -106,18 +121,37 @@ export default function Team() {
             <thead>
               <tr className="border-b border-slate-200 text-left text-[#4B6370]">
                 <th className="p-4 font-medium">Name</th><th className="p-4 font-medium">Email</th>
-                <th className="p-4 font-medium">Role</th><th className="p-4 font-medium">Added</th>
+                <th className="p-4 font-medium">Role</th><th className="p-4 font-medium">Rate</th><th className="p-4 font-medium">Added</th>
                 <th className="p-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={5} className="p-6 text-[#4B6370]">Loading…</td></tr>}
+              {isLoading && <tr><td colSpan={6} className="p-6 text-[#4B6370]">Loading…</td></tr>}
               {members.map((m) => (
                 <tr key={m.user_id} data-testid={`team-row-${m.user_id}`} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="p-4 font-medium flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0A4D68]/10 text-[#0A4D68]"><UserIcon size={15} /></span>{m.name}</td>
                   <td className="p-4 text-[#4B6370]">{m.email}</td>
                   <td className="p-4">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${m.role === "admin" ? "bg-[#C9A227]/20 text-[#8a6f17]" : "bg-slate-100 text-slate-700"}`}>{m.role}</span>
+                    <select
+                      className="h-8 rounded-md border border-slate-200 px-2 text-xs"
+                      value={m.role === "member" ? "manager" : m.role}
+                      onChange={(e) => setRole.mutate({ id: m.user_id, role: e.target.value, hourly_rate: m.hourly_rate })}
+                    >
+                      <option value="admin">Owner / Admin</option>
+                      <option value="manager">Project Manager</option>
+                      <option value="field">Field Worker</option>
+                    </select>
+                  </td>
+                  <td className="p-4">
+                    <Input
+                      className="h-8 w-20 text-xs"
+                      defaultValue={m.hourly_rate || ""}
+                      onBlur={(e) => {
+                        const rate = Number(e.target.value || 0);
+                        if (rate === Number(m.hourly_rate || 0)) return;
+                        setRole.mutate({ id: m.user_id, role: m.role === "member" ? "manager" : m.role, hourly_rate: rate });
+                      }}
+                    />
                   </td>
                   <td className="p-4 text-[#4B6370]">{fmtDate(m.created_at)}</td>
                   <td className="p-4">

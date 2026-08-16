@@ -18,6 +18,18 @@ const Block = ({ title, children }) => (
   </div>
 );
 
+const fillMarkup = (text, markup) => (text || "").split("{markup}").join(String(markup ?? 20));
+
+const TermsText = ({ text }) => {
+  const parts = (text || "").split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  return (
+    <div className="space-y-2 text-sm whitespace-pre-wrap">
+      {parts.map((p, i) => <p key={i}>{p}</p>)}
+    </div>
+  );
+};
+
 export default function PublicSign() {
   const { token } = useParams();
   const [signature, setSignature] = useState("");
@@ -128,21 +140,33 @@ export default function PublicSign() {
                 </div>
               </Block>
 
-              <Block title="5. Exclusions">
+              <Block title="5. General Terms">
+                <TermsText text={c.terms} />
+              </Block>
+
+              <Block title="6. Exclusions">
                 <ul className="space-y-1.5 text-sm">
-                  {c.exclusions.map((x, i) => (
+                  {(c.exclusions || []).map((x, i) => (
                     <li key={i} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#C9A227] shrink-0" />{x}</li>
                   ))}
                 </ul>
               </Block>
 
-              <Block title="6. Change Orders">
-                <ul className="space-y-1.5 text-sm">
-                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Any change to the scope, price, or timeline must be put in writing.</li>
-                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Both parties must sign the change order before extra work begins.</li>
-                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Verbal agreements are not binding.</li>
-                  <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Change order work is priced with a standard markup of {c.change_order_markup}% over cost.</li>
-                </ul>
+              <Block title="7. Change Orders">
+                {c.change_order_terms ? (
+                  <ul className="space-y-1.5 text-sm">
+                    {fillMarkup(c.change_order_terms, c.change_order_markup).split("\n").map((line) => line.trim()).filter(Boolean).map((line, i) => (
+                      <li key={i} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />{line}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="space-y-1.5 text-sm">
+                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Any change to the scope, price, or timeline must be put in writing.</li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Both parties must sign the change order before extra work begins.</li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Verbal agreements are not binding.</li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Change order work is priced with a standard markup of {c.change_order_markup}% over cost.</li>
+                  </ul>
+                )}
               </Block>
             </div>
 

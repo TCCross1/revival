@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import api from "@/lib/api";
+import api, { formatApiError, downloadAuthenticatedPdf } from "@/lib/api";
 import { usd, usdCents } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
 import SignaturePad from "@/components/SignaturePad";
@@ -39,13 +39,26 @@ export default function ContractDetail() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [form, setForm] = useState(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["contract", id],
     queryFn: async () => (await api.get(`/contracts/${id}`)).data,
   });
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => (await api.get("/settings")).data,
+  });
 
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => {
+    if (!data) return;
+    setForm({
+      ...data,
+      exclusions: data.exclusions || [],
+      terms: data.terms || settings?.contract_terms || "",
+      change_order_terms: data.change_order_terms || settings?.change_order_terms || "",
+    });
+  }, [data, settings]);
 
   const save = useMutation({
     mutationFn: async (payload) => (await api.put(`/contracts/${id}`, payload)).data,
@@ -53,9 +66,14 @@ export default function ContractDetail() {
       setForm(res);
       qc.invalidateQueries({ queryKey: ["contracts"] });
       qc.invalidateQueries({ queryKey: ["contract", id] });
+      if (res.status === "Signed") {
+        qc.invalidateQueries({ queryKey: ["invoices"] });
+        qc.invalidateQueries({ queryKey: ["jobs"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      }
       toast.success("Contract saved");
     },
-    onError: () => toast.error("Could not save contract"),
+    onError: async (err) => toast.error(await formatApiError(err, "Could not save the contract. Please try again.")),
   });
 
   const sendForSignature = useMutation({
@@ -65,7 +83,7 @@ export default function ContractDetail() {
       qc.invalidateQueries({ queryKey: ["contracts"] });
       toast.success(`Signing link emailed to ${res.sent_to}`);
     },
-    onError: (err) => toast.error(err?.response?.data?.detail || "Could not send signing request"),
+    onError: async (err) => toast.error(await formatApiError(err, "Could not send the signing request. Please try again.")),
   });
 
   const sendCountersign = useMutation({
@@ -74,7 +92,7 @@ export default function ContractDetail() {
       qc.invalidateQueries({ queryKey: ["contract", id] });
       toast.success(`Countersign link emailed to ${res.sent_to}`);
     },
-    onError: (err) => toast.error(err?.response?.data?.detail || "Could not send countersign request"),
+    onError: async (err) => toast.error(await formatApiError(err, "Could not send the countersign request. Please try again.")),
   });
 
   if (isLoading || !form) return <div className="text-[#4B6370]">Loading contract…</div>;
@@ -88,8 +106,10 @@ export default function ContractDetail() {
     client_name: form.client_name, client_address: form.client_address,
     client_phone: form.client_phone, client_email: form.client_email,
     project_address: form.project_address, project_description: form.project_description,
-    payment_schedule: form.payment_schedule, exclusions: form.exclusions,
+    payment_schedule: form.payment_schedule, exclusions: form.exclusions || [],
     change_order_markup: Number(form.change_order_markup || 0),
+    terms: form.terms || "",
+    change_order_terms: form.change_order_terms || "",
     client_signature: form.client_signature, client_signed_date: form.client_signed_date,
     contractor_signature: form.contractor_signature, contractor_signed_date: form.contractor_signed_date,
     status: form.status,
@@ -107,15 +127,16 @@ export default function ContractDetail() {
   };
 
   const downloadPdf = async () => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
     try {
-      const res = await api.get(`/contracts/${id}/pdf`, { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
-      const a = document.createElement("a");
-      a.href = url; a.download = `${form.contract_number}.pdf`;
-      document.body.appendChild(a); a.click(); a.remove();
-      window.URL.revokeObjectURL(url);
+      await downloadAuthenticatedPdf(`/contracts/${id}/pdf`, `${form.contract_number}.pdf`, "Could not generate the contract PDF. Please try again.");
       toast.success("Contract PDF downloaded");
-    } catch { toast.error("Could not generate PDF"); }
+    } catch (err) {
+      toast.error(await formatApiError(err, "Could not generate the contract PDF. Please try again."));
+    } finally {
+      setPdfBusy(false);
+    }
   };
 
   // Payment schedule helpers
@@ -128,9 +149,9 @@ export default function ContractDetail() {
   const rmMs = (i) => set("payment_schedule", form.payment_schedule.filter((_, x) => x !== i));
 
   // Exclusions helpers
-  const setEx = (i, v) => { const ex = [...form.exclusions]; ex[i] = v; set("exclusions", ex); };
-  const addEx = () => set("exclusions", [...form.exclusions, ""]);
-  const rmEx = (i) => set("exclusions", form.exclusions.filter((_, x) => x !== i));
+  const setEx = (i, v) => { const ex = [...(form.exclusions || [])]; ex[i] = v; set("exclusions", ex); };
+  const addEx = () => set("exclusions", [...(form.exclusions || []), ""]);
+  const rmEx = (i) => set("exclusions", (form.exclusions || []).filter((_, x) => x !== i));
 
   const markup = Number(form.change_order_markup || 0);
   const scheduleTotal = form.payment_schedule.reduce((s, m) => s + Number(m.amount || 0), 0);
@@ -144,7 +165,7 @@ export default function ContractDetail() {
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button data-testid="send-esign-btn" onClick={() => sendForSignature.mutate()} disabled={sendForSignature.isPending} variant="outline" className="gap-1.5 bg-white border-[#C9A227] text-[#8a6f17] hover:bg-[#C9A227]/10"><Mail size={16} /> {sendForSignature.isPending ? "Sending…" : "Send for e-signature"}</Button>
           <Button data-testid="send-countersign-btn" onClick={() => sendCountersign.mutate()} disabled={sendCountersign.isPending} variant="outline" className="gap-1.5 bg-white"><PenLine size={16} /> {sendCountersign.isPending ? "Sending…" : "Countersign"}</Button>
-          <Button data-testid="contract-pdf-btn" onClick={downloadPdf} variant="outline" className="gap-1.5 bg-white"><Download size={16} /> Download PDF</Button>
+          <Button data-testid="contract-pdf-btn" onClick={downloadPdf} disabled={pdfBusy} variant="outline" className="gap-1.5 bg-white"><Download size={16} /> {pdfBusy ? "Preparing…" : "Download PDF"}</Button>
           <Button data-testid="save-contract-btn" onClick={doSave} disabled={save.isPending} className="gap-1.5 bg-[#0A4D68] hover:bg-[#083D53]"><Save size={16} /> {save.isPending ? "Saving…" : "Save"}</Button>
         </div>
       </div>
@@ -250,11 +271,17 @@ export default function ContractDetail() {
         </div>
       </SectionCard>
 
-      {/* 5. Exclusions */}
-      <SectionCard n="5" title="Exclusions">
+      {/* 5. General Terms */}
+      <SectionCard n="5" title="General Terms">
+        <p className="text-sm text-[#4B6370] mb-3">Standard contractor language for this job. Starts from Company Profile — edit it here if this contract needs different wording.</p>
+        <Textarea data-testid="contract-terms-field" rows={10} value={form.terms || ""} onChange={(e) => set("terms", e.target.value)} />
+      </SectionCard>
+
+      {/* 6. Exclusions */}
+      <SectionCard n="6" title="Exclusions">
         <p className="text-sm text-[#4B6370] mb-3">These items are <strong>not</strong> included unless added in writing.</p>
         <div className="space-y-2">
-          {form.exclusions.map((x, i) => (
+          {(form.exclusions || []).map((x, i) => (
             <div key={i} className="flex gap-2 items-start" data-testid={`exclusion-${i}`}>
               <span className="mt-3 h-1.5 w-1.5 rounded-full bg-[#C9A227] shrink-0" />
               <Textarea rows={1} className="min-h-[42px]" value={x} onChange={(e) => setEx(i, e.target.value)} />
@@ -265,29 +292,19 @@ export default function ContractDetail() {
         <button onClick={addEx} data-testid="add-exclusion-btn" className="mt-3 text-xs font-medium text-[#0A4D68] hover:underline flex items-center gap-1"><Plus size={13} /> Add exclusion</button>
       </SectionCard>
 
-      {/* 6. Change Orders */}
-      <SectionCard n="6" title="Change Orders">
-        <ul className="space-y-2 text-sm text-[#061A23]">
-          {[
-            "Any change to the scope of work, price, or timeline must be put in writing.",
-            "Both parties must sign the change order before the additional work begins.",
-            "Verbal agreements are not binding.",
-            "Each change order will state the description of the change, the price adjustment, and any effect on the schedule.",
-          ].map((t, i) => (
-            <li key={i} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />{t}</li>
-          ))}
-          <li className="flex gap-2 items-center flex-wrap">
-            <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />
-            Change order work will be priced with a standard markup of
-            <Input type="number" step="any" data-testid="markup-input" className="w-20 h-8 mx-1 inline-block" value={form.change_order_markup} onChange={(e) => set("change_order_markup", e.target.value)} />
-            % over cost.
-          </li>
-        </ul>
-        <p className="text-xs text-[#4B6370] mt-3">Current markup: <strong>{markup}%</strong></p>
+      {/* 7. Change Orders */}
+      <SectionCard n="7" title="Change Orders">
+        <p className="text-sm text-[#4B6370] mb-3">Written change-order requirements and costs. Use {"{markup}"} where the percentage should print.</p>
+        <Textarea data-testid="change-order-terms-field" rows={8} value={form.change_order_terms || ""} onChange={(e) => set("change_order_terms", e.target.value)} />
+        <div className="flex flex-wrap items-center gap-2 mt-4">
+          <Label className="text-sm">Change-order markup</Label>
+          <Input type="number" step="any" data-testid="markup-input" className="w-24 h-9" value={form.change_order_markup} onChange={(e) => set("change_order_markup", e.target.value)} />
+          <span className="text-sm text-[#4B6370]">% over cost (currently <strong>{markup}%</strong>)</span>
+        </div>
       </SectionCard>
 
-      {/* 7. Signatures */}
-      <SectionCard n="7" title="Signatures">
+      {/* 8. Signatures */}
+      <SectionCard n="8" title="Signatures">
         <p className="text-sm text-[#4B6370] mb-4">Sign directly on the screen — works great on phones and tablets.</p>
         <div className="grid md:grid-cols-2 gap-8">
           <div>
@@ -304,8 +321,8 @@ export default function ContractDetail() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t border-slate-200">
-          <Button data-testid="save-signatures-btn" onClick={doSave} disabled={save.isPending} variant="outline" className="gap-1.5"><Save size={16} /> Save signatures</Button>
-          <Button data-testid="mark-signed-btn" onClick={markSigned} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"><CheckCircle2 size={16} /> Mark as Signed</Button>
+          <Button data-testid="save-signatures-btn" onClick={doSave} disabled={save.isPending} variant="outline" className="gap-1.5"><Save size={16} /> {save.isPending ? "Saving…" : "Save signatures"}</Button>
+          <Button data-testid="mark-signed-btn" onClick={markSigned} disabled={save.isPending} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"><CheckCircle2 size={16} /> {save.isPending ? "Saving…" : "Mark as Signed"}</Button>
         </div>
       </SectionCard>
     </div>
