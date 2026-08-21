@@ -187,7 +187,7 @@ export default function FieldHome() {
       ) : null}
 
       {can(user, "time_clock") ? (
-        <div className="rounded-3xl bg-[#0A4D68] border border-white/10 p-5 shadow-lg" data-testid="field-today-clock">
+        <div className="rounded-3xl bg-[#0B3A8F] border border-white/10 p-5 shadow-lg" data-testid="field-today-clock">
           <div className="text-[11px] uppercase tracking-wide text-[#C9A227]">{open ? "On the clock" : "Not on the clock"}</div>
           <div className="mt-1 font-['Outfit'] font-semibold text-2xl">{open?.job_name || todayJob?.name || "Pick a job"}</div>
           {!open && jobs.length > 1 ? (

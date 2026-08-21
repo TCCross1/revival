@@ -40,7 +40,7 @@ export default function ClientDetail() {
 
   return (
     <div className="space-y-6" data-testid="client-detail-page">
-      <button onClick={() => navigate("/clients")} className="flex items-center gap-1.5 text-sm font-medium text-[#0A4D68] hover:underline" data-testid="back-to-clients-btn">
+      <button onClick={() => navigate("/clients")} className="flex items-center gap-1.5 text-sm font-medium text-[#0B3A8F] hover:underline" data-testid="back-to-clients-btn">
         <ArrowLeft size={16} /> Back to Clients
       </button>
 
@@ -48,7 +48,7 @@ export default function ClientDetail() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-4">
-            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#0A4D68]/10 text-[#0A4D68] shrink-0">
+            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#0B3A8F]/10 text-[#0B3A8F] shrink-0">
               <UserIcon size={26} />
             </span>
             <div>
@@ -56,7 +56,7 @@ export default function ClientDetail() {
                 <h1 className="text-3xl font-semibold font-['Outfit'] tracking-tight">{client.name}</h1>
                 <StatusBadge status={client.status} />
               </div>
-              <div className="text-sm text-[#4B6370] mt-1">Lead source: <span className="text-[#0A4D68] font-medium">{client.source}</span></div>
+              <div className="text-sm text-[#4B6370] mt-1">Lead source: <span className="text-[#0B3A8F] font-medium">{client.source}</span></div>
               <div className="flex flex-wrap gap-4 mt-3 text-sm text-[#4B6370]">
                 {client.phone && <span className="flex items-center gap-1"><Phone size={14} />{formatPhone(client.phone)}</span>}
                 {client.email && <span className="flex items-center gap-1"><Mail size={14} />{client.email}</span>}
@@ -64,7 +64,7 @@ export default function ClientDetail() {
               </div>
             </div>
           </div>
-          <button type="button" className="inline-flex items-center gap-2 rounded-md bg-[#0A4D68] hover:bg-[#083D53] text-white px-3 py-2 text-sm font-medium" onClick={() => navigate(`/floor-plans/new`)}>
+          <button type="button" className="inline-flex items-center gap-2 rounded-md bg-[#0B3A8F] hover:bg-[#082C73] text-white px-3 py-2 text-sm font-medium" onClick={() => navigate(`/floor-plans/new`)}>
             <PenTool size={16} /> Floor plan
           </button>
         </div>
@@ -81,7 +81,7 @@ export default function ClientDetail() {
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Open Pipeline" value={usd(summary.open_pipeline)} color="text-[#0A4D68]" />
+        <Stat label="Open Pipeline" value={usd(summary.open_pipeline)} color="text-[#0B3A8F]" />
         <Stat label="Won Value" value={usd(summary.won_value)} color="text-emerald-600" />
         <Stat label="Collected" value={usd(summary.collected)} color="text-emerald-600" />
         <Stat label="Outstanding" value={usd(summary.outstanding)} color="text-amber-600" />
@@ -101,7 +101,7 @@ export default function ClientDetail() {
             <tbody>
               {estimates.map((e) => (
                 <tr key={e.id} data-testid={`detail-estimate-${e.id}`} className="border-b border-slate-100">
-                  <td className="p-3 font-medium text-[#0A4D68]">{e.estimate_number}</td>
+                  <td className="p-3 font-medium text-[#0B3A8F]">{e.estimate_number}</td>
                   <td className="p-3 text-[#4B6370]">{e.category}</td>
                   <td className="p-3"><StatusBadge status={e.status} /></td>
                   <td className="p-3 text-right font-semibold font-['Outfit']">{usd(e.total)}</td>
@@ -126,7 +126,7 @@ export default function ClientDetail() {
             <tbody>
               {jobs.map((j) => (
                 <tr key={j.id} data-testid={`detail-job-${j.id}`} className="border-b border-slate-100 cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/jobs/${j.id}/sheet`)}>
-                  <td className="p-3 font-medium text-[#0A4D68]">{j.job_number}</td>
+                  <td className="p-3 font-medium text-[#0B3A8F]">{j.job_number}</td>
                   <td className="p-3">{j.name}</td>
                   <td className="p-3"><StatusBadge status={j.status} /></td>
                   <td className="p-3 text-right font-semibold font-['Outfit']">{usd(j.budget)}</td>
@@ -151,7 +151,7 @@ export default function ClientDetail() {
             <tbody>
               {invoices.map((inv) => (
                 <tr key={inv.id} data-testid={`detail-invoice-${inv.id}`} className="border-b border-slate-100">
-                  <td className="p-3 font-medium text-[#0A4D68]">{inv.invoice_number}</td>
+                  <td className="p-3 font-medium text-[#0B3A8F]">{inv.invoice_number}</td>
                   <td className="p-3"><StatusBadge status={inv.status} /></td>
                   <td className="p-3 text-right font-semibold font-['Outfit']">{usdCents(inv.amount)}</td>
                   <td className="p-3 text-right text-emerald-600">{usdCents(inv.amount_paid)}</td>
@@ -169,7 +169,7 @@ export default function ClientDetail() {
 const Section = ({ icon: Icon, title, count, children }) => (
   <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
     <div className="flex items-center gap-2 px-6 py-4 border-b border-slate-200">
-      <Icon size={18} className="text-[#0A4D68]" />
+      <Icon size={18} className="text-[#0B3A8F]" />
       <h2 className="text-lg font-semibold font-['Outfit']">{title}</h2>
       <span className="text-xs bg-slate-100 text-[#4B6370] rounded-full px-2 py-0.5">{count}</span>
     </div>

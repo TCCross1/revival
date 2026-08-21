@@ -44,7 +44,7 @@ export default function ResetPassword() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F4F7F8] p-6 font-['Work_Sans']">
       <div className="w-full max-w-md">
-        <img src={BRAND.logo} alt="Revival Pro" className="h-16 w-auto mx-auto mb-6" />
+        <img src={BRAND.logo} alt={BRAND.name} className="h-20 w-auto mx-auto mb-6 drop-shadow-[0_8px_20px_rgba(11,58,143,0.28)]" />
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8" data-testid="reset-password-page">
           {done ? (
             <div className="text-center" data-testid="reset-success">
@@ -56,19 +56,19 @@ export default function ResetPassword() {
             <div className="text-center" data-testid="reset-no-token">
               <h2 className="text-2xl font-semibold font-['Outfit']">Invalid link</h2>
               <p className="text-[#4B6370] mt-2 mb-6">This reset link is missing or invalid. Please request a new one.</p>
-              <Link to="/forgot-password"><Button className="w-full h-11 bg-[#0A4D68] hover:bg-[#083D53]">Request a new link</Button></Link>
+              <Link to="/forgot-password"><Button className="w-full h-11 bg-[#0B3A8F] hover:bg-[#082C73]">Request a new link</Button></Link>
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 mb-1"><KeyRound className="text-[#0A4D68]" size={22} /><h2 className="text-2xl font-semibold text-[#061A23] font-['Outfit'] tracking-tight">Set a new password</h2></div>
+              <div className="flex items-center gap-2 mb-1"><KeyRound className="text-[#0B3A8F]" size={22} /><h2 className="text-2xl font-semibold text-[#061A23] font-['Outfit'] tracking-tight">Set a new password</h2></div>
               <p className="text-[#4B6370] mb-6 text-sm">Choose a new password for your account.</p>
               <form onSubmit={submit} className="space-y-4">
                 <div><Label>New password</Label><Input type="password" data-testid="reset-new" value={pw} onChange={(e) => setPw(e.target.value)} className="mt-1 h-11" /></div>
                 <div><Label>Confirm new password</Label><Input type="password" data-testid="reset-confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} className="mt-1 h-11" /></div>
                 {error && <div data-testid="reset-error" className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">{error}</div>}
-                <Button type="submit" data-testid="reset-submit-btn" disabled={submitting} className="w-full h-12 text-base bg-[#0A4D68] hover:bg-[#083D53] gap-2">{submitting ? <Loader2 className="animate-spin" size={18} /> : <KeyRound size={18} />}{submitting ? "Saving…" : "Reset Password"}</Button>
+                <Button type="submit" data-testid="reset-submit-btn" disabled={submitting} className="w-full h-12 text-base bg-[#0B3A8F] hover:bg-[#082C73] gap-2">{submitting ? <Loader2 className="animate-spin" size={18} /> : <KeyRound size={18} />}{submitting ? "Saving…" : "Reset Password"}</Button>
               </form>
-              <div className="text-center mt-4"><Link to="/login" className="text-sm font-medium text-[#0A4D68] hover:underline inline-flex items-center gap-1"><ArrowLeft size={14} /> Back to sign in</Link></div>
+              <div className="text-center mt-4"><Link to="/login" className="text-sm font-medium text-[#0B3A8F] hover:underline inline-flex items-center gap-1"><ArrowLeft size={14} /> Back to sign in</Link></div>
             </>
           )}
         </div>

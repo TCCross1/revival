@@ -82,7 +82,7 @@ function LineItemRow({ item, onRename, onDelete, saveMonth, uploading, onUpload,
               href={receipt.web_view_link}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] text-[#0A4D68] hover:bg-slate-50 max-w-[140px]"
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] text-[#0B3A8F] hover:bg-slate-50 max-w-[140px]"
               title={receipt.filename}
               data-testid={`receipt-link-${receipt.id}`}
             >
@@ -90,7 +90,7 @@ function LineItemRow({ item, onRename, onDelete, saveMonth, uploading, onUpload,
               <span className="truncate">{receipt.filename || "Receipt"}</span>
             </a>
           ))}
-          <label className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-[#0A4D68] hover:bg-[#0A4D68]/10 cursor-pointer">
+          <label className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-[#0B3A8F] hover:bg-[#0B3A8F]/10 cursor-pointer">
             <Paperclip size={13} />
             <span className="hidden sm:inline">{uploading === item.id ? "Uploading…" : "Receipt"}</span>
             <input
@@ -117,7 +117,7 @@ function LineItemRow({ item, onRename, onDelete, saveMonth, uploading, onUpload,
               <Trash2 size={13} />
             </button>
           ))}
-          <button type="button" data-testid={`edit-line-${item.id}`} onClick={() => onRename(item)} className="p-1.5 rounded-md hover:bg-slate-100 text-[#0A4D68]" title="Rename line item">
+          <button type="button" data-testid={`edit-line-${item.id}`} onClick={() => onRename(item)} className="p-1.5 rounded-md hover:bg-slate-100 text-[#0B3A8F]" title="Rename line item">
             <Pencil size={14} />
           </button>
           <button
@@ -259,7 +259,7 @@ export default function OverheadLedger({
           <select className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm" value={year} onChange={(e) => onYearChange(Number(e.target.value))} data-testid="overhead-year">
             {[currentYear(), currentYear() - 1, currentYear() - 2].map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
-          <Button data-testid="add-category-btn" onClick={onAddCategory} variant="outline" className="gap-2 border-[#0A4D68]/30 text-[#0A4D68]">
+          <Button data-testid="add-category-btn" onClick={onAddCategory} variant="outline" className="gap-2 border-[#0B3A8F]/30 text-[#0B3A8F]">
             <FolderPlus size={16} /> Add Category
           </Button>
         </div>
@@ -279,11 +279,11 @@ export default function OverheadLedger({
           </div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <div className="text-sm text-[#4B6370]">Projected this month</div>
-            <div className="mt-2 text-3xl font-semibold font-['Outfit'] text-[#0A4D68]" data-testid="month-projected-total">{usdCents(monthly.projected_total)}</div>
+            <div className="mt-2 text-3xl font-semibold font-['Outfit'] text-[#0B3A8F]" data-testid="month-projected-total">{usdCents(monthly.projected_total)}</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <div className="text-sm text-[#4B6370]">Actual this month</div>
-            <div className="mt-2 text-3xl font-semibold font-['Outfit'] text-[#0A4D68]" data-testid="month-overhead-total">{usdCents(monthly.actual_total ?? monthly.total)}</div>
+            <div className="mt-2 text-3xl font-semibold font-['Outfit'] text-[#0B3A8F]" data-testid="month-overhead-total">{usdCents(monthly.actual_total ?? monthly.total)}</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <div className="text-sm text-[#4B6370]">Difference</div>
@@ -304,11 +304,11 @@ export default function OverheadLedger({
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="overhead-ytd-cards">
           <div>
             <div className="text-xs uppercase tracking-wide text-[#4B6370]">Year projected</div>
-            <div className="mt-1 text-xl font-semibold font-['Outfit'] text-[#0A4D68]" data-testid="ytd-projected">{usdCents(monthly.ytd_projected)}</div>
+            <div className="mt-1 text-xl font-semibold font-['Outfit'] text-[#0B3A8F]" data-testid="ytd-projected">{usdCents(monthly.ytd_projected)}</div>
           </div>
           <div>
             <div className="text-xs uppercase tracking-wide text-[#4B6370]">Year actual</div>
-            <div className="mt-1 text-xl font-semibold font-['Outfit'] text-[#0A4D68]" data-testid="ytd-actual">{usdCents(monthly.ytd_actual)}</div>
+            <div className="mt-1 text-xl font-semibold font-['Outfit'] text-[#0B3A8F]" data-testid="ytd-actual">{usdCents(monthly.ytd_actual)}</div>
           </div>
           <div>
             <div className="text-xs uppercase tracking-wide text-[#4B6370]">Year difference</div>
@@ -327,7 +327,7 @@ export default function OverheadLedger({
       <div className="space-y-4">
         {categories.map((cat) => (
           <div key={cat.id} data-testid={`overhead-category-${cat.id}`} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-[#0A4D68]">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-[#0B3A8F]">
               <div>
                 <h3 className="text-white font-['Outfit'] font-semibold">{cat.name}</h3>
                 <div className="text-xs text-white/70">
@@ -396,7 +396,7 @@ export default function OverheadLedger({
                         <td className="px-4 py-3 text-right text-red-600 font-semibold font-['Outfit']">{usdCents(exp.amount)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            <button data-testid={`edit-expense-${exp.id}`} onClick={() => onEditExpense(exp)} className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]">
+                            <button data-testid={`edit-expense-${exp.id}`} onClick={() => onEditExpense(exp)} className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]">
                               <Pencil size={14} />
                             </button>
                             <button
@@ -430,7 +430,7 @@ export default function OverheadLedger({
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setLineOpen(false)} disabled={saveLine.isPending}>Cancel</Button>
-              <Button data-testid="save-line-item-btn" type="submit" disabled={saveLine.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+              <Button data-testid="save-line-item-btn" type="submit" disabled={saveLine.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                 {saveLine.isPending ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>

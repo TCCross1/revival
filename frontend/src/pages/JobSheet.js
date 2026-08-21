@@ -8,6 +8,7 @@ import StatusBadge from "@/components/StatusBadge";
 import ClientDriveCard from "@/components/ClientDriveCard";
 import JobFieldOps from "@/components/JobFieldOps";
 import PricingBreakdown from "@/components/PricingBreakdown";
+import JobFundsCard from "@/components/JobFundsCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,9 +21,10 @@ import {
 } from "@/components/ui/select";
 import {
   ArrowLeft, Download, FolderOpen, Hammer, HardHat, MoreHorizontal,
-  Plus, Save, Trash2, Truck, Users, PenTool, FileText,
+  Plus, Save, Trash2, Truck, Users, PenTool, FileText, ScanLine,
 } from "lucide-react";
 import { toast } from "sonner";
+import { scanKitchenPath } from "@/lib/floorPlan/roomplan";
 
 const TOTAL_CARDS = [
   { key: "budget", title: "Budget", hint: "What you planned to spend", editable: true, accent: "gold" },
@@ -216,10 +218,11 @@ export default function JobSheet({ embedded = false }) {
 
   return (
     <div className={`space-y-5 ${embedded ? "pb-8" : "pb-28 sm:pb-8"}`} data-testid="job-sheet-page">
+      <JobFundsCard jobId={id} />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           {embedded ? null : (
-            <button onClick={() => navigate("/jobs")} className="flex items-center gap-1.5 text-sm font-medium text-[#0A4D68] hover:underline" data-testid="back-to-jobs-btn">
+            <button onClick={() => navigate("/jobs")} className="flex items-center gap-1.5 text-sm font-medium text-[#0B3A8F] hover:underline" data-testid="back-to-jobs-btn">
               <ArrowLeft size={16} /> Back to Jobs
             </button>
           )}
@@ -229,7 +232,7 @@ export default function JobSheet({ embedded = false }) {
                 Job Financial Sheet
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[#4B6370]">
-                <span className="font-medium text-[#0A4D68]">{job?.job_number}</span>
+                <span className="font-medium text-[#0B3A8F]">{job?.job_number}</span>
                 <span className="hidden sm:inline">·</span>
                 <span className="truncate max-w-[220px] sm:max-w-none">{job?.name}</span>
                 <StatusBadge status={job?.status} />
@@ -240,13 +243,16 @@ export default function JobSheet({ embedded = false }) {
         <div className="hidden sm:flex flex-wrap gap-2 shrink-0">
           {embedded ? null : (
             <>
-          <Button type="button" variant="outline" className="gap-2 border-[#0A4D68]/25 text-[#0A4D68]" onClick={() => navigate(`/floor-plans/new?job=${id}`)} data-testid="job-sheet-floorplan-btn">
+          <Button type="button" className="gap-2 bg-[#C9A227] hover:bg-[#B8911F] text-[#061A23]" onClick={() => navigate(scanKitchenPath(id, jobPlans))} data-testid="job-sheet-scan-kitchen">
+            <ScanLine size={16} /> Scan Kitchen
+          </Button>
+          <Button type="button" variant="outline" className="gap-2 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={() => navigate(`/floor-plans/new?job=${id}`)} data-testid="job-sheet-floorplan-btn">
             <PenTool size={16} /> Floor plan
           </Button>
           <Button
             type="button"
             variant="outline"
-            className="gap-2 border-[#0A4D68]/25 text-[#0A4D68]"
+            className="gap-2 border-[#0B3A8F]/25 text-[#0B3A8F]"
             data-testid="job-sheet-permit-btn"
             onClick={() => {
               const plan = Array.isArray(jobPlans) ? jobPlans[0] : null;
@@ -261,24 +267,24 @@ export default function JobSheet({ embedded = false }) {
           </Button>
             </>
           )}
-          <Button type="button" variant="outline" className="gap-2 border-[#0A4D68]/25 text-[#0A4D68]" onClick={downloadPdf} data-testid="job-sheet-pdf-btn">
+          <Button type="button" variant="outline" className="gap-2 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={downloadPdf} data-testid="job-sheet-pdf-btn">
             <Download size={16} /> PDF
           </Button>
-          <Button type="button" variant="outline" className="gap-2 border-[#0A4D68]/25 text-[#0A4D68]" onClick={downloadReceipts} data-testid="job-sheet-receipts-btn">
+          <Button type="button" variant="outline" className="gap-2 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={downloadReceipts} data-testid="job-sheet-receipts-btn">
             <Download size={16} /> Receipts
           </Button>
-          <Button type="button" variant="outline" className="gap-2 border-[#0A4D68]/25 text-[#0A4D68]" onClick={openDrive} disabled={driveBusy} data-testid="job-sheet-drive-btn">
+          <Button type="button" variant="outline" className="gap-2 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={openDrive} disabled={driveBusy} data-testid="job-sheet-drive-btn">
             <FolderOpen size={16} /> {driveBusy ? "Opening…" : (data?.drive?.has_folder ? "Open Drive" : "Drive")}
           </Button>
-          <Button type="submit" form="job-sheet-form" disabled={save.isPending} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2" data-testid="save-job-sheet-btn">
+          <Button type="submit" form="job-sheet-form" disabled={save.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2" data-testid="save-job-sheet-btn">
             <Save size={16} /> {save.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
       </div>
 
       <form id="job-sheet-form" onSubmit={onSave} className="space-y-5">
-        <section className="rounded-2xl border border-[#0A4D68]/20 bg-white shadow-sm overflow-hidden">
-          <div className="px-4 sm:px-5 py-2.5 bg-gradient-to-r from-[#0A4D68] to-[#083D53]">
+        <section className="rounded-2xl border border-[#0B3A8F]/20 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 sm:px-5 py-2.5 bg-gradient-to-r from-[#0B3A8F] to-[#082C73]">
             <h2 className="text-white font-['Outfit'] font-semibold text-sm tracking-wide">Client</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
@@ -312,17 +318,17 @@ export default function JobSheet({ embedded = false }) {
               <div
                 key={card.key}
                 data-testid={`sheet-total-${card.key}`}
-                className={`rounded-2xl overflow-hidden border shadow-sm bg-white ${gold ? "border-[#C9A227]/45" : "border-[#0A4D68]/25"}`}
+                className={`rounded-2xl overflow-hidden border shadow-sm bg-white ${gold ? "border-[#C9A227]/45" : "border-[#0B3A8F]/25"}`}
               >
-                <div className={`h-1.5 ${gold ? "bg-[#C9A227]" : "bg-[#0A4D68]"}`} />
+                <div className={`h-1.5 ${gold ? "bg-[#C9A227]" : "bg-[#0B3A8F]"}`} />
                 <div className="p-3.5 sm:p-5">
-                  <div className={`text-[11px] sm:text-xs font-semibold uppercase tracking-[0.14em] ${gold ? "text-[#C9A227]" : "text-[#0A4D68]"}`}>
+                  <div className={`text-[11px] sm:text-xs font-semibold uppercase tracking-[0.14em] ${gold ? "text-[#C9A227]" : "text-[#0B3A8F]"}`}>
                     {card.title}
                   </div>
                   <div className="text-[11px] text-[#8AA0AB] mt-0.5 hidden sm:block">{card.hint}</div>
                   {card.editable ? (
                     <Input
-                      className="mt-3 h-12 sm:h-14 font-['Outfit'] text-xl sm:text-3xl font-semibold text-[#0A4D68] border-[#C9A227]/50 bg-[#FBF6E8] px-3"
+                      className="mt-3 h-12 sm:h-14 font-['Outfit'] text-xl sm:text-3xl font-semibold text-[#0B3A8F] border-[#C9A227]/50 bg-[#FBF6E8] px-3"
                       type="number"
                       step="any"
                       min="0"
@@ -331,7 +337,7 @@ export default function JobSheet({ embedded = false }) {
                       onChange={(e) => setForm({ ...form, budget: e.target.value })}
                     />
                   ) : (
-                    <div className={`mt-3 font-['Outfit'] text-[1.55rem] sm:text-3xl font-semibold leading-none tracking-tight ${over ? "text-red-600" : gold ? "text-[#8A7018]" : "text-[#0A4D68]"}`}>
+                    <div className={`mt-3 font-['Outfit'] text-[1.55rem] sm:text-3xl font-semibold leading-none tracking-tight ${over ? "text-red-600" : gold ? "text-[#8A7018]" : "text-[#0B3A8F]"}`}>
                       {usdCents(value)}
                     </div>
                   )}
@@ -342,7 +348,7 @@ export default function JobSheet({ embedded = false }) {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-          <div className="px-4 sm:px-5 py-3 bg-[#0A4D68] flex items-center justify-between gap-3">
+          <div className="px-4 sm:px-5 py-3 bg-[#0B3A8F] flex items-center justify-between gap-3">
             <h2 className="text-white font-['Outfit'] font-semibold text-sm sm:text-base">Gross profit</h2>
             <span className="text-[#C9A227] text-sm font-semibold whitespace-nowrap">GP {totals?.gp_pct ?? 0}%</span>
           </div>
@@ -364,7 +370,7 @@ export default function JobSheet({ embedded = false }) {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm" data-testid="sheet-overhead-allocation">
-          <div className="px-4 sm:px-5 py-3 bg-[#0A4D68] flex items-center justify-between gap-3">
+          <div className="px-4 sm:px-5 py-3 bg-[#0B3A8F] flex items-center justify-between gap-3">
             <h2 className="text-white font-['Outfit'] font-semibold text-sm sm:text-base">Job overhead</h2>
             {data?.overhead_month?.month_label ? (
               <span className="text-white/80 text-xs">{data.overhead_month.month_label} · {data.overhead_month.days_in_month} days</span>
@@ -377,7 +383,7 @@ export default function JobSheet({ embedded = false }) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="rounded-xl border border-slate-200 bg-[#F4F7F8] p-4">
                 <div className="text-[11px] uppercase tracking-wide text-[#4B6370]">Direct job costs</div>
-                <div className="mt-1 text-2xl font-semibold font-['Outfit'] text-[#0A4D68]" data-testid="sheet-direct-costs">{usdCents(livePricing?.direct_costs)}</div>
+                <div className="mt-1 text-2xl font-semibold font-['Outfit'] text-[#0B3A8F]" data-testid="sheet-direct-costs">{usdCents(livePricing?.direct_costs)}</div>
                 <div className="text-xs text-[#8AA0AB] mt-1">Materials + labor + subs + other</div>
               </div>
               <div className="rounded-xl border border-slate-200 bg-[#F4F7F8] p-4">
@@ -389,7 +395,7 @@ export default function JobSheet({ embedded = false }) {
               </div>
               <div className="rounded-xl border border-[#C9A227]/40 bg-[#FBF6E8] p-4">
                 <div className="text-[11px] uppercase tracking-wide text-[#8A7018]">True job cost</div>
-                <div className="mt-1 text-2xl font-semibold font-['Outfit'] text-[#0A4D68]" data-testid="sheet-true-job-cost">{usdCents(livePricing?.true_job_cost)}</div>
+                <div className="mt-1 text-2xl font-semibold font-['Outfit'] text-[#0B3A8F]" data-testid="sheet-true-job-cost">{usdCents(livePricing?.true_job_cost)}</div>
                 <div className="text-xs text-[#8AA0AB] mt-1">Direct + allocated overhead</div>
               </div>
             </div>
@@ -397,7 +403,7 @@ export default function JobSheet({ embedded = false }) {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm" data-testid="sheet-pricing">
-          <div className="px-4 sm:px-5 py-3 bg-[#0A4D68] flex items-center justify-between gap-3">
+          <div className="px-4 sm:px-5 py-3 bg-[#0B3A8F] flex items-center justify-between gap-3">
             <h2 className="text-white font-['Outfit'] font-semibold text-sm sm:text-base">Suggested price</h2>
             {data?.overhead_month?.month_label ? (
               <span className="text-white/80 text-xs">{data.overhead_month.month_label} · {data.overhead_month.days_in_month} days</span>
@@ -415,7 +421,7 @@ export default function JobSheet({ embedded = false }) {
               <Button
                 type="button"
                 variant="outline"
-                className="border-[#0A4D68]/30 text-[#0A4D68]"
+                className="border-[#0B3A8F]/30 text-[#0B3A8F]"
                 data-testid="sheet-use-price-btn"
                 onClick={() => setForm({ ...form, income: livePricing.final_price, budget: livePricing.final_price })}
               >
@@ -435,7 +441,7 @@ export default function JobSheet({ embedded = false }) {
             const over = budget > 0 && actual > budget;
             return (
               <section key={cat.name} className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden" data-testid={`sheet-cat-${cat.name}`}>
-                <div className="px-4 sm:px-5 py-3.5 bg-gradient-to-r from-[#0A4D68] to-[#083D53] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="px-4 sm:px-5 py-3.5 bg-gradient-to-r from-[#0B3A8F] to-[#082C73] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#C9A227] text-[#061A23] shrink-0">
                       <Icon size={16} />
@@ -499,9 +505,9 @@ export default function JobSheet({ embedded = false }) {
                         <div key={exp.id} className="flex sm:grid sm:grid-cols-[1fr_110px_100px_40px] items-center gap-2 px-3 py-2.5 border-t border-slate-100 first:border-t-0 sm:first:border-t">
                           <div className="min-w-0 font-medium text-sm truncate">
                             {exp.description || "No description"}
-                            {exp.receipt_url ? <a href={exp.receipt_url} target="_blank" rel="noreferrer" className="ml-2 text-[11px] text-[#0A4D68] underline">Receipt</a> : null}
+                            {exp.receipt_url ? <a href={exp.receipt_url} target="_blank" rel="noreferrer" className="ml-2 text-[11px] text-[#0B3A8F] underline">Receipt</a> : null}
                           </div>
-                          <span className={`inline-flex w-fit text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 ${exp.kind === "committed" ? "bg-amber-100 text-amber-800" : "bg-[#0A4D68]/10 text-[#0A4D68]"}`}>
+                          <span className={`inline-flex w-fit text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 ${exp.kind === "committed" ? "bg-amber-100 text-amber-800" : "bg-[#0B3A8F]/10 text-[#0B3A8F]"}`}>
                             {exp.kind === "committed" ? "Committed" : "Actual"}
                           </span>
                           <span className="font-['Outfit'] font-semibold text-sm sm:text-right ml-auto sm:ml-0">{usdCents(exp.amount)}</span>
@@ -517,7 +523,7 @@ export default function JobSheet({ embedded = false }) {
                     type="button"
                     variant="outline"
                     onClick={() => openExpense(cat.name)}
-                    className="w-full h-11 border-dashed border-[#0A4D68]/40 text-[#0A4D68] hover:bg-[#0A4D68]/5 hover:text-[#0A4D68] gap-2"
+                    className="w-full h-11 border-dashed border-[#0B3A8F]/40 text-[#0B3A8F] hover:bg-[#0B3A8F]/5 hover:text-[#0B3A8F] gap-2"
                     data-testid={cat.name === "Materials" ? "sheet-add-expense-btn" : `sheet-add-${cat.name}`}
                   >
                     <Plus size={16} /> Add a {cat.name.toLowerCase()} cost
@@ -529,7 +535,7 @@ export default function JobSheet({ embedded = false }) {
         </div>
 
         <section className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-          <div className="px-4 sm:px-5 py-3 bg-[#0A4D68]">
+          <div className="px-4 sm:px-5 py-3 bg-[#0B3A8F]">
             <h2 className="text-white font-['Outfit'] font-semibold text-sm sm:text-base">Notes</h2>
           </div>
           <div className="p-4 sm:p-5">
@@ -552,9 +558,9 @@ export default function JobSheet({ embedded = false }) {
       )}
 
       <div className={`sm:hidden ${embedded ? "static" : "fixed bottom-0 inset-x-0 z-20"} border-t border-slate-200 bg-white/95 backdrop-blur px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-2`}>
-        <Button type="button" variant="outline" className="flex-1 border-[#0A4D68]/25 text-[#0A4D68]" onClick={downloadPdf}>PDF</Button>
-        <Button type="button" variant="outline" className="flex-1 border-[#0A4D68]/25 text-[#0A4D68]" onClick={openDrive} disabled={driveBusy}>Drive</Button>
-        <Button type="submit" form="job-sheet-form" disabled={save.isPending} className="flex-[2] bg-[#0A4D68] hover:bg-[#083D53] gap-2">
+        <Button type="button" variant="outline" className="flex-1 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={downloadPdf}>PDF</Button>
+        <Button type="button" variant="outline" className="flex-1 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={openDrive} disabled={driveBusy}>Drive</Button>
+        <Button type="submit" form="job-sheet-form" disabled={save.isPending} className="flex-[2] bg-[#0B3A8F] hover:bg-[#082C73] gap-2">
           <Save size={16} /> {save.isPending ? "Saving…" : "Save sheet"}
         </Button>
       </div>
@@ -596,7 +602,7 @@ export default function JobSheet({ embedded = false }) {
             </div>
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => setExpOpen(false)} disabled={addExpense.isPending}>Cancel</Button>
-              <Button type="submit" disabled={addExpense.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]" data-testid="sheet-save-expense-btn">
+              <Button type="submit" disabled={addExpense.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]" data-testid="sheet-save-expense-btn">
                 {addExpense.isPending ? "Saving…" : "Add cost"}
               </Button>
             </DialogFooter>
@@ -610,7 +616,7 @@ export default function JobSheet({ embedded = false }) {
 function SheetCell({ label, value, onChange, testid, placeholder }) {
   return (
     <label className="block px-4 py-3 min-w-0">
-      <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0A4D68]">{label}</span>
+      <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0B3A8F]">{label}</span>
       <Input
         className="mt-1 h-10 border-0 px-0 rounded-none focus-visible:ring-0 text-[#061A23] font-medium placeholder:text-slate-300"
         data-testid={testid}

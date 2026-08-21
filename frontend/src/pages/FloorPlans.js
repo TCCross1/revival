@@ -31,7 +31,7 @@ export default function FloorPlans() {
           <h1 className="text-3xl sm:text-4xl font-semibold font-['Outfit'] tracking-tight">Floor Plan Studio</h1>
           <p className="text-[#4B6370] mt-1">Draft, scan, and take off every remodel — linked to the job and saved to the client’s Drive folder.</p>
         </div>
-        <Button className="bg-[#0A4D68] hover:bg-[#083D53] gap-2" onClick={() => navigate("/floor-plans/new")} data-testid="new-floorplan-btn">
+        <Button className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2" onClick={() => navigate("/floor-plans/new")} data-testid="new-floorplan-btn">
           <Plus size={18} /> New floor plan
         </Button>
       </div>

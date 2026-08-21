@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 const Block = ({ title, children }) => (
   <div className="border-b border-slate-100 py-5">
-    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-2">{title}</h3>
+    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-2">{title}</h3>
     {children}
   </div>
 );
@@ -54,7 +54,7 @@ export default function PublicSign() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0A4D68]">
+      <div className="min-h-screen flex items-center justify-center bg-[#0B3A8F]">
         <Loader2 className="animate-spin text-white" size={32} />
       </div>
     );
@@ -62,18 +62,18 @@ export default function PublicSign() {
   if (isError || !c) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#F4F7F8] p-6 text-center font-['Work_Sans']">
-        <img src={BRAND.logo} alt="Revival Pro" className="h-16 mb-6" />
+        <img src={BRAND.logo} alt={BRAND.name} className="h-16 mb-6" />
         <h1 className="text-2xl font-semibold font-['Outfit'] text-[#061A23]">Link not found</h1>
-        <p className="text-[#4B6370] mt-2">This signing link is invalid or has expired. Please contact Revival Pro.</p>
+        <p className="text-[#4B6370] mt-2">This signing link is invalid or has expired. Please contact Revival Home Remodeling.</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#F4F7F8] font-['Work_Sans'] pb-16">
-      <div className="bg-[#0A4D68] text-white">
+      <div className="bg-[#0B3A8F] text-white">
         <div className="max-w-3xl mx-auto px-5 py-5 flex items-center gap-3">
-          <img src={BRAND.logo} alt="Revival Pro" className="h-11 w-auto bg-white/95 rounded-lg p-1.5" />
+          <img src={BRAND.logo} alt={BRAND.name} className="h-11 w-11 rounded-full ring-2 ring-[#C9A227]/70 object-cover" />
           <div>
             <div className="font-['Outfit'] font-semibold text-lg leading-tight">Construction Contract</div>
             <div className="text-white/70 text-sm">{c.contract_number}</div>
@@ -86,7 +86,7 @@ export default function PublicSign() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 mt-8 text-center" data-testid="sign-success">
             <div className="flex justify-center mb-4"><span className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><CheckCircle2 size={34} /></span></div>
             <h1 className="text-2xl font-semibold font-['Outfit']">Thank you, it's signed!</h1>
-            <p className="text-[#4B6370] mt-2">Your signature has been received for contract {c.contract_number}. Revival Pro has been notified and will be in touch about next steps.</p>
+            <p className="text-[#4B6370] mt-2">Your signature has been received for contract {c.contract_number}. Revival Home Remodeling has been notified and will be in touch about next steps.</p>
           </div>
         ) : (
           <>
@@ -126,9 +126,9 @@ export default function PublicSign() {
               </Block>
 
               <Block title="4. Contract Price & Payment Terms">
-                <div className="flex justify-between items-center bg-[#0A4D68]/5 rounded-lg px-4 py-2.5 mb-3">
+                <div className="flex justify-between items-center bg-[#0B3A8F]/5 rounded-lg px-4 py-2.5 mb-3">
                   <span className="text-sm text-[#4B6370]">Total Contract Price</span>
-                  <span className="text-xl font-semibold font-['Outfit'] text-[#0A4D68]">{usdCents(c.total)}</span>
+                  <span className="text-xl font-semibold font-['Outfit'] text-[#0B3A8F]">{usdCents(c.total)}</span>
                 </div>
                 <div className="space-y-1.5">
                   {c.payment_schedule.map((m, i) => (
@@ -156,15 +156,15 @@ export default function PublicSign() {
                 {c.change_order_terms ? (
                   <ul className="space-y-1.5 text-sm">
                     {fillMarkup(c.change_order_terms, c.change_order_markup).split("\n").map((line) => line.trim()).filter(Boolean).map((line, i) => (
-                      <li key={i} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />{line}</li>
+                      <li key={i} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0B3A8F] shrink-0" />{line}</li>
                     ))}
                   </ul>
                 ) : (
                   <ul className="space-y-1.5 text-sm">
-                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Any change to the scope, price, or timeline must be put in writing.</li>
-                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Both parties must sign the change order before extra work begins.</li>
-                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Verbal agreements are not binding.</li>
-                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0A4D68] shrink-0" />Change order work is priced with a standard markup of {c.change_order_markup}% over cost.</li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0B3A8F] shrink-0" />Any change to the scope, price, or timeline must be put in writing.</li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0B3A8F] shrink-0" />Both parties must sign the change order before extra work begins.</li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0B3A8F] shrink-0" />Verbal agreements are not binding.</li>
+                    <li className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0B3A8F] shrink-0" />Change order work is priced with a standard markup of {c.change_order_markup}% over cost.</li>
                   </ul>
                 )}
               </Block>
@@ -185,7 +185,7 @@ export default function PublicSign() {
                 {sign.isPending ? "Submitting…" : "Sign & Submit"}
               </Button>
               <p className="text-xs text-[#8AA0AB] text-center mt-4 flex items-center justify-center gap-1">
-                <ShieldCheck size={13} /> Secure signing by Revival Pro
+                <ShieldCheck size={13} /> Secure signing by Revival Home Remodeling
               </p>
             </div>
           </>

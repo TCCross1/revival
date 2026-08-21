@@ -44,7 +44,7 @@ export default function Permissions() {
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-sm min-w-[640px]">
           <thead>
-            <tr className="bg-[#0A4D68] text-white">
+            <tr className="bg-[#0B3A8F] text-white">
               <th className="p-3 text-left font-medium">Feature</th>
               {ROLE_ORDER.map((role) => (
                 <th key={role} className="p-3 text-center font-medium">{data.role_labels[role]}</th>
@@ -54,7 +54,7 @@ export default function Permissions() {
           <tbody>
             {groups.map((group) => (
               <Fragment key={group}>
-                <tr className="bg-[#F4F7F8]"><td colSpan={4} className="px-3 py-2 text-xs font-semibold uppercase text-[#0A4D68]">{group}</td></tr>
+                <tr className="bg-[#F4F7F8]"><td colSpan={4} className="px-3 py-2 text-xs font-semibold uppercase text-[#0B3A8F]">{group}</td></tr>
                 {data.features.filter((f) => f.group === group).map((feature) => (
                   <tr key={feature.id} className="border-t border-slate-100">
                     <td className="p-3">{feature.name}</td>
@@ -79,11 +79,11 @@ export default function Permissions() {
         </table>
       </div>
       <div className="rounded-2xl border border-slate-200 bg-white p-4 max-w-sm">
-        <div className="text-xs font-semibold uppercase text-[#0A4D68]">Mileage rate (tax)</div>
+        <div className="text-xs font-semibold uppercase text-[#0B3A8F]">Mileage rate (tax)</div>
         <Input className="mt-2 h-11" type="number" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} />
         <p className="text-xs text-[#8AA0AB] mt-1">Used on the year-end mileage report. Confirm with your tax pro.</p>
       </div>
-      <Button type="button" className="h-11 bg-[#0A4D68]" disabled={save.isPending} onClick={() => save.mutate()} data-testid="save-permissions">
+      <Button type="button" className="h-11 bg-[#0B3A8F]" disabled={save.isPending} onClick={() => save.mutate()} data-testid="save-permissions">
         {save.isPending ? "Saving…" : "Save permissions"}
       </Button>
     </div>

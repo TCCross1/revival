@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Work+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800;900&family=Outfit:wght@300;400;500;600;700&family=Work+Sans:wght@400;500;600&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -16,25 +16,25 @@ code {
 
 @layer base {
     :root {
-        --background: 200 30% 96%;
-        --foreground: 199 70% 8%;
+        --background: 220 28% 96%;
+        --foreground: 222 70% 8%;
         --card: 0 0% 100%;
-        --card-foreground: 199 70% 8%;
+        --card-foreground: 222 70% 8%;
         --popover: 0 0% 100%;
-        --popover-foreground: 199 70% 8%;
-        --primary: 197 82% 22%;
+        --popover-foreground: 222 70% 8%;
+        --primary: 218 86% 30%;
         --primary-foreground: 0 0% 100%;
-        --secondary: 200 30% 94%;
-        --secondary-foreground: 197 82% 22%;
-        --muted: 200 25% 94%;
-        --muted-foreground: 200 15% 37%;
+        --secondary: 220 30% 94%;
+        --secondary-foreground: 218 86% 30%;
+        --muted: 220 25% 94%;
+        --muted-foreground: 215 15% 37%;
         --accent: 45 68% 47%;
-        --accent-foreground: 199 70% 8%;
+        --accent-foreground: 222 70% 8%;
         --destructive: 0 84.2% 60.2%;
         --destructive-foreground: 0 0% 98%;
         --border: 214 32% 91%;
         --input: 214 32% 91%;
-        --ring: 197 82% 22%;
+        --ring: 218 86% 30%;
         --radius: 0.5rem;
     }
 }
@@ -62,56 +62,61 @@ code {
 
     .rp-banner-hero {
         position: relative;
-        min-height: calc(clamp(168px, calc(100vw * 230 / 1024), 236px) + 0.5in);
+        isolation: isolate;
         overflow: hidden;
-        background-color: rgba(7, 36, 48, 0.46);
-        background-image:
-            radial-gradient(ellipse 90% 140% at 6% -10%, rgba(201, 162, 39, 0.20), transparent 52%),
-            radial-gradient(ellipse 70% 110% at 96% 0%, rgba(64, 196, 186, 0.26), transparent 48%),
-            radial-gradient(ellipse 50% 80% at 48% 120%, rgba(10, 77, 104, 0.35), transparent 60%),
-            linear-gradient(118deg, rgba(10, 77, 104, 0.82) 0%, rgba(12, 88, 96, 0.64) 36%, rgba(20, 118, 112, 0.52) 64%, rgba(8, 54, 72, 0.78) 100%);
-        border-bottom: 0;
+        width: 100%;
+        aspect-ratio: 1024 / 322;
+        max-height: 220px;
+        background-color: #0B3A8F;
+        border: 0;
         box-shadow: none;
-    }
-
-    .rp-banner-hero::after {
-        content: "";
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0.25in;
-        height: max(3px, calc(100vw * 3 / 1024));
-        z-index: 4;
-        pointer-events: none;
-        background: linear-gradient(90deg, #B89120 0%, #E8C56A 22%, #C9A227 50%, #E8C56A 78%, #B89120 100%);
-        box-shadow: 0 1px 0 rgba(255, 236, 170, 0.38);
-    }
-
-    .rp-banner-art {
-        position: absolute;
-        inset: 0;
-        background-size: cover;
-        background-position: center 42%;
-        background-repeat: no-repeat;
-        pointer-events: none;
-        z-index: 0;
+        filter: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
     }
 
     .rp-banner-home {
-        position: absolute;
-        inset: 0 9rem 0 0;
-        z-index: 2;
+        display: block;
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        margin: 0;
         border: 0;
         background: transparent;
         cursor: pointer;
+        filter: none;
+    }
+
+    .rp-banner-art {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: left center;
+        image-rendering: auto;
+        -ms-interpolation-mode: bicubic;
+        filter: none;
+        transform: none;
+        pointer-events: none;
     }
 
     .rp-banner-frame {
-        position: relative;
+        position: absolute;
+        inset: 0;
         z-index: 3;
         display: flex;
         flex-direction: column;
-        min-height: clamp(168px, calc(100vw * 230 / 1024), 236px);
+        pointer-events: none;
+    }
+
+    .rp-banner-frame > * {
+        pointer-events: auto;
+    }
+
+    @media (max-width: 640px) {
+        .rp-banner-hero {
+            max-height: 148px;
+        }
     }
 
     .rp-topbar-tools {
@@ -140,12 +145,12 @@ code {
 
     .rp-nav-fade::before {
         left: 0;
-        background: linear-gradient(90deg, rgba(8, 42, 56, 0.55), transparent);
+        background: linear-gradient(90deg, rgba(7, 30, 92, 0.75), transparent);
     }
 
     .rp-nav-fade::after {
         right: 0;
-        background: linear-gradient(270deg, rgba(8, 42, 56, 0.55), transparent);
+        background: linear-gradient(270deg, rgba(7, 30, 92, 0.75), transparent);
     }
 
     .rp-nav-scroll {
@@ -160,9 +165,9 @@ code {
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
         padding: 0.12rem 1rem;
-        background: rgba(6, 26, 35, 0.72);
-        border-top: 1px solid rgba(201, 162, 39, 0.28);
-        border-bottom: 1px solid rgba(201, 162, 39, 0.22);
+        background: rgba(7, 30, 92, 0.92);
+        border-top: 1px solid rgba(201, 162, 39, 0.42);
+        border-bottom: 1px solid rgba(201, 162, 39, 0.28);
     }
 
     .rp-nav-scroll::-webkit-scrollbar {
@@ -190,7 +195,7 @@ code {
         height: 2.15rem;
         border-radius: 0.85rem;
         background:
-            linear-gradient(165deg, rgba(255, 255, 255, 0.30) 0%, rgba(255, 255, 255, 0.07) 46%, rgba(10, 77, 104, 0.28) 100%);
+            linear-gradient(165deg, rgba(255, 255, 255, 0.30) 0%, rgba(255, 255, 255, 0.07) 46%, rgba(11, 58, 143, 0.28) 100%);
         box-shadow:
             inset 0 1px 0 rgba(255, 255, 255, 0.5),
             inset 0 0 0 1px rgba(201, 162, 39, 0.22),
@@ -250,8 +255,8 @@ code {
     padding: 8px 8px 8px;
     border-radius: 16px;
     background: rgba(255, 252, 247, 0.94);
-    border: 1px solid rgba(10, 77, 104, 0.16);
-    box-shadow: 0 10px 28px rgba(10, 77, 104, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(11, 58, 143, 0.16);
+    box-shadow: 0 10px 28px rgba(11, 58, 143, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
     backdrop-filter: blur(10px);
     pointer-events: auto;
 }
@@ -269,7 +274,7 @@ code {
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #0A4D68;
+    color: #0B3A8F;
     padding: 4px 2px 8px;
     cursor: grab;
     touch-action: none;
@@ -297,7 +302,7 @@ code {
     width: 3px;
     height: 3px;
     border-radius: 99px;
-    background: #0A4D68;
+    background: #0B3A8F;
 }
 
 .fp-layer-panel__dots {
@@ -310,14 +315,14 @@ code {
     border: 0;
     border-radius: 8px;
     background: transparent;
-    color: #0A4D68;
+    color: #0B3A8F;
     cursor: pointer;
     flex-shrink: 0;
 }
 
 .fp-layer-panel__dots:hover,
 .fp-layer-panel__dots[aria-expanded="true"] {
-    background: rgba(10, 77, 104, 0.1);
+    background: rgba(11, 58, 143, 0.1);
 }
 
 .fp-layer-panel__menu {
@@ -332,8 +337,8 @@ code {
     padding: 6px;
     border-radius: 12px;
     background: #FFFcf7;
-    border: 1px solid rgba(10, 77, 104, 0.16);
-    box-shadow: 0 12px 24px rgba(10, 77, 104, 0.16);
+    border: 1px solid rgba(11, 58, 143, 0.16);
+    box-shadow: 0 12px 24px rgba(11, 58, 143, 0.16);
 }
 
 .fp-layer-panel__menu button {
@@ -393,7 +398,7 @@ code {
 }
 
 .fp-layer-panel button.is-on {
-    background: #0A4D68;
+    background: #0B3A8F;
     color: #F7F4EE;
     border-color: #C9A227;
     box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.35);
@@ -402,7 +407,7 @@ code {
 .fp-layer-panel button.is-off {
     background: #F3EFE6;
     color: #4B6370;
-    border-color: rgba(10, 77, 104, 0.08);
+    border-color: rgba(11, 58, 143, 0.08);
 }
 
 .fp-layer-dot {

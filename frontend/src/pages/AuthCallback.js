@@ -38,9 +38,9 @@ export default function AuthCallback() {
   }, [navigate, setUser]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0A4D68]">
+    <div className="min-h-screen flex items-center justify-center bg-[#0B3A8F]">
       <div className="flex flex-col items-center gap-4">
-        <img src={BRAND.logo} alt="Revival Pro" className="h-20 w-auto animate-pulse" />
+        <img src={BRAND.logo} alt={BRAND.name} className="h-20 w-auto animate-pulse drop-shadow-[0_8px_24px_rgba(201,162,39,0.45)]" />
         <p className="text-white/80 font-['Work_Sans']">Signing you in…</p>
       </div>
     </div>

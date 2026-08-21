@@ -214,7 +214,7 @@ export default function Estimates() {
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="add-estimate-btn" onClick={openNew} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2">
+            <Button data-testid="add-estimate-btn" onClick={openNew} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2">
               <Plus size={18} /> New Estimate
             </Button>
           </DialogTrigger>
@@ -254,7 +254,7 @@ export default function Estimates() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-[#0A4D68]/20 bg-[#F4F7F8] p-4 space-y-3" data-testid="estimate-cost-worksheet">
+                <div className="rounded-xl border border-[#0B3A8F]/20 bg-[#F4F7F8] p-4 space-y-3" data-testid="estimate-cost-worksheet">
                   <div>
                     <div className="font-['Outfit'] font-semibold text-[#061A23]">What will this job cost us?</div>
                     <p className="text-xs text-[#4B6370] mt-0.5">
@@ -351,7 +351,7 @@ export default function Estimates() {
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                  <Button data-testid="save-estimate-btn" type="submit" disabled={save.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+                  <Button data-testid="save-estimate-btn" type="submit" disabled={save.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                     {save.isPending ? "Saving…" : "Save Estimate"}
                   </Button>
                 </DialogFooter>
@@ -365,7 +365,7 @@ export default function Estimates() {
       <div className="flex flex-wrap gap-2">
         {["All", ...STATUSES].map((s) => (
           <button key={s} data-testid={`filter-${s}`} onClick={() => setFilter(s)}
-            className={`px-3.5 py-1.5 rounded-full text-sm font-medium border ${filter === s ? "bg-[#0A4D68] text-white border-[#0A4D68]" : "bg-white text-[#4B6370] border-slate-200 hover:border-[#0A4D68]"}`}>
+            className={`px-3.5 py-1.5 rounded-full text-sm font-medium border ${filter === s ? "bg-[#0B3A8F] text-white border-[#0B3A8F]" : "bg-white text-[#4B6370] border-slate-200 hover:border-[#0B3A8F]"}`}>
             {s}
           </button>
         ))}
@@ -392,7 +392,7 @@ export default function Estimates() {
               )}
               {filtered.map((e) => (
                 <tr key={e.id} data-testid={`estimate-row-${e.id}`} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="p-4 font-medium text-[#0A4D68] flex items-center gap-2"><FileText size={15} />{e.estimate_number}</td>
+                  <td className="p-4 font-medium text-[#0B3A8F] flex items-center gap-2"><FileText size={15} />{e.estimate_number}</td>
                   <td className="p-4">{e.client_name}</td>
                   <td className="p-4 text-[#4B6370]">{e.category}</td>
                   <td className="p-4"><StatusBadge status={e.status} /></td>
@@ -403,7 +403,7 @@ export default function Estimates() {
                       {e.status === "Won" && (
                         <>
                           <button data-testid={`convert-estimate-${e.id}`} onClick={() => convert.mutate(e.id)} disabled={convert.isPending || generate.isPending} title="Convert to invoice"
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-[#0A4D68] hover:bg-[#083D53] text-white text-xs font-semibold disabled:opacity-50 disabled:pointer-events-none">
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-[#0B3A8F] hover:bg-[#082C73] text-white text-xs font-semibold disabled:opacity-50 disabled:pointer-events-none">
                             <Receipt size={14} /> {convert.isPending && convert.variables === e.id ? "Converting…" : "Convert to Invoice"}
                           </button>
                           <button data-testid={`generate-estimate-${e.id}`} onClick={() => generate.mutate(e.id)} disabled={generate.isPending || convert.isPending} title="Generate contract, invoice, and job"
@@ -412,9 +412,9 @@ export default function Estimates() {
                           </button>
                         </>
                       )}
-                      <button data-testid={`pdf-estimate-${e.id}`} onClick={() => downloadPdf(e)} disabled={!!pdfBusyId} title="Download PDF" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68] disabled:opacity-50 disabled:pointer-events-none"><Download size={16} /></button>
-                      <button data-testid={`email-estimate-${e.id}`} onClick={() => sendEmail.mutate(e.id)} disabled={sendEmail.isPending} title="Email to client" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68] disabled:opacity-50 disabled:pointer-events-none"><Send size={16} /></button>
-                      <button data-testid={`edit-estimate-${e.id}`} onClick={() => openEdit(e)} className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Pencil size={16} /></button>
+                      <button data-testid={`pdf-estimate-${e.id}`} onClick={() => downloadPdf(e)} disabled={!!pdfBusyId} title="Download PDF" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F] disabled:opacity-50 disabled:pointer-events-none"><Download size={16} /></button>
+                      <button data-testid={`email-estimate-${e.id}`} onClick={() => sendEmail.mutate(e.id)} disabled={sendEmail.isPending} title="Email to client" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F] disabled:opacity-50 disabled:pointer-events-none"><Send size={16} /></button>
+                      <button data-testid={`edit-estimate-${e.id}`} onClick={() => openEdit(e)} className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Pencil size={16} /></button>
                       <button data-testid={`delete-estimate-${e.id}`} onClick={() => { if (window.confirm(`Delete ${e.estimate_number}?`)) remove.mutate(e.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
                     </div>
                   </td>

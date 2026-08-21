@@ -77,7 +77,7 @@ export default function Clients() {
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="add-client-btn" onClick={openNew} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2">
+            <Button data-testid="add-client-btn" onClick={openNew} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2">
               <Plus size={18} /> Add Client
             </Button>
           </DialogTrigger>
@@ -130,7 +130,7 @@ export default function Clients() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button data-testid="save-client-btn" type="submit" disabled={save.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+                <Button data-testid="save-client-btn" type="submit" disabled={save.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                   {save.isPending ? "Saving…" : "Save Client"}
                 </Button>
               </DialogFooter>
@@ -165,20 +165,20 @@ export default function Clients() {
               {filtered.map((c) => (
                 <tr key={c.id} data-testid={`client-row-${c.id}`} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="p-4">
-                    <button onClick={() => navigate(`/clients/${c.id}`)} data-testid={`open-client-${c.id}`} className="font-medium text-[#0A4D68] hover:underline text-left">{c.name}</button>
+                    <button onClick={() => navigate(`/clients/${c.id}`)} data-testid={`open-client-${c.id}`} className="font-medium text-[#0B3A8F] hover:underline text-left">{c.name}</button>
                     {c.address && <div className="text-xs text-[#4B6370] flex items-center gap-1 mt-0.5"><MapPin size={12} />{c.address}</div>}
                   </td>
                   <td className="p-4 text-[#4B6370]">
                     {c.phone && <div className="flex items-center gap-1"><Phone size={13} />{formatPhone(c.phone)}</div>}
                     {c.email && <div className="flex items-center gap-1 mt-0.5"><Mail size={13} />{c.email}</div>}
                   </td>
-                  <td className="p-4"><span className="text-[#0A4D68] font-medium">{c.source}</span></td>
+                  <td className="p-4"><span className="text-[#0B3A8F] font-medium">{c.source}</span></td>
                   <td className="p-4"><StatusBadge status={c.status} /></td>
                   <td className="p-4 text-[#4B6370]">{fmtDate(c.created_at)}</td>
                   <td className="p-4">
                     <div className="flex items-center justify-end gap-1">
-                      <button data-testid={`view-client-${c.id}`} onClick={() => navigate(`/clients/${c.id}`)} title="View timeline" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Eye size={16} /></button>
-                      <button data-testid={`edit-client-${c.id}`} onClick={() => openEdit(c)} className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Pencil size={16} /></button>
+                      <button data-testid={`view-client-${c.id}`} onClick={() => navigate(`/clients/${c.id}`)} title="View timeline" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Eye size={16} /></button>
+                      <button data-testid={`edit-client-${c.id}`} onClick={() => openEdit(c)} className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Pencil size={16} /></button>
                       <button data-testid={`delete-client-${c.id}`} onClick={() => { if (window.confirm(`Delete ${c.name}?`)) remove.mutate(c.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
                     </div>
                   </td>

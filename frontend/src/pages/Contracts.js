@@ -52,7 +52,7 @@ export default function Contracts() {
                 {contracts.map((c) => (
                   <tr key={c.id} data-testid={`contract-row-${c.id}`} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="p-4">
-                      <button onClick={() => navigate(`/contracts/${c.id}`)} data-testid={`open-contract-${c.id}`} className="font-medium text-[#0A4D68] hover:underline flex items-center gap-2">
+                      <button onClick={() => navigate(`/contracts/${c.id}`)} data-testid={`open-contract-${c.id}`} className="font-medium text-[#0B3A8F] hover:underline flex items-center gap-2">
                         <FileSignature size={15} />{c.contract_number}
                       </button>
                     </td>
@@ -63,7 +63,7 @@ export default function Contracts() {
                     <td className="p-4 text-[#4B6370]">{fmtDate(c.created_at)}</td>
                     <td className="p-4">
                       <div className="flex items-center justify-end gap-1">
-                        <button data-testid={`view-contract-${c.id}`} onClick={() => navigate(`/contracts/${c.id}`)} title="Open" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><Eye size={16} /></button>
+                        <button data-testid={`view-contract-${c.id}`} onClick={() => navigate(`/contracts/${c.id}`)} title="Open" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Eye size={16} /></button>
                         <button data-testid={`delete-contract-${c.id}`} onClick={() => { if (window.confirm(`Delete ${c.contract_number}?`)) remove.mutate(c.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
                       </div>
                     </td>

@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { BRAND } from "@/lib/format";
 import { can, isFieldOnly } from "@/lib/permissions";
 import NotificationBell from "@/components/NotificationBell";
 import {
@@ -19,6 +18,7 @@ import {
   IconClock,
   IconCamera,
   IconSchedule,
+  IconBids,
 } from "@/components/nav/NavIcons";
 import { LogOut, Building2, KeyRound, UserCog } from "lucide-react";
 import {
@@ -36,6 +36,7 @@ const MAIN_NAV = [
   { to: "/leads", label: "Leads", icon: IconLeads, testid: "nav-leads", feature: "leads" },
   { to: "/clients", label: "Clients", icon: IconClients, testid: "nav-clients", feature: "clients" },
   { to: "/jobs", label: "Jobs", icon: IconJobs, testid: "nav-jobs", feature: "jobs" },
+  { to: "/subcontractors", label: "Bids", icon: IconBids, testid: "nav-subcontractors", feature: "subcontractors" },
   { to: "/floor-plans", label: "Plans", icon: IconPlans, testid: "nav-floor-plans", feature: "floor_plans" },
   { to: "/estimates", label: "Estimates", icon: IconEstimates, testid: "nav-estimates", feature: "estimates" },
   { to: "/invoices", label: "Invoices", icon: IconInvoices, testid: "nav-invoices", feature: "invoices" },
@@ -90,30 +91,34 @@ export default function Layout() {
     <div className={`${studio ? "h-dvh overflow-hidden" : "min-h-dvh"} flex flex-col font-['Work_Sans'] ${fieldShell ? "text-white" : "text-[#061A23]"}`}>
       {!fieldShell ? (
         <>
-          <div
-            className="fixed inset-0 -z-10"
-            style={{ backgroundImage: `url(${BRAND.bg})`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed" }}
-          />
-          <div className="fixed inset-0 -z-10 bg-[#F4F7F8]/95" />
+          <div className="fixed inset-0 -z-10 bg-[#F4F6FA]" />
         </>
       ) : (
-        <div className="fixed inset-0 -z-10 bg-[#061A23]" />
+        <div className="fixed inset-0 -z-10 bg-[#071E5C]" />
       )}
 
       <header className="rp-topbar shrink-0 sticky top-0 z-30" data-testid="app-topbar">
         <div className="rp-banner-hero">
-          <div
-            className="rp-banner-art"
-            aria-hidden="true"
-            style={{ backgroundImage: "url(/brand/revival-header-banner.png)" }}
-          />
           <button
             type="button"
             onClick={() => navigate(homeTo)}
             className="rp-banner-home"
             data-testid="logo-home-btn"
             aria-label="Revival Home Remodeling home"
-          />
+          >
+            <img
+              className="rp-banner-art"
+              src="/brand/revival-header-banner.png"
+              srcSet="/brand/revival-header-banner.png 1024w, /brand/revival-header-banner@2x.png 2048w"
+              sizes="100vw"
+              width="1024"
+              height="322"
+              alt="Revival Home Remodeling"
+              decoding="sync"
+              fetchPriority="high"
+              draggable="false"
+            />
+          </button>
           <div className="rp-banner-frame">
             <div className="rp-topbar-tools flex items-center justify-end gap-1.5 px-4 sm:px-6 lg:px-8 pt-3">
               {can(user, "notifications") ? (
@@ -122,9 +127,9 @@ export default function Layout() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-2.5 rounded-full outline-none pl-1" data-testid="user-menu-btn">
-                    <Avatar className="h-10 w-10 ring-2 ring-[#C9A227]/70 shadow-[0_0_0_3px_rgba(10,77,104,0.35)]">
+                    <Avatar className="h-10 w-10 ring-2 ring-[#C9A227]/70 shadow-[0_0_0_3px_rgba(11,58,143,0.35)]">
                       <AvatarImage src={user?.picture} alt={user?.name} />
-                      <AvatarFallback className="bg-[#0A4D68] text-white text-sm">
+                      <AvatarFallback className="bg-[#0B3A8F] text-white text-sm">
                         {user?.name?.charAt(0) || "U"}
                       </AvatarFallback>
                     </Avatar>

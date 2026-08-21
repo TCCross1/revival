@@ -23,7 +23,7 @@ export default function ClientReportPreview({
   return (
     <div className="fixed inset-0 z-40 bg-[#061A23]/50 flex items-end sm:items-center justify-center p-3" data-testid="client-report-preview">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[92dvh] overflow-y-auto">
-        <div className="bg-[#0A4D68] text-white px-4 py-3 flex items-center justify-between">
+        <div className="bg-[#0B3A8F] text-white px-4 py-3 flex items-center justify-between">
           <div>
             <div className="text-[11px] uppercase tracking-[0.16em] text-[#C9A227]">Revival Home Remodeling</div>
             <div className="font-['Outfit'] font-semibold text-lg">Design Proposal</div>
@@ -32,18 +32,18 @@ export default function ClientReportPreview({
         </div>
         <div className="p-4 space-y-4 text-sm">
           <div className="border-b border-[#C9A227]/40 pb-3">
-            <div className="font-['Outfit'] font-semibold text-[#0A4D68] text-lg">{meta.client_name || "Homeowner"}</div>
+            <div className="font-['Outfit'] font-semibold text-[#0B3A8F] text-lg">{meta.client_name || "Homeowner"}</div>
             <div className="text-[#4B6370]">{meta.address || "Address to be confirmed"}</div>
             <div className="text-xs text-[#8AA0AB]">{meta.project_type} · {(meta.version_kind || "existing") === "proposed" ? "Proposed" : "Existing"} · {new Date().toLocaleDateString()}</div>
           </div>
           <div className="grid grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg bg-[#F4F7F8] p-2"><div className="text-[10px] text-[#8AA0AB]">Floor</div><div className="font-semibold text-[#0A4D68]">{Number(totals.floor_sf || 0).toFixed(0)} SF</div></div>
-            <div className="rounded-lg bg-[#F4F7F8] p-2"><div className="text-[10px] text-[#8AA0AB]">Cabinets</div><div className="font-semibold text-[#0A4D68]">{cabinets.length}</div></div>
-            <div className="rounded-lg bg-[#F4F7F8] p-2"><div className="text-[10px] text-[#8AA0AB]">Openings</div><div className="font-semibold text-[#0A4D68]">{doors.length + windows.length}</div></div>
-            <div className="rounded-lg bg-[#F4F7F8] p-2"><div className="text-[10px] text-[#8AA0AB]">Line items</div><div className="font-semibold text-[#0A4D68]">{scope.line_items?.length || 0}</div></div>
+            <div className="rounded-lg bg-[#F4F7F8] p-2"><div className="text-[10px] text-[#8AA0AB]">Floor</div><div className="font-semibold text-[#0B3A8F]">{Number(totals.floor_sf || 0).toFixed(0)} SF</div></div>
+            <div className="rounded-lg bg-[#F4F7F8] p-2"><div className="text-[10px] text-[#8AA0AB]">Cabinets</div><div className="font-semibold text-[#0B3A8F]">{cabinets.length}</div></div>
+            <div className="rounded-lg bg-[#F4F7F8] p-2"><div className="text-[10px] text-[#8AA0AB]">Openings</div><div className="font-semibold text-[#0B3A8F]">{doors.length + windows.length}</div></div>
+            <div className="rounded-lg bg-[#F4F7F8] p-2"><div className="text-[10px] text-[#8AA0AB]">Line items</div><div className="font-semibold text-[#0B3A8F]">{scope.line_items?.length || 0}</div></div>
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-1">The proposal includes</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-1">The proposal includes</div>
             <ul className="text-xs text-[#4B6370] space-y-0.5 list-disc pl-4">
               <li>Cover page with your name, address, and project type</li>
               <li>Clean 2D plans and 3D views for each level</li>
@@ -53,7 +53,7 @@ export default function ClientReportPreview({
             </ul>
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-1">Preliminary quantities</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-1">Preliminary quantities</div>
             <div className="space-y-1 max-h-36 overflow-y-auto">
               {(scope.line_items || []).slice(0, 16).map((row) => (
                 <div key={row.description} className="flex justify-between text-xs text-[#4B6370]">
@@ -65,7 +65,7 @@ export default function ClientReportPreview({
           </div>
           {cabinets.length ? (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-1">Cabinet schedule</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-1">Cabinet schedule</div>
               {cabinets.slice(0, 8).map((c) => (
                 <div key={`${c.name}-${c.location}-${c.size}`} className="text-xs text-[#4B6370]">{c.name} · {c.size} · {c.location} · {c.finish}</div>
               ))}
@@ -73,7 +73,7 @@ export default function ClientReportPreview({
           ) : null}
           {appliances.length ? (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-1">Appliances</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-1">Appliances</div>
               {appliances.slice(0, 6).map((a) => (
                 <div key={`${a.name}-${a.location}`} className="text-xs text-[#4B6370]">{a.name} · {a.location}{a.note ? ` · ${a.note}` : ""}</div>
               ))}
@@ -81,7 +81,7 @@ export default function ClientReportPreview({
           ) : null}
           {finishes.length ? (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-1">Finishes</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-1">Finishes</div>
               {finishes.slice(0, 8).map((f) => (
                 <div key={`${f.location}-${f.item}`} className="text-xs text-[#4B6370]">{f.location} · {f.item} · {f.finish}</div>
               ))}
@@ -97,7 +97,7 @@ export default function ClientReportPreview({
           ) : null}
           {notes.length ? (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-1">Notes &amp; selections</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-1">Notes &amp; selections</div>
               {notes.slice(0, 6).map((n) => (
                 <div key={`${n.target}-${n.text}`} className="text-xs text-[#4B6370]">{n.target}: {n.text}</div>
               ))}
@@ -141,7 +141,7 @@ export default function ClientReportPreview({
           <div className="flex gap-2">
             <button
               type="button"
-              className="flex-1 h-11 rounded-md bg-[#0A4D68] text-white text-sm font-medium"
+              className="flex-1 h-11 rounded-md bg-[#0B3A8F] text-white text-sm font-medium"
               onClick={onGenerate}
               disabled={busy}
               data-testid="generate-client-report-confirm"

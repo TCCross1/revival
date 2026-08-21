@@ -36,7 +36,7 @@ export default function NotificationBell({ className }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className={cn("relative p-2 rounded-full hover:bg-slate-100 text-[#0A4D68]", className)} data-testid="notif-bell">
+        <button type="button" className={cn("relative p-2 rounded-full hover:bg-slate-100 text-[#0B3A8F]", className)} data-testid="notif-bell">
           <Bell size={18} />
           {unread ? <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-[#C45C26]" /> : null}
         </button>
