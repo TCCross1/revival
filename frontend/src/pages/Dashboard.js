@@ -20,18 +20,32 @@ const StatCard = ({ icon: Icon, label, value, sub, accent, testid }) => (
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => (await api.get("/dashboard")).data,
+    retry: 2,
   });
   const { data: jobs = [] } = useQuery({
     queryKey: ["jobs"],
     queryFn: async () => (await api.get("/jobs")).data,
+    retry: 2,
   });
   const activeJobs = jobs.filter((j) => (j.status || "Active") === "Active").slice(0, 6);
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return <div className="text-[#4B6370]">Loading dashboard…</div>;
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="space-y-3" data-testid="dashboard-error">
+        <h1 className="text-3xl sm:text-4xl font-semibold font-['Outfit'] tracking-tight">Dashboard</h1>
+        <p className="text-[#4B6370]">Office numbers did not load. Refresh, or confirm the API is running on port 8001.</p>
+        <button type="button" onClick={() => refetch()} className="text-sm font-medium text-[#0B3A8F] hover:underline">
+          Try again
+        </button>
+      </div>
+    );
   }
 
   return (

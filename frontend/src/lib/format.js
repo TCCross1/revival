@@ -61,7 +61,7 @@ export function formatPhone(phone) {
 export const BRAND = {
   name: "Revival Home Remodeling",
   tagline: "Revive your home, renew your spirit.",
-  logo: "/brand/revival-mark.png",
+  logo: "/brand/revival-landing.jpg",
   banner: "/brand/revival-header-banner.png",
   bg: "/brand/revival-header-banner.png",
 };

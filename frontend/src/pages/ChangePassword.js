@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "@/lib/api";
-import { BRAND } from "@/lib/format";
+import AuthSplitLayout from "@/components/brand/AuthSplitLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,9 +48,7 @@ export default function ChangePassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F4F7F8] p-6 font-['Work_Sans']">
-      <div className="w-full max-w-md">
-        <img src={BRAND.logo} alt={BRAND.name} className="h-20 w-auto mx-auto mb-6 drop-shadow-[0_8px_20px_rgba(11,58,143,0.28)]" />
+    <AuthSplitLayout>
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8" data-testid="change-password-page">
           {done ? (
             <div className="text-center" data-testid="change-password-success">
@@ -95,7 +93,6 @@ export default function ChangePassword() {
             </>
           )}
         </div>
-      </div>
-    </div>
+    </AuthSplitLayout>
   );
 }

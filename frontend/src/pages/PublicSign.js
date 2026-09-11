@@ -62,7 +62,7 @@ export default function PublicSign() {
   if (isError || !c) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#F4F7F8] p-6 text-center font-['Work_Sans']">
-        <img src={BRAND.logo} alt={BRAND.name} className="h-16 mb-6" />
+        <img src={BRAND.logo} alt={BRAND.name} className="h-24 w-auto mb-6" />
         <h1 className="text-2xl font-semibold font-['Outfit'] text-[#061A23]">Link not found</h1>
         <p className="text-[#4B6370] mt-2">This signing link is invalid or has expired. Please contact Revival Home Remodeling.</p>
       </div>
@@ -73,7 +73,7 @@ export default function PublicSign() {
     <div className="min-h-screen bg-[#F4F7F8] font-['Work_Sans'] pb-16">
       <div className="bg-[#0B3A8F] text-white">
         <div className="max-w-3xl mx-auto px-5 py-5 flex items-center gap-3">
-          <img src={BRAND.logo} alt={BRAND.name} className="h-11 w-11 rounded-full ring-2 ring-[#C9A227]/70 object-cover" />
+          <img src="/brand/revival-mark.svg" alt="" className="h-11 w-11" />
           <div>
             <div className="font-['Outfit'] font-semibold text-lg leading-tight">Construction Contract</div>
             <div className="text-white/70 text-sm">{c.contract_number}</div>

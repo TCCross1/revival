@@ -97,7 +97,7 @@ export default function Layout() {
         <div className="fixed inset-0 -z-10 bg-[#071E5C]" />
       )}
 
-      <header className="rp-topbar shrink-0 sticky top-0 z-30" data-testid="app-topbar">
+      <header className="rp-topbar sticky top-0 z-30 min-h-0" data-testid="app-topbar">
         <div className="rp-banner-hero">
           <button
             type="button"
