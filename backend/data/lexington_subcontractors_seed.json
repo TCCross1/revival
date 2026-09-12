@@ -1,0 +1,66 @@
+[
+  {"company_name": "Dauenhauer Plumbing Heating Air & Electric", "phone": "(859) 559-0625", "categories": ["Plumbing", "HVAC", "Electrical"], "rating": 4.8, "review_count": 5047, "city": "Lexington, KY", "website": "https://dauenhauerplumbing.com", "notes": "Public listing seed — high-volume plumbing/HVAC/electrical."},
+  {"company_name": "Mr Rooter Plumbing of Lexington KY", "phone": "", "categories": ["Plumbing"], "rating": 4.8, "review_count": 1141, "city": "Lexington, KY", "website": "", "notes": "Public listing seed."},
+  {"company_name": "PROfetick Plumbing", "phone": "(859) 263-5727", "email": "", "categories": ["Plumbing"], "rating": 5.0, "review_count": 374, "city": "Lexington, KY", "website": "http://www.pro-fetick.com/", "notes": "Public listing seed — 942 National Ave."},
+  {"company_name": "Pipe Surgeon Plumbing", "phone": "", "categories": ["Plumbing"], "rating": 4.8, "review_count": 356, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Roto-Rooter Plumbing & Water Cleanup", "phone": "", "categories": ["Plumbing"], "rating": 4.8, "review_count": 267, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Lile Plumbing, LLC", "phone": "", "categories": ["Plumbing"], "rating": 4.8, "review_count": 221, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Turbo Plumbing Pros", "phone": "", "categories": ["Plumbing"], "rating": 4.9, "review_count": 179, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Fayette Plumbing & HVAC", "phone": "", "categories": ["Plumbing", "HVAC"], "rating": 4.7, "review_count": 127, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Lex-Rooter Sewer & Drain Cleaning", "phone": "", "categories": ["Plumbing"], "rating": 4.4, "review_count": 128, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Kentucky Plumbing (KYPD) of Lexington", "phone": "", "categories": ["Plumbing"], "rating": 5.0, "review_count": 78, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Plumbing Systems, Inc.", "phone": "", "categories": ["Plumbing"], "rating": 4.5, "review_count": 58, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "King's Helper Plumbing and HVAC Contractors", "phone": "", "categories": ["Plumbing", "HVAC"], "rating": 4.9, "review_count": 44, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Lexington Electrical & HVAC", "phone": "", "categories": ["Electrical", "HVAC"], "rating": 5.0, "review_count": 120, "city": "Lexington, KY", "website": "https://www.lexelectricalandhvac.com/", "notes": "Public listing seed — 1160 Industry Rd."},
+  {"company_name": "Tom Drexler Plumbing, Air & Electric", "phone": "", "categories": ["Plumbing", "HVAC", "Electrical"], "rating": 4.7, "review_count": 890, "city": "Lexington, KY", "notes": "Public listing seed — multi-trade service company."},
+  {"company_name": "Bluegrass Electric Co.", "phone": "(859) 255-3313", "categories": ["Electrical"], "rating": 4.6, "review_count": 210, "city": "Lexington, KY", "notes": "Public listing seed — verify current reviews before inviting."},
+  {"company_name": "Central KY Electric", "phone": "", "categories": ["Electrical"], "rating": 4.7, "review_count": 156, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Sparks Electrical Services", "phone": "", "categories": ["Electrical"], "rating": 4.8, "review_count": 98, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Acculevel — Lexington Foundation Repair", "phone": "", "categories": ["Foundations"], "rating": 4.8, "review_count": 2000, "city": "Lexington, KY", "website": "https://acculevel.com/lexington/", "notes": "Public listing seed — foundation / crawlspace / slab."},
+  {"company_name": "Jackin Up Construction", "phone": "", "categories": ["Foundations", "Drywall", "Flooring"], "rating": 4.8, "review_count": 180, "city": "Lexington, KY", "website": "", "notes": "Public listing seed — foundation, waterproofing, related finishes. 252 Black Water Ln."},
+  {"company_name": "Bluegrass Foundation Repair", "phone": "", "categories": ["Foundations"], "rating": 4.6, "review_count": 95, "city": "Lexington, KY", "notes": "Public listing seed — verify licensing before award."},
+  {"company_name": "Central Kentucky Structural", "phone": "", "categories": ["Foundations", "Framing"], "rating": 4.7, "review_count": 64, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Mulberry Builders — Roofing Division", "phone": "", "categories": ["Roofing", "Windows & doors"], "rating": 4.7, "review_count": 320, "city": "Lexington, KY", "website": "https://www.mulberry-builders.com/", "notes": "Public listing seed — GC with roofing/siding."},
+  {"company_name": "A Godsend Roofing", "phone": "", "categories": ["Roofing"], "rating": 4.9, "review_count": 410, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "AIC Roofing & Construction", "phone": "", "categories": ["Roofing", "Framing"], "rating": 4.8, "review_count": 275, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "CRC Roofing & Renovations", "phone": "", "categories": ["Roofing"], "rating": 4.7, "review_count": 190, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Mr. Roof Lexington", "phone": "", "categories": ["Roofing"], "rating": 4.6, "review_count": 520, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Bluegrass Painting", "phone": "", "categories": ["Painting"], "rating": 4.9, "review_count": 240, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Big J Painting", "phone": "", "categories": ["Painting"], "rating": 4.8, "review_count": 165, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Lexington Pro Painters", "phone": "", "categories": ["Painting"], "rating": 4.7, "review_count": 112, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "CertaPro Painters of Lexington", "phone": "", "categories": ["Painting"], "rating": 4.5, "review_count": 88, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Carpet One Floor & Home — Lexington", "phone": "", "categories": ["Flooring"], "rating": 4.6, "review_count": 340, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Floor Coverings International Lexington", "phone": "", "categories": ["Flooring"], "rating": 4.8, "review_count": 150, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Bluegrass Hardwood Floors", "phone": "", "categories": ["Flooring"], "rating": 4.7, "review_count": 97, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Premier Flooring Solutions", "phone": "", "categories": ["Flooring", "Tile"], "rating": 4.6, "review_count": 73, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Lexington Tile Pros", "phone": "", "categories": ["Tile"], "rating": 4.8, "review_count": 134, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Stone & Tile Craftsmen KY", "phone": "", "categories": ["Tile", "Countertops"], "rating": 4.7, "review_count": 86, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Central KY Countertops", "phone": "", "categories": ["Countertops"], "rating": 4.6, "review_count": 118, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Kentucky Marble & Granite", "phone": "", "categories": ["Countertops"], "rating": 4.5, "review_count": 92, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Cabinet Gallery of Lexington", "phone": "", "categories": ["Cabinetry"], "rating": 4.7, "review_count": 145, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Bluegrass Custom Cabinets", "phone": "", "categories": ["Cabinetry"], "rating": 4.8, "review_count": 67, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Kitchen Tune-Up Lexington", "phone": "", "categories": ["Cabinetry"], "rating": 4.6, "review_count": 54, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Lexington Drywall Experts", "phone": "", "categories": ["Drywall"], "rating": 4.7, "review_count": 101, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Smooth Finish Drywall Co.", "phone": "", "categories": ["Drywall", "Painting"], "rating": 4.6, "review_count": 58, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Central Kentucky Framing", "phone": "", "categories": ["Framing"], "rating": 4.7, "review_count": 77, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Bluegrass Carpentry & Framing", "phone": "", "categories": ["Framing", "Windows & doors"], "rating": 4.8, "review_count": 61, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Lexington Demo & Haul", "phone": "", "categories": ["Demolition"], "rating": 4.5, "review_count": 89, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Junk King Lexington", "phone": "", "categories": ["Demolition"], "rating": 4.4, "review_count": 210, "city": "Lexington, KY", "notes": "Public listing seed — haul-off / soft demo partner."},
+  {"company_name": "KY Insulation Pros", "phone": "", "categories": ["Insulation"], "rating": 4.7, "review_count": 72, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "USA Insulation of Lexington", "phone": "", "categories": ["Insulation"], "rating": 4.6, "review_count": 140, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Window World of Lexington", "phone": "", "categories": ["Windows & doors"], "rating": 4.5, "review_count": 280, "city": "Lexington, KY", "notes": "Public listing seed."},
+  {"company_name": "Renewal by Andersen — Central KY", "phone": "", "categories": ["Windows & doors"], "rating": 4.6, "review_count": 195, "city": "Lexington, KY", "notes": "Public listing seed."},
+
+  {"company_name": "Moore Builders", "phone": "", "categories": ["Framing", "Other"], "rating": 4.8, "review_count": 160, "city": "Lexington, KY", "website": "https://www.moorebuildersky.com/", "notes": "Public listing seed — custom home / GC; Best of Lexington builder awards."},
+  {"company_name": "Mulberry Builders", "phone": "", "categories": ["Other", "Roofing"], "rating": 4.7, "review_count": 220, "city": "Lexington, KY", "website": "https://www.mulberry-builders.com/", "notes": "Public listing seed — GC / remodel / roofing."}
+]

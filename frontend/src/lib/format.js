@@ -62,6 +62,6 @@ export const BRAND = {
   name: "Revival Home Remodeling",
   tagline: "Revive your home, renew your spirit.",
   logo: "/brand/revival-landing.jpg",
-  banner: "/brand/revival-header-banner.png",
-  bg: "/brand/revival-header-banner.png",
+  banner: "/brand/revival-header-banner.jpg",
+  bg: "/brand/revival-header-banner.jpg",
 };

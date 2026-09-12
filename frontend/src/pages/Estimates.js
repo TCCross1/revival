@@ -14,7 +14,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, FileText, Receipt, Download, Send, FileSignature } from "lucide-react";
+import { Plus, Pencil, Trash2, FileText, Receipt, Download, Send, FileSignature, HardHat } from "lucide-react";
 import { toast } from "sonner";
 import PricingBreakdown from "@/components/PricingBreakdown";
 import { computePricing } from "@/lib/pricing";
@@ -31,6 +31,15 @@ export default function Estimates() {
   const [form, setForm] = useState(null);
   const [filter, setFilter] = useState("All");
   const [pdfBusyId, setPdfBusyId] = useState(null);
+  const [bidOpen, setBidOpen] = useState(false);
+  const [bidEstimate, setBidEstimate] = useState(null);
+  const [bidForm, setBidForm] = useState({
+    scope: "Entire job",
+    description: "",
+    due_at: "",
+    invite_all_in_trade: true,
+    subcontractor_ids: [],
+  });
 
   const { data: estimates = [], isLoading } = useQuery({
     queryKey: ["estimates"],
@@ -48,6 +57,20 @@ export default function Estimates() {
     queryKey: ["financials-monthly-now"],
     queryFn: async () => (await api.get("/financials/monthly-overhead")).data,
   });
+  const { data: subMeta } = useQuery({
+    queryKey: ["sub-meta"],
+    queryFn: async () => (await api.get("/subcontractor-meta")).data,
+  });
+  const { data: subcontractors = [] } = useQuery({
+    queryKey: ["subcontractors"],
+    queryFn: async () => (await api.get("/subcontractors")).data,
+    enabled: bidOpen,
+  });
+
+  const tradeScopes = subMeta?.scopes || ["Entire job", ...(subMeta?.categories || [])];
+  const tradesForScope = subcontractors.filter((row) =>
+    bidForm.scope === "Entire job" || (row.categories || []).includes(bidForm.scope),
+  );
 
   const save = useMutation({
     mutationFn: async (payload) =>
@@ -116,6 +139,50 @@ export default function Estimates() {
     },
     onError: async (err) => toast.error(await formatApiError(err, "Could not generate the contract, invoice, and job. Please try again.")),
   });
+
+  const requestBid = useMutation({
+    mutationFn: async () => {
+      if (!bidEstimate?.id) throw new Error("missing estimate");
+      return (await api.post(`/estimates/${bidEstimate.id}/request-bid`, {
+        scope: bidForm.scope,
+        description: bidForm.description,
+        due_at: bidForm.due_at,
+        invite_all_in_trade: Boolean(bidForm.invite_all_in_trade),
+        subcontractor_ids: bidForm.invite_all_in_trade ? [] : bidForm.subcontractor_ids,
+      })).data;
+    },
+    onSuccess: (res) => {
+      setBidOpen(false);
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      const invited = Array.isArray(res?.invitations) ? res.invitations.length : 0;
+      toast.success(invited ? `Bid package opened · ${invited} invite${invited === 1 ? "" : "s"}` : "Bid package opened");
+      const packageId = res?.package?.id;
+      if (packageId) navigate(`/bid-packages/${packageId}`);
+      else if (res?.job?.id) navigate(`/jobs/${res.job.id}?room=bids`);
+    },
+    onError: async (err) => toast.error(await formatApiError(err, "Could not open that bid request.")),
+  });
+
+  const openRequestBid = (estimate) => {
+    setBidEstimate(estimate);
+    setBidForm({
+      scope: "Entire job",
+      description: "",
+      due_at: "",
+      invite_all_in_trade: true,
+      subcontractor_ids: [],
+    });
+    setBidOpen(true);
+  };
+
+  const toggleBidSub = (id) => {
+    setBidForm((prev) => ({
+      ...prev,
+      subcontractor_ids: prev.subcontractor_ids.includes(id)
+        ? prev.subcontractor_ids.filter((x) => x !== id)
+        : [...prev.subcontractor_ids, id],
+    }));
+  };
 
   const openNew = () => {
     setEditing(null);
@@ -222,6 +289,11 @@ export default function Estimates() {
             <DialogHeader>
               <DialogTitle className="font-['Outfit'] text-2xl">{editing ? "Edit Estimate" : "New Estimate"}</DialogTitle>
             </DialogHeader>
+            {!editing ? (
+              <p className="text-sm text-[#4B6370] -mt-2">
+                Save the estimate first, then use <span className="font-medium text-[#8a6f17]">Request a bid</span> on the row (or reopen the estimate) to invite trades with the job package.
+              </p>
+            ) : null}
             {form && (
               <form onSubmit={submit} className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -349,14 +421,124 @@ export default function Estimates() {
                   <Textarea data-testid="estimate-terms-field" rows={6} value={form.terms || ""} onChange={(e) => setForm({ ...form, terms: e.target.value })} />
                 </div>
 
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                  <Button data-testid="save-estimate-btn" type="submit" disabled={save.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
-                    {save.isPending ? "Saving…" : "Save Estimate"}
-                  </Button>
+                <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between sm:items-center">
+                  <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                    {editing?.id ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-1 border-[#C9A227]/50 text-[#8a6f17]"
+                        onClick={() => openRequestBid(editing)}
+                        data-testid="estimate-form-request-bid"
+                      >
+                        <HardHat size={14} /> Request a bid
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto justify-end">
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                    <Button data-testid="save-estimate-btn" type="submit" disabled={save.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
+                      {save.isPending ? "Saving…" : "Save Estimate"}
+                    </Button>
+                  </div>
                 </DialogFooter>
               </form>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={bidOpen} onOpenChange={setBidOpen}>
+          <DialogContent className="bg-white max-w-lg max-h-[90vh] overflow-y-auto" data-testid="request-bid-dialog">
+            <DialogHeader>
+              <DialogTitle className="font-['Outfit'] text-2xl">Request a bid</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-[#4B6370]">
+              Opens a job (if needed) and sends the estimate scope, line items, and any Plan / Magicplan / site media on the job file to the trade you pick.
+            </p>
+            <div className="space-y-3 mt-2">
+              <div>
+                <Label>Estimate</Label>
+                <div className="text-sm font-medium text-[#061A23]">
+                  {bidEstimate?.estimate_number} · {bidEstimate?.client_name} · {bidEstimate?.category}
+                </div>
+              </div>
+              <div>
+                <Label>Trade</Label>
+                <Select value={bidForm.scope} onValueChange={(v) => setBidForm({ ...bidForm, scope: v, subcontractor_ids: [] })}>
+                  <SelectTrigger data-testid="request-bid-trade"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white max-h-72">
+                    {tradeScopes.map((scope) => (
+                      <SelectItem key={scope} value={scope}>{scope}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Extra notes for the contractor (optional)</Label>
+                <Textarea
+                  rows={3}
+                  value={bidForm.description}
+                  onChange={(e) => setBidForm({ ...bidForm, description: e.target.value })}
+                  placeholder="Access notes, preferred schedule, what to include…"
+                />
+              </div>
+              <div>
+                <Label>Due date (optional)</Label>
+                <Input type="date" value={bidForm.due_at} onChange={(e) => setBidForm({ ...bidForm, due_at: e.target.value })} />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-[#061A23]">
+                <input
+                  type="checkbox"
+                  checked={Boolean(bidForm.invite_all_in_trade)}
+                  onChange={(e) => setBidForm({ ...bidForm, invite_all_in_trade: e.target.checked })}
+                  data-testid="request-bid-invite-all"
+                />
+                Invite all directory companies in this trade (ranked by reviews)
+              </label>
+              {!bidForm.invite_all_in_trade ? (
+                <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 divide-y">
+                  {tradesForScope.length === 0 ? (
+                    <div className="p-3 text-sm text-[#4B6370]">No companies in that trade yet. Add them under Bids.</div>
+                  ) : tradesForScope.map((row) => (
+                    <label key={row.id} className="flex items-start gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={bidForm.subcontractor_ids.includes(row.id)}
+                        onChange={() => toggleBidSub(row.id)}
+                      />
+                      <span>
+                        <span className="font-medium text-[#061A23]">{row.company_name}</span>
+                        {Number(row.rating) > 0 ? (
+                          <span className="block text-xs text-[#8a6f17]">
+                            {Number(row.rating).toFixed(1)}★ · {Number(row.review_count || 0).toLocaleString()} reviews
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-[#8AA0AB]">
+                  {bidForm.scope === "Entire job"
+                    ? `${subcontractors.length} compan${subcontractors.length === 1 ? "y" : "ies"} in the full directory will be invited.`
+                    : `${tradesForScope.length} compan${tradesForScope.length === 1 ? "y" : "ies"} match this trade in the directory.`}
+                  {" "}Companies without email still get an invite link on the bid package.
+                </p>
+              )}
+            </div>
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="outline" onClick={() => setBidOpen(false)}>Cancel</Button>
+              <Button
+                type="button"
+                className="bg-[#0B3A8F] hover:bg-[#082C73] gap-1"
+                disabled={requestBid.isPending || (!bidForm.invite_all_in_trade && bidForm.subcontractor_ids.length === 0)}
+                onClick={() => requestBid.mutate()}
+                data-testid="request-bid-submit"
+              >
+                <HardHat size={14} /> {requestBid.isPending ? "Sending…" : "Send bid request"}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
@@ -412,6 +594,10 @@ export default function Estimates() {
                           </button>
                         </>
                       )}
+                      <button data-testid={`request-bid-${e.id}`} onClick={() => openRequestBid(e)} title="Request a bid from trades"
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-[#C9A227]/50 text-[#8a6f17] text-xs font-semibold hover:bg-[#C9A227]/10">
+                        <HardHat size={14} /> Request a bid
+                      </button>
                       <button data-testid={`pdf-estimate-${e.id}`} onClick={() => downloadPdf(e)} disabled={!!pdfBusyId} title="Download PDF" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F] disabled:opacity-50 disabled:pointer-events-none"><Download size={16} /></button>
                       <button data-testid={`email-estimate-${e.id}`} onClick={() => sendEmail.mutate(e.id)} disabled={sendEmail.isPending} title="Email to client" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F] disabled:opacity-50 disabled:pointer-events-none"><Send size={16} /></button>
                       <button data-testid={`edit-estimate-${e.id}`} onClick={() => openEdit(e)} className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Pencil size={16} /></button>

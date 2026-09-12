@@ -23,8 +23,11 @@ export default function KitchenDesignPanel({
   placingAnchor,
   onDesignPatch,
   onPlaceAnchor,
-  onAutoFill,
-  onRegenerate,
+  onAutoGenerate,
+  onConfirmWalls,
+  onCancelWalls,
+  pickingWalls = false,
+  selectedWallCount = 0,
   onCounters,
   onApplyStyle,
 }) {
@@ -43,12 +46,12 @@ export default function KitchenDesignPanel({
   return (
     <div className="p-3 border-b border-slate-200 space-y-3" data-testid="kitchen-design-panel">
       <div>
-        <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68]">Kitchen design intelligence</div>
-        <p className="text-[11px] text-[#4B6370] mt-0.5">NKBA planning guidelines plus professional layout logic. Capture the site, lock utilities, then auto-fill. Locked anchors never move.</p>
+        <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F]">Kitchen design intelligence</div>
+        <p className="text-[11px] text-[#4B6370] mt-0.5">Place the range, refrigerator, sink, dishwasher, and corners first. Auto Generator fills only the walls you select and never moves those locked items.</p>
       </div>
 
-      <div className="rounded-lg border border-[#0A4D68]/15 bg-[#F4F7F8] p-2 space-y-2" data-testid="kitchen-site-conditions">
-        <div className="text-[11px] font-semibold text-[#0A4D68]">1. Site conditions</div>
+      <div className="rounded-lg border border-[#0B3A8F]/15 bg-[#F4F7F8] p-2 space-y-2" data-testid="kitchen-site-conditions">
+        <div className="text-[11px] font-semibold text-[#0B3A8F]">1. Site conditions</div>
         <div className="grid grid-cols-2 gap-2">
           <div>
             <Label className="text-[10px]">Ceiling height</Label>
@@ -108,7 +111,7 @@ export default function KitchenDesignPanel({
       </div>
 
       <div>
-        <div className="text-[11px] font-semibold text-[#0A4D68] mb-1">2. Lock utility anchors</div>
+        <div className="text-[11px] font-semibold text-[#0B3A8F] mb-1">2. Lock utility anchors</div>
         <div className="grid grid-cols-2 gap-1">
           {ANCHORS.map((row) => (
             <button
@@ -126,28 +129,38 @@ export default function KitchenDesignPanel({
         {placingAnchor ? (
           <div className="mt-1 text-[11px] text-[#C9A227]">Tap the exact {placingAnchor} utility on the plan. Dishwasher snaps beside the sink and stays locked.</div>
         ) : (
-          <div className="mt-1 text-[10px] text-[#4B6370]">Tap a button, then tap the rough-in. These four positions stay locked through auto-fill.</div>
+          <div className="mt-1 text-[10px] text-[#4B6370]">Tap a button, then tap the rough-in. These stay locked through Auto Generator.</div>
         )}
       </div>
 
       <div className="space-y-1">
-        <div className="text-[11px] font-semibold text-[#0A4D68]">3. Auto-fill to NKBA layout</div>
-        <label className="flex items-center gap-2 text-[11px] text-[#4B6370]">
-          <input type="checkbox" checked={design.island_enabled !== false} onChange={(e) => onDesignPatch({ island_enabled: e.target.checked })} />
-          Suggest an island when 42–48&quot; aisles fit
-        </label>
-        <Button type="button" size="sm" className="h-8 w-full text-xs bg-[#0A4D68] hover:bg-[#083D53]" disabled={!ready} onClick={onAutoFill} data-testid="kitchen-auto-fill">
-          Auto-fill cabinets
-        </Button>
-        <Button type="button" size="sm" variant="outline" className="h-8 w-full text-xs" disabled={!ready} onClick={onRegenerate} data-testid="kitchen-regenerate">
-          Regenerate layout
-        </Button>
-        {!ready ? <div className="text-[10px] text-[#4B6370]">Mark range, refrigerator, and sink first. Dishwasher locks beside the sink.</div> : null}
+        <div className="text-[11px] font-semibold text-[#0B3A8F]">3. Auto Generator</div>
+        {pickingWalls ? (
+          <div className="rounded-md border border-[#C9A227]/50 bg-[#FBF6E8] p-2 space-y-2" data-testid="auto-generator-wall-prompt">
+            <p className="text-[11px] text-[#061A23]">Which walls need cabinets? Click each wall on the plan, then Done.</p>
+            <p className="text-[10px] text-[#4B6370]">{selectedWallCount ? `${selectedWallCount} wall${selectedWallCount === 1 ? "" : "s"} selected` : "No walls selected yet."}</p>
+            <div className="grid grid-cols-2 gap-1">
+              <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={onCancelWalls} data-testid="auto-generator-cancel">
+                Cancel
+              </Button>
+              <Button type="button" size="sm" className="h-8 text-xs bg-[#C9A227] hover:bg-[#B8911F] text-[#061A23]" onClick={onConfirmWalls} data-testid="auto-generator-done">
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <Button type="button" size="sm" className="h-8 w-full text-xs bg-[#0B3A8F] hover:bg-[#082C73]" onClick={onAutoGenerate} data-testid="kitchen-auto-generator">
+              Auto Generator
+            </Button>
+            <p className="text-[10px] text-[#4B6370]">Fills measured gaps with 12–36&quot; cabinets and fillers up to 4&quot;. Fixed appliances and corners do not move.</p>
+          </>
+        )}
         {islandHint ? <div className="text-[10px] text-[#4B6370]">{islandHint}</div> : null}
       </div>
 
       <div className="space-y-1">
-        <div className="text-[11px] font-semibold text-[#0A4D68]">4. Counters, then style</div>
+        <div className="text-[11px] font-semibold text-[#0B3A8F]">4. Counters, then style</div>
         <select className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs bg-white" value={style.counter_material || "quartz"} onChange={(e) => onDesignPatch({ style: { ...style, counter_material: e.target.value } })}>
           {COUNTER_MATERIALS.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
         </select>
@@ -190,7 +203,7 @@ export default function KitchenDesignPanel({
 
       {warnings.length ? (
         <div className="space-y-1" data-testid="kitchen-warnings">
-          <div className="text-[11px] font-semibold text-[#0A4D68]">NKBA + professional checks</div>
+          <div className="text-[11px] font-semibold text-[#0B3A8F]">NKBA + professional checks</div>
           {warnings.map((row, idx) => (
             <div key={`${row.code || row.text}-${idx}`} className={`text-[11px] rounded-md px-2 py-1 ${row.severity === "error" ? "bg-red-50 text-red-700" : row.severity === "warn" ? "bg-amber-50 text-amber-800" : "bg-slate-50 text-[#4B6370]"}`}>
               {row.text}

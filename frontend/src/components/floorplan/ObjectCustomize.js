@@ -13,6 +13,7 @@ import {
 } from "@/lib/floorPlan/library";
 import { WORK_KINDS, workOf } from "@/lib/floorPlan/scope";
 import { formatFtIn, parseFtIn } from "@/lib/floorPlan/units";
+import { markVerified, needsScanVerify } from "@/lib/floorPlan/roomplan";
 
 function Select({ value, onChange, options, testid }) {
   return (
@@ -66,7 +67,16 @@ export default function ObjectCustomize({
         <LibraryThumb item={preview} />
       </div>
       <div className="font-medium leading-tight">{obj.name}</div>
+      {needsScanVerify(obj) ? (
+        <div className="rounded-md border border-[#C9A227]/55 bg-[#C9A227]/10 p-2 space-y-1" data-testid="scan-verify-object">
+          <div className="text-[11px] text-[#8A7018] font-medium">From scan – verify measurements</div>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] border-[#C9A227] text-[#8A7018]" onClick={() => onPatch(markVerified(obj))}>
+            Mark verified
+          </Button>
+        </div>
+      ) : null}
       <div className="text-xs text-[#4B6370]">{formatFtIn(obj.width)} × {formatFtIn(obj.depth)} × {formatFtIn(obj.height)}</div>
+      <div className="text-[10px] text-[#4B6370]">Drag the cabinet body to move it. Resize only from the gold corner, or type W / D here.</div>
       <div className="flex gap-1">
         <button type="button" className="text-[11px] rounded px-2 py-1.5 text-white" style={{ background: work?.color }} onClick={() => {
           const order = ["existing", "demo", "new"];
@@ -98,8 +108,19 @@ export default function ObjectCustomize({
           <Select
             value={configValue}
             onChange={(config) => {
-              const next = applyWallCabinetDrawerRule({ ...obj, config }, level);
-              onPatch({ config: next.config, over_toilet: next.over_toilet });
+              try {
+                const next = applyWallCabinetDrawerRule({ ...obj, config }, level);
+                onPatch({
+                  config: next.config,
+                  library_id: next.library_id,
+                  name: next.name,
+                  tags: next.tags,
+                  over_toilet: next.over_toilet,
+                });
+              } catch (err) {
+                console.error("Could not apply that cabinet front", err);
+                onPatch({ config });
+              }
             }}
             options={configOptions}
           />
@@ -191,7 +212,7 @@ export default function ObjectCustomize({
       ) : null}
 
       {isBaseRunObject(obj) ? (
-        <Button type="button" size="sm" className="h-9 w-full text-xs bg-[#0A4D68] hover:bg-[#083D53]" onClick={onSnapCounters}>Snap countertops to bases</Button>
+        <Button type="button" size="sm" className="h-9 w-full text-xs bg-[#0B3A8F] hover:bg-[#082C73]" onClick={onSnapCounters}>Snap countertops to bases</Button>
       ) : null}
 
       {cabinet || isApplianceFinishObject(obj) || sinky ? (

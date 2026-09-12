@@ -29,6 +29,16 @@ const FV = 285;
 const E = 2.0e6;
 const CONSERVATIVE = 0.9;
 const LOAD_BUMP = 1.15;
+const DIM_B = 1.5;
+const DIM_FB = 850;
+const DIM_FV = 135;
+const DIM_E = 1.4e6;
+export const DIM_SIZES = [
+  { id: "2x6", depth: 5.5 },
+  { id: "2x8", depth: 7.25 },
+  { id: "2x10", depth: 9.25 },
+  { id: "2x12", depth: 11.25 },
+];
 
 function occLoads(above) {
   return OCC[above] || OCC.bedroom;
@@ -82,17 +92,17 @@ export function computeLoads({ span_in, tributary_in, wall_kind, above, stories_
   };
 }
 
-function sectionOk(plies, depth, loads) {
-  const I = plies * ((PLY_IN * (depth ** 3)) / 12);
-  const S = plies * ((PLY_IN * (depth ** 2)) / 6);
-  const A = plies * PLY_IN * depth;
+function sectionOk(plies, depth, loads, plyIn = PLY_IN, fbAllow = FB, fvAllow = FV, eMod = E) {
+  const I = plies * ((plyIn * (depth ** 3)) / 12);
+  const S = plies * ((plyIn * (depth ** 2)) / 6);
+  const A = plies * plyIn * depth;
   const fb = (loads.moment_ftlb * 12) / Math.max(S, 0.01);
   const fv = (1.5 * loads.shear_lb) / Math.max(A, 0.01);
   const wPerIn = loads.w_plf / 12;
   const L = loads.span_ft * 12;
-  const delta = (5 * wPerIn * (L ** 4)) / (384 * E * I);
+  const delta = (5 * wPerIn * (L ** 4)) / (384 * eMod * I);
   const deltaLive = delta * loads.live_share;
-  const ok = fb <= FB * CONSERVATIVE && fv <= FV * CONSERVATIVE && delta <= L / 240 && deltaLive <= L / 360;
+  const ok = fb <= fbAllow * CONSERVATIVE && fv <= fvAllow * CONSERVATIVE && delta <= L / 240 && deltaLive <= L / 360;
   return { ok, fb: round2(fb), fv: round2(fv), delta: round2(delta), I: round2(I), S: round2(S) };
 }
 
@@ -113,7 +123,47 @@ export function recommendLvl(input) {
   const wall_kind = input.wall_kind === "exterior" ? "exterior" : "interior";
   const above = ABOVE_OPTIONS.some((o) => o.id === input.above) ? input.above : "bedroom";
   const stories_above = Math.max(0, Math.min(3, Number(input.stories_above) || 0));
+  const thick = inches(input.wall_thickness);
   const loads = computeLoads({ span_in, tributary_in, wall_kind, above, stories_above });
+
+  let dimPick = null;
+  const dimPlies = thick >= 5.5 ? [2, 3] : [2];
+  dimPlies.forEach((plies) => {
+    DIM_SIZES.forEach((size) => {
+      const check = sectionOk(plies, size.depth, loads, DIM_B, DIM_FB, DIM_FV, DIM_E);
+      if (!check.ok) return;
+      const score = plies * 8 + size.depth;
+      if (!dimPick || score < dimPick.score) {
+        dimPick = { plies, depth: size.depth, product: size.id, score, ...check };
+      }
+    });
+  });
+  if (dimPick) {
+    const jacks = jackStudsFor(span_in, dimPick.plies, wall_kind === "exterior");
+    const kings = wall_kind === "exterior" || span_in / 12 > 12 ? 2 : 1;
+    const twin = dimPick.plies === 2 ? "Twin" : dimPick.plies === 3 ? "Triple" : "Single";
+    return {
+      span_in: round2(span_in),
+      tributary_in: round2(tributary_in),
+      wall_kind,
+      above,
+      stories_above,
+      loads,
+      plies: dimPick.plies,
+      depth_in: dimPick.depth,
+      width_in: round2(dimPick.plies * DIM_B),
+      jack_studs: jacks,
+      king_studs: kings,
+      label: `${twin} ${dimPick.product} SPF #2 header`,
+      product: dimPick.product,
+      header_kind: "dimensional",
+      species: "SPF No.2",
+      engineer_required: false,
+      disclaimer: LVL_DISCLAIMER,
+      notes: `${twin} ${dimPick.product} dimensional lumber is enough for this span/load. Use ${jacks} jack stud(s) and ${kings} king stud(s) each end. Bearing min 1.5" on each jack pack.`,
+    };
+  }
+
   let pick = null;
   for (const plies of [1, 2, 3]) {
     for (const depth of LVL_DEPTHS) {
@@ -145,20 +195,25 @@ export function recommendLvl(input) {
     jack_studs: jacks,
     king_studs: kings,
     label,
+    product: "lvl",
+    header_kind: engineer ? "engineer" : "lvl",
     species: "2.0E 2600Fb LVL",
     engineer_required: engineer,
     disclaimer: LVL_DISCLAIMER,
     notes: engineer
-      ? "This span/load is outside a conservative residential LVL chart. Do not proceed without an engineer."
-      : `Use ${jacks} jack stud(s) and ${kings} king stud(s) each end. Bearing min 3" on each jack pack.`,
+      ? "This span/load is outside a conservative residential header chart. Twin 2x10 / 2x12 will not work. Do not proceed without an engineer."
+      : `Dimensional 2x10 / 2x12 is not enough. Use ${label}. ${jacks} jack stud(s) and ${kings} king stud(s) each end. Bearing min 3" on each jack pack.`,
   };
 }
+
+export const recommendHeader = recommendLvl;
 
 export function emptyBeam(partial = {}) {
   const rec = recommendLvl({
     span_in: partial.span_in || 96,
     tributary_in: partial.tributary_in || 144,
     wall_kind: partial.wall_kind || "interior",
+    wall_thickness: partial.wall_thickness,
     above: partial.above || "bedroom",
     stories_above: partial.stories_above ?? 1,
   });
@@ -170,6 +225,7 @@ export function emptyBeam(partial = {}) {
     y1: round2(partial.y1 || 0),
     x2: round2(partial.x2 || rec.span_in),
     y2: round2(partial.y2 || 0),
+    wall_thickness: inches(partial.wall_thickness) || 0,
     ...rec,
   };
 }
@@ -190,6 +246,7 @@ export function beamFromOpening(wall, opening, extras = {}) {
     span_in: inches(opening.width),
     tributary_in: extras.tributary_in,
     wall_kind: wall.kind === "exterior" ? "exterior" : "interior",
+    wall_thickness: wall.thickness,
     above: extras.above,
     stories_above: extras.stories_above,
   });
@@ -206,6 +263,31 @@ export function beamFromWall(wall, extras = {}) {
     span_in: wallLength(wall),
     tributary_in: extras.tributary_in,
     wall_kind: wall.kind === "exterior" ? "exterior" : "interior",
+    wall_thickness: wall.thickness,
+    above: extras.above,
+    stories_above: extras.stories_above,
+  });
+}
+
+export function beamFromWallAt(wall, t, spanIn, extras = {}) {
+  const len = wallLength(wall);
+  const span = Math.min(Math.max(inches(spanIn) || 48, 12), Math.max(len, 12));
+  const mid = Math.max(span / 2, Math.min(len - span / 2, (Number(t) || 0.5) * len));
+  const start = Math.max(0, (mid - span / 2) / Math.max(len, 1));
+  const end = Math.min(1, (mid + span / 2) / Math.max(len, 1));
+  const a = pointOnWall(wall, start);
+  const b = pointOnWall(wall, end);
+  return emptyBeam({
+    wall_id: wall.id,
+    opening_id: extras.opening_id || "",
+    x1: a.x,
+    y1: a.y,
+    x2: b.x,
+    y2: b.y,
+    span_in: span,
+    tributary_in: extras.tributary_in,
+    wall_kind: wall.kind === "exterior" ? "exterior" : "interior",
+    wall_thickness: wall.thickness,
     above: extras.above,
     stories_above: extras.stories_above,
   });

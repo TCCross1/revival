@@ -109,6 +109,30 @@ export default function Leads() {
     callLead.mutate(lead);
   };
 
+  const { data: callingSettings } = useQuery({
+    queryKey: ["calling-settings"],
+    queryFn: async () => (await api.get("/leads/calling-settings")).data,
+  });
+
+  const { data: callLogs = [] } = useQuery({
+    queryKey: ["call-logs"],
+    queryFn: async () => (await api.get("/leads/call-logs", { params: { limit: 40 } })).data,
+  });
+
+  const [callingForm, setCallingForm] = useState(null);
+  const callingDraft = callingForm || callingSettings;
+
+  const saveCalling = useMutation({
+    mutationFn: async (payload) => (await api.put("/leads/calling-settings", payload)).data,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["calling-settings"] });
+      setCallingForm(null);
+      toast.success("Calling contacts saved");
+      return data;
+    },
+    onError: async (err) => toast.error(await formatApiError(err, "Could not save calling settings.")),
+  });
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return leads.filter((l) => {
@@ -166,6 +190,146 @@ export default function Leads() {
         <Button data-testid="add-lead-btn" onClick={openNew} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2">
           <Plus size={18} /> Add Lead
         </Button>
+      </div>
+
+      <div
+        className="rounded-xl border border-[#C9A227]/35 bg-white p-4 shadow-sm space-y-3"
+        data-testid="leads-calling-settings"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-['Outfit'] text-lg font-semibold text-[#061A23] flex items-center gap-2">
+              <PhoneCall size={18} className="text-[#0B3A8F]" /> Speed dial &amp; notify contacts
+            </h2>
+            <p className="text-sm text-[#4B6370] mt-1 max-w-2xl">
+              New Thumbtack, Google Ads, and Angi leads auto-dial through Riley. Edit the from-number and notify contacts here until your custom number is ready.
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-[#061A23]">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={Boolean(callingDraft?.auto_call_enabled)}
+              onChange={(e) =>
+                setCallingForm({
+                  ...(callingDraft || {}),
+                  auto_call_enabled: e.target.checked,
+                })
+              }
+              data-testid="calling-auto-enabled"
+            />
+            Auto-call on
+          </label>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label>From number (Riley caller ID)</Label>
+            <Input
+              className="mt-1 h-10"
+              value={callingDraft?.from_number || ""}
+              onChange={(e) => setCallingForm({ ...(callingDraft || {}), from_number: e.target.value })}
+              placeholder="+18599978212"
+              data-testid="calling-from-number"
+            />
+          </div>
+          <div>
+            <Label>Notify emails (comma-separated)</Label>
+            <Input
+              className="mt-1 h-10"
+              value={(callingDraft?.notify_emails || []).join(", ")}
+              onChange={(e) =>
+                setCallingForm({
+                  ...(callingDraft || {}),
+                  notify_emails: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                })
+              }
+              placeholder="revivalhomeremodelingllc@gmail.com"
+              data-testid="calling-notify-emails"
+            />
+          </div>
+          <div>
+            <Label>Notify phones</Label>
+            <Input
+              className="mt-1 h-10"
+              value={(callingDraft?.notify_phones || []).join(", ")}
+              onChange={(e) =>
+                setCallingForm({
+                  ...(callingDraft || {}),
+                  notify_phones: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                })
+              }
+              placeholder="859-227-0340"
+              data-testid="calling-notify-phones"
+            />
+          </div>
+          <div>
+            <Label>Owner fallback phones</Label>
+            <Input
+              className="mt-1 h-10"
+              value={(callingDraft?.owner_fallback_phones || []).join(", ")}
+              onChange={(e) =>
+                setCallingForm({
+                  ...(callingDraft || {}),
+                  owner_fallback_phones: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                })
+              }
+              placeholder="After AI miss, optional"
+              data-testid="calling-fallback-phones"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-4 text-xs text-[#4B6370]">
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={Boolean(callingDraft?.auto_call_thumbtack)}
+              onChange={(e) => setCallingForm({ ...(callingDraft || {}), auto_call_thumbtack: e.target.checked })}
+            />
+            Thumbtack
+          </label>
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={Boolean(callingDraft?.auto_call_google_ads)}
+              onChange={(e) => setCallingForm({ ...(callingDraft || {}), auto_call_google_ads: e.target.checked })}
+            />
+            Google Ads
+          </label>
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={Boolean(callingDraft?.auto_call_angi)}
+              onChange={(e) => setCallingForm({ ...(callingDraft || {}), auto_call_angi: e.target.checked })}
+            />
+            Angi
+          </label>
+        </div>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            className="bg-[#0B3A8F] hover:bg-[#082C73]"
+            disabled={saveCalling.isPending || !callingForm}
+            onClick={() => saveCalling.mutate(callingDraft)}
+            data-testid="calling-settings-save"
+          >
+            {saveCalling.isPending ? "Saving…" : "Save contacts"}
+          </Button>
+        </div>
+        {callLogs.length ? (
+          <div className="border-t border-slate-100 pt-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#4B6370] mb-2">Recent call attempts</div>
+            <div className="max-h-40 overflow-y-auto space-y-1.5 text-sm">
+              {callLogs.slice(0, 12).map((log) => (
+                <div key={log.id} className="flex flex-wrap gap-x-3 gap-y-0.5 text-[#061A23]">
+                  <span className="font-medium">{log.status}</span>
+                  <span className="text-[#4B6370]">{log.source || "—"}</span>
+                  <span className="text-[#4B6370]">attempt {log.attempt}</span>
+                  <span className="text-[#4B6370] truncate max-w-[240px]">{log.summary || log.error || log.vapi_call_id || ""}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-col xl:flex-row xl:items-center gap-3">

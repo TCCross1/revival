@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AppWindow, Box, BoxSelect, Copy, DoorOpen, Frame, Hand, Layers3, MoreVertical,
-  RotateCw, ScanLine, Square, Trash2, Lock, Unlock, Ruler, Refrigerator,
-  Columns3, Minus, MousePointer2, Flame, Lightbulb,
+  RotateCw,   ScanLine, Square, Trash2, Lock, Unlock, Ruler, Refrigerator,
+  Columns3, Minus, MousePointer2, Flame, Lightbulb, Undo2, Redo2, Zap,
 } from "lucide-react";
 import { PLAN_LAYERS, layerOn } from "@/lib/floorPlan/layers";
 
@@ -12,10 +12,18 @@ const DEFAULT_POS = { x: 12, y: 108 };
 
 const EDIT_GROUPS = [
   {
+    id: "history",
+    label: "History",
+    tools: [
+      { id: "undo", label: "Undo", hint: "Undo the last change", icon: Undo2 },
+      { id: "redo", label: "Redo", hint: "Redo the last undone change", icon: Redo2 },
+    ],
+  },
+  {
     id: "pointer",
     label: "Pointer",
     tools: [
-      { id: "select", label: "Select / move", hint: "Click to select, drag along the wall", icon: MousePointer2 },
+      { id: "select", label: "Select / move", hint: "Drag the body to move. Gold corner resizes.", icon: MousePointer2 },
       { id: "pan", label: "Pan", hint: "Drag the drawing without changing items", icon: Hand },
     ],
   },
@@ -23,7 +31,7 @@ const EDIT_GROUPS = [
     id: "draw",
     label: "Draw",
     tools: [
-      { id: "room", label: "Room block", hint: "Tap to drop a room, then drag to size", icon: Square },
+      { id: "room", label: "Room block", hint: "Click-drag an outside rectangle; walls butt-join at corners", icon: Square },
       { id: "draw", label: "Point & line", hint: "Click wall endpoints, double-click to finish", icon: Layers3 },
     ],
   },
@@ -55,9 +63,9 @@ const EDIT_GROUPS = [
     label: "Modify",
     tools: [
       { id: "rotate", label: "Rotate 90°", hint: "Turn the selected item", icon: RotateCw, needs: "item" },
-      { id: "duplicate", label: "Duplicate", hint: "Copy the selected item beside it", icon: Copy, needs: "item" },
+      { id: "duplicate", label: "Duplicate", hint: "Make an identical twin you can drag into place", icon: Copy, needs: "item" },
       { id: "specs", label: "Properties", hint: "Same as double-click — edit specs", icon: Ruler, needs: "any" },
-      { id: "lock", label: "Lock / unlock", hint: "Pin so auto-fill will not replace it", icon: Lock, needs: "item" },
+      { id: "lock", label: "Lock / unlock", hint: "Pin so Auto Generator will not replace it", icon: Lock, needs: "item" },
       { id: "delete", label: "Delete", hint: "Remove the selection", icon: Trash2, needs: "any" },
     ],
   },
@@ -66,7 +74,8 @@ const EDIT_GROUPS = [
     label: "Finish",
     tools: [
       { id: "counters", label: "Snap counters", hint: "Rebuild countertops on the base run", icon: Ruler },
-      { id: "lidar", label: "LiDAR scan", hint: "Import a RoomPlan scan", icon: ScanLine },
+      { id: "electrical", label: "Electrical design", hint: "Place required devices, size circuits, build the panel schedule", icon: Zap },
+      { id: "lidar", label: "Scan kitchen", hint: "LiDAR / RoomPlan rough layout", icon: ScanLine },
       { id: "3d", label: "3D view", hint: "Open the 3D walkthrough", icon: Box },
     ],
   },

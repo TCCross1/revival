@@ -6,7 +6,7 @@ import {
 } from "./library";
 
 export const MIN_FILLER = 0.5;
-export const MAX_FILLER = 6;
+export const MAX_FILLER = 4;
 const OVERLAP_EPS = 0.35;
 const WALL_SNAP_IN = 42;
 
@@ -30,16 +30,43 @@ export function runBand(obj) {
   return "base";
 }
 
+export function planObjectSize(obj) {
+  try {
+    const lib = obj?.library_id ? libraryById(obj.library_id) : null;
+    const width = inches(obj?.width) || inches(lib?.width) || 0;
+    const rawDepth = inches(obj?.depth) || inches(lib?.depth) || 0;
+    const depth = planSymbolDepth({ ...obj, depth: rawDepth || undefined }) || rawDepth;
+    return {
+      width: Math.max(width, 0.5),
+      depth: Math.max(depth, 0.5),
+    };
+  } catch (err) {
+    console.error("Plan object size failed", err, obj?.library_id || obj?.id);
+    return {
+      width: Math.max(inches(obj?.width), 0.5),
+      depth: Math.max(inches(obj?.depth), 0.5),
+    };
+  }
+}
+
+export function objectOrientTransform(front, width, depth) {
+  const w = inches(width);
+  const d = inches(depth);
+  if (front === "east") return "matrix(0 1 1 0 0 0)";
+  if (front === "west") return `matrix(0 1 -1 0 ${d} 0)`;
+  if (front === "north") return `rotate(180 ${w / 2} ${d / 2})`;
+  return "";
+}
+
 export function objectFootprint(obj) {
+  const { width, depth } = planObjectSize(obj);
   const x = inches(obj?.x);
   const y = inches(obj?.y);
-  const w = inches(obj?.width);
-  const d = inches(obj?.depth);
   const front = obj?.front || "south";
   if (front === "east" || front === "west") {
-    return { x, y, w: d, h: w, front };
+    return { x, y, w: depth, h: width, front, width, depth };
   }
-  return { x, y, w, h: d, front };
+  return { x, y, w: width, h: depth, front, width, depth };
 }
 
 function nearestWall(walls, x, y, maxDist = 1e9) {

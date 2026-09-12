@@ -3,7 +3,9 @@
 Public URL format for ngrok (paste this into Thumbtack, swapping in your tunnel host):
     https://YOUR-NGROK-URL.ngrok-free.app/api/webhooks/thumbtack
 
-Optional shared secret: THUMBTACK_WEBHOOK_SECRET in backend/.env
+Required shared secret in non-local environments: THUMBTACK_WEBHOOK_SECRET.
+Unsigned requests are rejected unless the secret is unset AND the caller is
+loopback (127.0.0.1 / localhost) on a loopback Host header.
 """
 from __future__ import annotations
 
@@ -59,14 +61,42 @@ def extract_provided_secrets(headers: dict) -> list[str]:
     return values
 
 
-def webhook_authorized(headers: dict) -> bool:
+def _is_loopback_ip(host: str) -> bool:
+    raw = (host or "").split("%")[0].strip().lower()
+    if raw.startswith("::ffff:"):
+        raw = raw[7:]
+    return raw in ("127.0.0.1", "::1", "localhost")
+
+
+def _http_hostname(http_host: str) -> str:
+    raw = (http_host or "").strip().lower()
+    if not raw:
+        return ""
+    if raw.startswith("["):
+        return raw.split("]", 1)[0][1:]
+    if raw.count(":") == 1:
+        return raw.split(":", 1)[0]
+    return raw.split(":")[0]
+
+
+def is_loopback_request(client_host: str = "", http_host: str = "") -> bool:
+    """True only when both the TCP peer and Host header are loopback.
+
+    Ngrok (and other tunnels) connect from 127.0.0.1 but send a public Host.
+    Those must not be treated as local.
+    """
+    return _is_loopback_ip(client_host) and _http_hostname(http_host) in ("127.0.0.1", "localhost", "::1")
+
+
+def webhook_authorized(headers: dict, *, client_host: str = "", http_host: str = "") -> bool:
+    """Allow the webhook only with a valid shared secret, or unsigned on localhost when unset."""
     expected = configured_webhook_secret()
-    if not expected:
-        return True
-    for candidate in extract_provided_secrets(headers):
-        if _safe_compare(candidate, expected):
-            return True
-    return False
+    if expected:
+        for candidate in extract_provided_secrets(headers):
+            if _safe_compare(candidate, expected):
+                return True
+        return False
+    return is_loopback_request(client_host, http_host)
 
 
 def _as_dict(value: Any) -> dict:

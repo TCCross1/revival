@@ -14,6 +14,7 @@ INCH = 1.0
 FOOT = 12.0
 DEFAULT_WALL_HEIGHT = 96.0
 DEFAULT_CEILING = 96.0
+STUD_THICKNESS = 3.5
 EXT_THICKNESS = 6.0
 INT_THICKNESS = 4.5
 SNAP_INCH = 1.0
@@ -65,6 +66,58 @@ ROOF_KINDS = [
     {"id": "flat", "name": "Flat / low slope"},
     {"id": "gambrel", "name": "Gambrel"},
 ]
+
+# Kitchen / bath remodels do not get roof take-offs unless the job is an addition
+# or the user explicitly includes a roof (roof_in_takeoff on the document).
+_ROOF_PROJECT_HINTS = (
+    "addition", "whole house", "whole-house", "exterior", "roof",
+    "new construction", "new-construction", "garage", "porch", "sunroom", "room add",
+)
+_INTERIOR_NO_ROOF_HINTS = (
+    "kitchen", "bath", "laundry", "interior", "flooring", "closet", "basement", "cabinet",
+)
+
+
+def project_involves_roof(project_type: str) -> bool:
+    text = (project_type or "").strip().lower()
+    return any(hint in text for hint in _ROOF_PROJECT_HINTS)
+
+
+def interior_skips_roof(project_type: str) -> bool:
+    text = (project_type or "").strip().lower()
+    if project_involves_roof(text):
+        return False
+    return any(hint in text for hint in _INTERIOR_NO_ROOF_HINTS)
+
+
+def roof_takeoff_in_scope(document: dict | None, level: dict | None, project_type: str = "") -> bool:
+    """True only for additions / roof work, or when the user opted a roof into this plan."""
+    doc = document or {}
+    flag = doc.get("roof_in_takeoff")
+    if flag is True:
+        return True
+    if flag is False:
+        return False
+    ptype = project_type or doc.get("project_type") or ""
+    if project_involves_roof(ptype):
+        return True
+    if interior_skips_roof(ptype):
+        return False
+    return bool((level or {}).get("roofs"))
+
+
+def empty_roof_takeoff() -> dict:
+    return {
+        "roof_sf": 0.0,
+        "roof_perimeter_lf": 0.0,
+        "ridge_lf": 0.0,
+        "gable_lf": 0.0,
+        "valley_lf": 0.0,
+        "gutter_lf": 0.0,
+        "pitch": "",
+        "pitch_deg": 0.0,
+        "roof_in_scope": False,
+    }
 
 
 def new_id() -> str:
@@ -209,24 +262,97 @@ def empty_room(name="Room", x=24, y=24, width=144, depth=132) -> dict:
         "rotation": 0.0,
         "wall_height": DEFAULT_WALL_HEIGHT,
         "ceiling_height": DEFAULT_CEILING,
+        "wall_thickness": STUD_THICKNESS,
         "flooring": "lvp",
         "notes": "",
     }
 
 
+def room_wall_thickness(room: dict) -> float:
+    custom = inches(room.get("wall_thickness"))
+    if custom > 0:
+        return custom
+    return STUD_THICKNESS
+
+
 def walls_from_room(room: dict, kind="exterior") -> list:
-    x, y, w, d = inches(room.get("x")), inches(room.get("y")), inches(room.get("width")), inches(room.get("depth"))
+    """Derive four walls from one outside rectangle with butt-joint corners.
+
+    The room rectangle is outside-to-outside. North/south own the four outside
+    corners (full outside width). East/west fit between the interior faces of
+    N/S (length = outside depth − 2×thickness). Centerlines are inset by t/2 so
+    ±t/2 rendering matches the outside wall polygons with zero corner gaps.
+    """
+    left = inches(room.get("x"))
+    top = inches(room.get("y"))
+    width = inches(room.get("width"))
+    depth = inches(room.get("depth"))
+    right = left + width
+    bottom = top + depth
     room_id = room.get("id") or ""
+    t = max(room_wall_thickness(room), 1.0)
+    inset = min(t, max(0.0, (depth - 1.0) / 2.0))
+    half = t / 2.0
     walls = [
-        empty_wall(x, y, x + w, y, kind),
-        empty_wall(x + w, y, x + w, y + d, kind),
-        empty_wall(x + w, y + d, x, y + d, kind),
-        empty_wall(x, y + d, x, y, kind),
+        empty_wall(left, top + half, right, top + half, kind),
+        empty_wall(right - half, top + inset, right - half, bottom - inset, kind),
+        empty_wall(right, bottom - half, left, bottom - half, kind),
+        empty_wall(left + half, bottom - inset, left + half, top + inset, kind),
     ]
-    for wall in walls:
+    sides = ("north", "east", "south", "west")
+    for wall, side in zip(walls, sides):
         wall["source_room_id"] = room_id
+        wall["thickness"] = round2(t)
+        wall["room_side"] = side
     return walls
 
+
+def refit_room_wall_joints(walls: list, room: dict) -> list:
+    """Re-apply outside-to-outside butt joints after a wall thickness change."""
+    room_id = room.get("id") or ""
+    owned = [w for w in walls if w.get("source_room_id") == room_id]
+    if len(owned) < 4:
+        return walls
+    left = inches(room.get("x"))
+    top = inches(room.get("y"))
+    width = inches(room.get("width"))
+    depth = inches(room.get("depth"))
+    right = left + width
+    bottom = top + depth
+    north = min(owned, key=lambda wall: (wall["y1"] + wall["y2"]) / 2)
+    south = max(owned, key=lambda wall: (wall["y1"] + wall["y2"]) / 2)
+    west = min(owned, key=lambda wall: (wall["x1"] + wall["x2"]) / 2)
+    east = max(owned, key=lambda wall: (wall["x1"] + wall["x2"]) / 2)
+    nt = max(inches(north.get("thickness")), 1.0)
+    st = max(inches(south.get("thickness")), 1.0)
+    et = max(inches(east.get("thickness")), 1.0)
+    wt = max(inches(west.get("thickness")), 1.0)
+    inset_n = min(nt, max(0.0, (depth - 1.0) / 2.0))
+    inset_s = min(st, max(0.0, (depth - 1.0) / 2.0))
+    if inset_n + inset_s >= depth:
+        share = max(0.0, (depth - 1.0) / 2.0)
+        inset_n = inset_s = share
+    north.update({
+        "x1": round2(left), "y1": round2(top + nt / 2),
+        "x2": round2(right), "y2": round2(top + nt / 2),
+        "room_side": "north",
+    })
+    south.update({
+        "x1": round2(right), "y1": round2(bottom - st / 2),
+        "x2": round2(left), "y2": round2(bottom - st / 2),
+        "room_side": "south",
+    })
+    east.update({
+        "x1": round2(right - et / 2), "y1": round2(top + inset_n),
+        "x2": round2(right - et / 2), "y2": round2(bottom - inset_s),
+        "room_side": "east",
+    })
+    west.update({
+        "x1": round2(left + wt / 2), "y1": round2(bottom - inset_s),
+        "x2": round2(left + wt / 2), "y2": round2(top + inset_n),
+        "room_side": "west",
+    })
+    return walls
 
 def empty_roof(kind="gable", width=240, depth=180) -> dict:
     return {
@@ -313,8 +439,8 @@ def catalog() -> list:
         item("Kitchen", "Drawers", "cab-utensil-15", "Utensil 3-drawer 15", 15, 24, 34.5, ["cabinet", "base", "drawers"]),
         item("Kitchen", "Drawers", "cab-utensil-18", "Utensil 3-drawer 18", 18, 24, 34.5, ["cabinet", "base", "drawers"]),
         item("Kitchen", "Drawers", "cab-utensil-21", "Utensil 3-drawer 21", 21, 24, 34.5, ["cabinet", "base", "drawers"]),
-        *[item("Kitchen", "Drawers", f"cab-drawers-3-{w}", f"3-drawer base {w}", w, 24, 34.5, ["cabinet", "base", "drawers"]) for w in (12, 15, 18, 21, 24, 30, 36)],
-        *[item("Kitchen", "Drawers", f"cab-drawers-4-{w}", f"4-drawer stack {w}", w, 24, 34.5, ["cabinet", "base", "drawers"]) for w in (12, 15, 18, 21, 24, 30, 36)],
+        *[item("Kitchen", "Drawers", f"cab-drawers-3-{w}", f"3-drawer / utensil {w}", w, 24, 34.5, ["cabinet", "base", "drawers"]) for w in (12, 15, 18, 21, 24, 27, 30, 33, 36, 42, 48)],
+        *[item("Kitchen", "Drawers", f"cab-drawers-4-{w}", f"4-drawer stack {w}", w, 24, 34.5, ["cabinet", "base", "drawers"]) for w in (12, 15, 18, 21, 24, 27, 30, 33, 36, 42, 48)],
         *[item("Kitchen", "Drawers", f"cab-drawer-doors-{w}", f"Drawer over doors {w}", w, 24, 34.5, ["cabinet", "base"]) for w in (18, 21, 24, 30, 36, 42)],
         *[item("Kitchen", "Sink bases", f"cab-sink-{w}", f"Sink base {w}", w, 24, 34.5, ["cabinet", "sink", "base"]) for w in (24, 30, 33, 36, 42)],
         item("Kitchen", "Sink bases", "cab-farm-30", "Farm sink base 30", 30, 24, 34.5, ["cabinet", "sink", "base", "farm"]),
@@ -545,11 +671,19 @@ def catalog() -> list:
     ]
     mep = [
         item("MEP", "Electrical", "outlet-duplex", "Duplex outlet", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "outlet-quad", "Quad receptacle", 8, 6, 4, ["electrical"]),
         item("MEP", "Electrical", "outlet-gfci", "GFCI outlet", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "outlet-gfci-wr", "WR GFCI (damp/wet)", 6, 6, 4, ["electrical"]),
         item("MEP", "Electrical", "outlet-afci", "AFCI receptacle", 6, 6, 4, ["electrical"]),
-        item("MEP", "Electrical", "switch", "Light switch", 6, 6, 4, ["electrical"]),
-        item("MEP", "Electrical", "switch-dimmer", "Dimmer switch", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "outlet-dual", "Dual-function GFCI/AFCI", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "outlet-240", "240V receptacle", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "switch", "Single-pole switch", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "switch-dimmer", "LED dimmer", 6, 6, 4, ["electrical"]),
         item("MEP", "Electrical", "switch-3way", "3-way switch", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "switch-3way-dimmer", "3-way LED dimmer", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "switch-4way", "4-way switch", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "switch-fan", "Fan speed control", 6, 6, 4, ["electrical"]),
+        item("MEP", "Electrical", "switch-fan-light", "Fan / light dual control", 6, 6, 4, ["electrical"]),
         item("MEP", "Electrical", "switch-gfci", "GFCI switch", 6, 6, 4, ["electrical"]),
         item("MEP", "Electrical", "panel", "Electrical panel", 14, 4, 30, ["electrical"]),
         item("MEP", "Electrical", "smoke", "Smoke / CO", 6, 6, 2, ["electrical"]),
@@ -592,7 +726,12 @@ def _opening_area(opening: dict) -> float:
     return inches(opening.get("width")) * inches(opening.get("height"))
 
 
-def compute_roof(level: dict) -> dict:
+def compute_roof(level: dict, *, project_type: str = "", roof_in_takeoff=None, document: dict | None = None) -> dict:
+    doc = dict(document or {})
+    if roof_in_takeoff is not None:
+        doc["roof_in_takeoff"] = roof_in_takeoff
+    if not roof_takeoff_in_scope(doc, level, project_type):
+        return empty_roof_takeoff()
     roofs = level.get("roofs") or []
     rooms = level.get("rooms") or []
     if roofs:
@@ -605,16 +744,7 @@ def compute_roof(level: dict) -> dict:
         kind = (roof.get("kind") or "gable").lower()
     else:
         if not rooms:
-            return {
-                "roof_sf": 0.0,
-                "roof_perimeter_lf": 0.0,
-                "ridge_lf": 0.0,
-                "gable_lf": 0.0,
-                "valley_lf": 0.0,
-                "gutter_lf": 0.0,
-                "pitch": "6/12",
-                "pitch_deg": 0.0,
-            }
+            return empty_roof_takeoff()
         min_x = min(inches(r.get("x")) for r in rooms)
         min_y = min(inches(r.get("y")) for r in rooms)
         max_x = max(inches(r.get("x")) + inches(r.get("width")) for r in rooms)
@@ -672,10 +802,11 @@ def compute_roof(level: dict) -> dict:
         "gutter_lf": gutter_lf,
         "pitch": f"{int(rise)}/{int(run)}",
         "pitch_deg": pitch_deg,
+        "roof_in_scope": True,
     }
 
 
-def compute_level_takeoffs(level: dict) -> dict:
+def compute_level_takeoffs(level: dict, *, project_type: str = "", roof_in_takeoff=None, document: dict | None = None) -> dict:
     rooms = level.get("rooms") or []
     walls = level.get("walls") or []
     objects = level.get("objects") or []
@@ -721,7 +852,12 @@ def compute_level_takeoffs(level: dict) -> dict:
         for obj in objects
         if "cabinet" in (obj.get("tags") or []) or str(obj.get("library_id") or "").startswith("cab-base")
     ))
-    roof = compute_roof(level)
+    roof = compute_roof(
+        level,
+        project_type=project_type,
+        roof_in_takeoff=roof_in_takeoff,
+        document=document,
+    )
     plumbing_lf = round2(sum(wall_length(w) for w in walls if w.get("plumbing")) / 12.0)
     beams = level.get("beams") or []
     beam_lf = round2(sum(wall_length(b) for b in beams) / 12.0)
@@ -747,10 +883,15 @@ def compute_level_takeoffs(level: dict) -> dict:
     }
 
 
-def compute_takeoffs(document: dict) -> dict:
+def compute_takeoffs(document: dict, project_type: str = "") -> dict:
     doc = document or {}
     levels = doc.get("levels") or []
-    level_rows = [compute_level_takeoffs(level) for level in levels]
+    ptype = project_type or doc.get("project_type") or ""
+    flag = doc.get("roof_in_takeoff")
+    level_rows = [
+        compute_level_takeoffs(level, project_type=ptype, roof_in_takeoff=flag, document=doc)
+        for level in levels
+    ]
     totals = {
         "floor_sf": round2(sum(r["floor_sf"] for r in level_rows)),
         "ceiling_sf": round2(sum(r["ceiling_sf"] for r in level_rows)),
@@ -769,8 +910,9 @@ def compute_takeoffs(document: dict) -> dict:
         "lvl_lf": round2(sum(r.get("lvl_lf") or 0 for r in level_rows)),
         "level_count": len(level_rows),
         "room_count": sum(r["room_count"] for r in level_rows),
+        "roof_in_scope": any(r.get("roof_in_scope") for r in level_rows),
     }
-    pitch = next((r["pitch"] for r in level_rows if r.get("roof_sf")), "6/12")
+    pitch = next((r["pitch"] for r in level_rows if r.get("roof_in_scope") and r.get("pitch")), "")
     return {"levels": level_rows, "totals": totals, "pitch": pitch, "computed_at": now_iso()}
 
 
@@ -816,71 +958,7 @@ def apply_t_intersections(walls: list, new_wall: dict) -> list:
     return result
 
 
-def import_roomplan(payload: dict, level: dict | None = None) -> dict:
-    """Accept Apple RoomPlan / native-bridge JSON and map into a level.
-
-    Supported shapes:
-    - Revival native: { rooms, walls, openings }
-    - RoomPlan-ish: { walls: [{start, end, thickness}], doors, windows, rooms }
-    Coordinates in meters are converted to inches (× 39.3701).
-    """
-    data = payload or {}
-    scale = 39.3701 if str(data.get("units") or "").lower().startswith("m") else 1.0
-    if data.get("meters") is True:
-        scale = 39.3701
-    target = deepcopy(level) if level else empty_level("LiDAR Scan", 0)
-
-    def pt(value, key_x="x", key_y="y"):
-        if isinstance(value, dict):
-            return inches(value.get(key_x)) * scale, inches(value.get(key_y)) * scale
-        if isinstance(value, (list, tuple)) and len(value) >= 2:
-            return inches(value[0]) * scale, inches(value[1]) * scale
-        return 0.0, 0.0
-
-    for raw in data.get("rooms") or []:
-        x, y = pt(raw.get("origin") or raw)
-        w = inches(raw.get("width") or raw.get("dimensions", {}).get("width") or 120) * (scale if not raw.get("width_in") else 1)
-        d = inches(raw.get("depth") or raw.get("length") or raw.get("dimensions", {}).get("depth") or 120) * (scale if not raw.get("depth_in") else 1)
-        if raw.get("width_in"):
-            w = inches(raw.get("width_in"))
-        if raw.get("depth_in"):
-            d = inches(raw.get("depth_in"))
-        room = empty_room(raw.get("name") or "Scanned room", x, y, w, d)
-        target["rooms"].append(room)
-
-    for raw in data.get("walls") or []:
-        if raw.get("start") and raw.get("end"):
-            x1, y1 = pt(raw["start"])
-            x2, y2 = pt(raw["end"])
-        elif raw.get("x1") is not None:
-            x1, y1, x2, y2 = inches(raw["x1"]) * scale, inches(raw["y1"]) * scale, inches(raw["x2"]) * scale, inches(raw["y2"]) * scale
-        else:
-            continue
-        wall = empty_wall(x1, y1, x2, y2, raw.get("kind") or "exterior")
-        if raw.get("thickness"):
-            wall["thickness"] = inches(raw["thickness"]) * (scale if scale != 1 else 1)
-        target["walls"].append(wall)
-
-    def add_opening(kind, raw):
-        walls = target.get("walls") or []
-        if not walls:
-            return
-        wall = walls[0]
-        opening = empty_opening(kind)
-        opening["width"] = inches(raw.get("width") or opening["width"]) * (scale if scale != 1 and inches(raw.get("width") or 0) < 20 else 1)
-        if inches(raw.get("width") or 0) > 20:
-            opening["width"] = inches(raw.get("width"))
-        opening["offset"] = inches(raw.get("offset") or 12)
-        wall.setdefault("openings", []).append(opening)
-
-    for raw in data.get("doors") or []:
-        add_opening("door", raw)
-    for raw in data.get("windows") or []:
-        add_opening("window", raw)
-
-    if not target["rooms"] and not target["walls"]:
-        raise ValueError("That scan did not include rooms or walls we could read.")
-    return target
+from roomplan_import import import_roomplan  # noqa: E402  — CapturedRoom + object placeholders
 
 
 def public_catalog() -> dict:

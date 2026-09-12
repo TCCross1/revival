@@ -1,16 +1,36 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { formatFtIn, inches } from "@/lib/floorPlan/units";
 import { nearestWall, wallLength } from "@/lib/floorPlan/model";
+import { segmentedDepthForRoom, segmentedWidthForRoom } from "@/lib/floorPlan/segmentedRoomDimension";
+import { exteriorLaneOffsets } from "@/lib/floorPlan/dimensionLanes";
+import { wallAxis } from "@/lib/floorPlan/wallOpenings";
 import { DoorSwing, FloorHatchDefs, flooringFill, ObjectSymbol, WindowLite, CasedOpening } from "./symbols";
 import { libraryById, isIslandObject } from "@/lib/floorPlan/library";
-import { isFillerObject, objectFootprint } from "@/lib/floorPlan/cabinetRun";
+import { isFillerObject, objectFootprint, objectOrientTransform } from "@/lib/floorPlan/cabinetRun";
 import { visibleForPhase, workOf } from "@/lib/floorPlan/scope";
 import { DEFAULT_LAYERS, layerOn, objectVisible, sortObjectsByLayer } from "@/lib/floorPlan/layers";
+import SegmentedRoomDimension from "./SegmentedRoomDimension";
+import OpeningDimensionChain from "./OpeningDimensionChain";
 
 const PX = 1.7;
 const DIM_ENVELOPE = 78;
 const DIM_ROOM = 54;
 const DIM_OPENING = 40;
+const HANDLE_PX = 10;
+const HANDLE_INSET_PX = 8;
+
+function hitsSeHandle(world, box, viewScale) {
+  const slop = 14 / (viewScale * PX);
+  const hx = box.x + box.w - HANDLE_INSET_PX / PX;
+  const hy = box.y + box.h - HANDLE_INSET_PX / PX;
+  const size = HANDLE_PX / PX;
+  return (
+    world.x >= hx - slop
+    && world.x <= hx + size + slop
+    && world.y >= hy - slop
+    && world.y <= hy + size + slop
+  );
+}
 
 function DimString({ x1, y1, x2, y2, offset = 48, label, interior = false }) {
   const dx = x2 - x1;
@@ -74,15 +94,6 @@ function offsetOutside(x1, y1, x2, y2, env, mag) {
   return outside ? mag : -mag;
 }
 
-function objectSymbolOrient(front, width, depth) {
-  const w = inches(width);
-  const d = inches(depth);
-  if (front === "east") return { tf: "matrix(0 1 1 0 0 0)", sw: w, sd: d };
-  if (front === "west") return { tf: `matrix(0 1 -1 0 ${d} 0)`, sw: w, sd: d };
-  if (front === "north") return { tf: `rotate(180 ${w / 2} ${d / 2})`, sw: w, sd: d };
-  return { tf: "", sw: w, sd: d };
-}
-
 function wallAngle(wall) {
   return (Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1) * 180) / Math.PI;
 }
@@ -113,6 +124,7 @@ function hitOpeningAt(walls, world, tol) {
 
 function outlineFor(item, active, phase) {
   if (active) return { color: "#C9A227", width: 2, dash: undefined };
+  if (item?.from_scan || item?.scan_verify) return { color: "#C45C26", width: 1.5, dash: "4 3" };
   if (workOf(item) === "demo") return { color: "#C62828", width: 1.6, dash: "5 3" };
   if (phase !== "all" && workOf(item) === "new") return { color: "#2E7D32", width: 1.4, dash: undefined };
   return { color: "transparent", width: 0, dash: undefined };
@@ -127,15 +139,36 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
   onSelect,
   onCanvasTap,
   onRoomMove,
+  onRoomMoveStart,
+  onRoomMoveEnd,
   onRoomResize,
+  onRoomDraw,
   onObjectMove,
   onObjectResize,
   onOpeningMove,
+  onOpeningMoveStart,
+  onOpeningMoveEnd,
+  onOpeningRehost,
+  onOpeningSpanEdit,
+  onOpeningClick,
+  onWallMove,
+  onWallMoveStart,
+  onWallMoveEnd,
+  onVertexMove,
+  onVertexMoveStart,
+  onVertexMoveEnd,
+  reshapeMode = null,
+  addCornerDraft = [],
+  onAddCornerClick,
   onBeamMove,
   onDoubleClick,
   placingAnchor = null,
+  pickingWalls = false,
+  highlightedWallIds = [],
   placingItem,
   drawPoints,
+  drawSnap = null,
+  onDrawCursor,
   wirePath,
   phase = "all",
   clientView = false,
@@ -150,6 +183,7 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
   const lastTap = useRef({ t: 0, x: 0, y: 0 });
   const dragMoved = useRef(false);
   const [drag, setDrag] = useState(null);
+  const [cursorWorld, setCursorWorld] = useState(null);
 
   useImperativeHandle(ref, () => ({
     capturePng: () => new Promise((resolve, reject) => {
@@ -194,12 +228,16 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
 
   const onPointerDown = (e) => {
     if (e.button === 1 || e.button === 2) return;
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch (err) {
+      // Synthetic / non-primary pointers can throw NotFoundError — ignore.
+      console.warn("Pointer capture unavailable", err?.message || err);
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2) {
       const pts = [...pointers.current.values()];
       const room = selected?.type === "room" ? (level.rooms || []).find((r) => r.id === selected.id) : null;
-      const obj = selected?.type === "object" ? (level.objects || []).find((o) => o.id === selected.id) : null;
       pinch.current = {
         dist: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y),
         scale: view.scale,
@@ -210,9 +248,6 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
         roomId: room?.id || "",
         roomW: room?.width || 0,
         roomD: room?.depth || 0,
-        objId: obj?.id || "",
-        objW: obj?.width || 0,
-        objD: obj?.depth || 0,
       };
       setDrag(null);
       return;
@@ -225,15 +260,15 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
     const insertOpening = ["door", "window", "cased"].includes(mode);
 
     if (mode !== "draw" && mode !== "lidar" && !placingAnchor) {
-      if (!insertOpening) {
+      if (!insertOpening && !pickingWalls) {
         const hitObj = [...visibleObjects].reverse().find((obj) => {
           const fp = objectFootprint(obj);
           return world.x >= fp.x && world.x <= fp.x + fp.w && world.y >= fp.y && world.y <= fp.y + fp.h;
         });
         if (hitObj) {
           const fp = objectFootprint(hitObj);
-          const nearE = Math.abs(world.x - (fp.x + fp.w)) < 10 / view.scale;
-          const nearS = Math.abs(world.y - (fp.y + fp.h)) < 10 / view.scale;
+          const alreadySelected = selected?.type === "object" && selected.id === hitObj.id;
+          const grabHandle = alreadySelected && hitsSeHandle(world, { x: fp.x, y: fp.y, w: fp.w, h: fp.h }, view.scale);
           onSelect({ type: "object", id: hitObj.id, doubled });
           if (doubled) {
             onDoubleClick?.({ type: "object", id: hitObj.id });
@@ -245,7 +280,7 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
             return;
           }
           setDrag({
-            kind: nearE || nearS ? "resize-object" : "object",
+            kind: grabHandle ? "resize-object" : "object",
             id: hitObj.id,
             dx: world.x - fp.x,
             dy: world.y - fp.y,
@@ -255,30 +290,8 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
           return;
         }
       }
-      if (!insertOpening && layerOn(layers, "rooms")) {
-        const hitRoom = [...(level.rooms || [])].reverse().find((room) => (
-          visibleForPhase(room, phase) && world.x >= room.x && world.x <= room.x + room.width && world.y >= room.y && world.y <= room.y + room.depth
-        ));
-        if (hitRoom) {
-          const nearE = Math.abs(world.x - (hitRoom.x + hitRoom.width)) < 10 / view.scale;
-          const nearS = Math.abs(world.y - (hitRoom.y + hitRoom.depth)) < 10 / view.scale;
-          onSelect({ type: "room", id: hitRoom.id, doubled });
-          if (doubled) {
-            onDoubleClick?.({ type: "room", id: hitRoom.id });
-            setDrag(null);
-            return;
-          }
-          setDrag({
-            kind: nearE || nearS ? "resize-room" : "room",
-            id: hitRoom.id,
-            dx: world.x - hitRoom.x,
-            dy: world.y - hitRoom.y,
-          });
-          return;
-        }
-      }
       if (layerOn(layers, "walls")) {
-        const openingHit = hitOpeningAt(level.walls || [], world, 12 / view.scale);
+        const openingHit = !pickingWalls ? hitOpeningAt(level.walls || [], world, 12 / view.scale) : null;
         if (openingHit && !insertOpening) {
           onSelect({ type: "opening", id: openingHit.opening.id, wallId: openingHit.wall.id, doubled });
           if (doubled) {
@@ -291,19 +304,108 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
             wallId: openingHit.wall.id,
             id: openingHit.opening.id,
             grab: openingHit.along - inches(openingHit.opening.offset),
+            width: inches(openingHit.opening.width),
+            previewWallId: null,
+            previewAlong: null,
+            sx: e.clientX,
+            sy: e.clientY,
+            gestureStarted: false,
           });
+          dragMoved.current = false;
           return;
         }
-        const wallHit = nearestWall(level.walls || [], world.x, world.y, 10 / view.scale);
+        const wallHit = nearestWall(level.walls || [], world.x, world.y, (pickingWalls ? 28 : 10) / view.scale);
         if (wallHit) {
+          // Add-corners mode: place topology points on the selected wall
+          if (reshapeMode === "add-corners" && selected?.type === "wall" && selected.id === wallHit.wall.id) {
+            onAddCornerClick?.(wallHit.wall.id, { x: wallHit.x, y: wallHit.y, t: wallHit.t });
+            setDrag(null);
+            return;
+          }
+          if (reshapeMode === "add-corners" && selected?.type === "wall" && selected.id !== wallHit.wall.id) {
+            // Allow switching host wall while placing
+            onSelect({ type: "wall", id: wallHit.wall.id, doubled: false, t: wallHit.t });
+            onAddCornerClick?.(wallHit.wall.id, { x: wallHit.x, y: wallHit.y, t: wallHit.t });
+            setDrag(null);
+            return;
+          }
+
+          // Vertex / corner hit when move-corner mode or select near endpoint
+          if (mode === "select" && (reshapeMode === "move-corner" || reshapeMode == null)) {
+            const endpointTol = 10 / Math.max(view.scale, 0.35);
+            const ends = [
+              { x: wallHit.wall.x1, y: wallHit.wall.y1, vertexId: wallHit.wall.startVertexId },
+              { x: wallHit.wall.x2, y: wallHit.wall.y2, vertexId: wallHit.wall.endVertexId },
+            ];
+            const nearEnd = ends.find((p) => Math.hypot(world.x - p.x, world.y - p.y) <= endpointTol);
+            if (nearEnd?.vertexId && (reshapeMode === "move-corner" || Math.hypot(world.x - nearEnd.x, world.y - nearEnd.y) <= endpointTol * 0.85)) {
+              onSelect({ type: "vertex", id: nearEnd.vertexId, wallId: wallHit.wall.id });
+              if (reshapeMode === "move-corner" || mode === "select") {
+                setDrag({
+                  kind: "vertex-move",
+                  id: nearEnd.vertexId,
+                  sx: e.clientX,
+                  sy: e.clientY,
+                  gestureStarted: false,
+                });
+              }
+              return;
+            }
+          }
+
           onSelect({ type: "wall", id: wallHit.wall.id, doubled, t: wallHit.t });
           if (doubled) {
-            onDoubleClick?.({ type: "wall", id: wallHit.wall.id });
+            onDoubleClick?.({ type: "wall", id: wallHit.wall.id, t: wallHit.t });
             return;
           }
           if (insertOpening) {
             onCanvasTap?.(world, { doubled, clientX: e.clientX, clientY: e.clientY });
+            return;
           }
+          // Wall-body drag (perpendicular move) in select mode
+          if (mode === "select" && reshapeMode !== "add-corners") {
+            setDrag({
+              kind: "wall-move",
+              id: wallHit.wall.id,
+              sx: e.clientX,
+              sy: e.clientY,
+              gestureStarted: false,
+            });
+          }
+          return;
+        }
+      }
+      if (pickingWalls) {
+        setDrag(null);
+        return;
+      }
+      if (!insertOpening && layerOn(layers, "rooms")) {
+        const hitRoom = [...(level.rooms || [])].reverse().find((room) => (
+          visibleForPhase(room, phase) && world.x >= room.x && world.x <= room.x + room.width && world.y >= room.y && world.y <= room.y + room.depth
+        ));
+        if (hitRoom) {
+          const alreadySelected = selected?.type === "room" && selected.id === hitRoom.id;
+          const grabHandle = alreadySelected && hitsSeHandle(world, {
+            x: hitRoom.x,
+            y: hitRoom.y,
+            w: hitRoom.width,
+            h: hitRoom.depth,
+          }, view.scale);
+          onSelect({ type: "room", id: hitRoom.id, doubled });
+          if (doubled) {
+            onDoubleClick?.({ type: "room", id: hitRoom.id });
+            setDrag(null);
+            return;
+          }
+          setDrag({
+            kind: grabHandle ? "resize-room" : "room",
+            id: hitRoom.id,
+            dx: world.x - hitRoom.x,
+            dy: world.y - hitRoom.y,
+            sx: e.clientX,
+            sy: e.clientY,
+            gestureStarted: false,
+          });
           return;
         }
       }
@@ -333,6 +435,11 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
       setDrag({ kind: "pan", x: e.clientX, y: e.clientY, vx: view.x, vy: view.y });
       return;
     }
+    if (mode === "room") {
+      // Click-drag creates one outside rectangle; walls are derived on commit.
+      setDrag({ kind: "draw-room", x0: world.x, y0: world.y, x1: world.x, y1: world.y });
+      return;
+    }
     onCanvasTap?.(world, { doubled, clientX: e.clientX, clientY: e.clientY });
   };
 
@@ -347,22 +454,67 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
         if (room) onRoomResize(room.id, room.x + pinch.current.roomW * factor, room.y + pinch.current.roomD * factor);
         return;
       }
-      if (pinch.current.objId && onObjectResize) {
-        onObjectResize(pinch.current.objId, Math.max(6, pinch.current.objW * factor), Math.max(4, pinch.current.objD * factor));
-        return;
-      }
       const nextScale = Math.min(4.5, Math.max(0.35, pinch.current.scale * factor));
       onViewChange({ ...view, scale: nextScale });
       return;
     }
-    if (!drag) return;
+    if (!drag) {
+      if (mode === "draw") {
+        const w = toWorld(e.clientX, e.clientY);
+        setCursorWorld(w);
+        onDrawCursor?.(w);
+      }
+      return;
+    }
     const world = toWorld(e.clientX, e.clientY);
+    if (mode === "draw") {
+      setCursorWorld(world);
+      onDrawCursor?.(world);
+    }
     if (drag.kind === "pan") {
       onViewChange({ ...view, x: drag.vx + (e.clientX - drag.x), y: drag.vy + (e.clientY - drag.y) });
       return;
     }
-    if (drag.kind === "room") onRoomMove?.(drag.id, world.x - drag.dx, world.y - drag.dy);
+    if (drag.kind === "wall-move") {
+      if (!dragMoved.current) {
+        if (Math.hypot(e.clientX - (drag.sx || e.clientX), e.clientY - (drag.sy || e.clientY)) < 6) return;
+        dragMoved.current = true;
+        if (!drag.gestureStarted) {
+          onWallMoveStart?.(drag.id);
+          setDrag((prev) => (prev ? { ...prev, gestureStarted: true } : prev));
+        }
+      }
+      onWallMove?.(drag.id, world);
+      return;
+    }
+    if (drag.kind === "vertex-move") {
+      if (!dragMoved.current) {
+        if (Math.hypot(e.clientX - (drag.sx || e.clientX), e.clientY - (drag.sy || e.clientY)) < 6) return;
+        dragMoved.current = true;
+        if (!drag.gestureStarted) {
+          onVertexMoveStart?.(drag.id);
+          setDrag((prev) => (prev ? { ...prev, gestureStarted: true } : prev));
+        }
+      }
+      onVertexMove?.(drag.id, world, { freeAngle: e.altKey });
+      return;
+    }
+    if (drag.kind === "room") {
+      if (!dragMoved.current) {
+        if (Math.hypot(e.clientX - (drag.sx || e.clientX), e.clientY - (drag.sy || e.clientY)) < 6) return;
+        dragMoved.current = true;
+        if (!drag.gestureStarted) {
+          onRoomMoveStart?.(drag.id);
+          setDrag((prev) => (prev ? { ...prev, gestureStarted: true } : prev));
+        }
+      }
+      onRoomMove?.(drag.id, world.x - drag.dx, world.y - drag.dy);
+    }
     if (drag.kind === "resize-room") onRoomResize?.(drag.id, world.x, world.y);
+    if (drag.kind === "draw-room") {
+      setDrag((prev) => (prev ? { ...prev, x1: world.x, y1: world.y } : prev));
+      return;
+    }
     if (drag.kind === "object") {
       if (!dragMoved.current) {
         if (Math.hypot(e.clientX - (drag.sx || e.clientX), e.clientY - (drag.sy || e.clientY)) < 6) return;
@@ -371,11 +523,38 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
       onObjectMove?.(drag.id, world.x - drag.dx, world.y - drag.dy);
     }
     if (drag.kind === "opening") {
-      const wall = (level.walls || []).find((w) => w.id === drag.wallId);
-      if (wall) {
-        const len = Math.hypot(inches(wall.x2) - inches(wall.x1), inches(wall.y2) - inches(wall.y1)) || 1;
-        const t = Math.max(0, Math.min(1, ((world.x - inches(wall.x1)) * (inches(wall.x2) - inches(wall.x1)) + (world.y - inches(wall.y1)) * (inches(wall.y2) - inches(wall.y1))) / (len * len)));
-        onOpeningMove?.(drag.wallId, drag.id, t * len - (drag.grab || 0));
+      if (!dragMoved.current) {
+        if (Math.hypot(e.clientX - (drag.sx || e.clientX), e.clientY - (drag.sy || e.clientY)) < 6) return;
+        dragMoved.current = true;
+        if (!drag.gestureStarted) {
+          onOpeningMoveStart?.(drag.wallId, drag.id);
+          setDrag((prev) => (prev ? { ...prev, gestureStarted: true } : prev));
+        }
+      }
+      const hostWall = (level.walls || []).find((w) => w.id === drag.wallId);
+      const opening = hostWall?.openings?.find((o) => o.id === drag.id);
+      const width = inches(opening?.width ?? drag.width ?? 32);
+      const rehostHit = nearestWall(
+        (level.walls || []).filter((w) => w.id !== drag.wallId),
+        world.x,
+        world.y,
+        22 / view.scale,
+      );
+      if (rehostHit && rehostHit.dist <= 18 / view.scale) {
+        const axis = wallAxis(rehostHit.wall);
+        const along = (world.x - axis.x1) * axis.ux + (world.y - axis.y1) * axis.uy - width / 2;
+        setDrag((prev) => (prev ? {
+          ...prev,
+          previewWallId: rehostHit.wall.id,
+          previewAlong: along,
+        } : prev));
+        return;
+      }
+      if (hostWall) {
+        const axis = wallAxis(hostWall);
+        const along = (world.x - axis.x1) * axis.ux + (world.y - axis.y1) * axis.uy;
+        setDrag((prev) => (prev ? { ...prev, previewWallId: null, previewAlong: null } : prev));
+        onOpeningMove?.(drag.wallId, drag.id, along - (drag.grab || 0));
       }
     }
     if (drag.kind === "beam") {
@@ -399,6 +578,52 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
   const onPointerUp = (e) => {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
+    if (drag?.kind === "draw-room") {
+      const x1 = drag.x0;
+      const y1 = drag.y0;
+      const x2 = drag.x1;
+      const y2 = drag.y1;
+      const w = Math.abs(x2 - x1);
+      const d = Math.abs(y2 - y1);
+      if (w >= 24 && d >= 24) {
+        onRoomDraw?.({
+          x1: Math.min(x1, x2),
+          y1: Math.min(y1, y2),
+          x2: Math.max(x1, x2),
+          y2: Math.max(y1, y2),
+        });
+      }
+    }
+    if (drag?.kind === "opening") {
+      if (drag.previewWallId && drag.previewAlong != null && dragMoved.current) {
+        const world = toWorld(e.clientX, e.clientY);
+        onOpeningRehost?.(drag.wallId, drag.id, drag.previewWallId, world.x, world.y);
+      } else if (!dragMoved.current) {
+        onOpeningClick?.({
+          type: "opening",
+          id: drag.id,
+          wallId: drag.wallId,
+        });
+      }
+      if (dragMoved.current || drag.gestureStarted) {
+        onOpeningMoveEnd?.(drag.wallId, drag.id);
+      }
+    }
+    if (drag?.kind === "room") {
+      if (dragMoved.current || drag.gestureStarted) {
+        onRoomMoveEnd?.(drag.id);
+      }
+    }
+    if (drag?.kind === "wall-move") {
+      if (dragMoved.current || drag.gestureStarted) {
+        onWallMoveEnd?.(drag.id);
+      }
+    }
+    if (drag?.kind === "vertex-move") {
+      if (dragMoved.current || drag.gestureStarted) {
+        onVertexMoveEnd?.(drag.id);
+      }
+    }
     setDrag(null);
   };
 
@@ -413,13 +638,13 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
       const rect = node.getBoundingClientRect();
       const cx = ev.clientX - rect.left;
       const cy = ev.clientY - rect.top;
-      const worldX = (cx - view.x) / Math.max(view.scale, 0.01);
-      const worldY = (cy - view.y) / Math.max(view.scale, 0.01);
+      const worldX = (cx - view.x) / (Math.max(view.scale, 0.01) * PX);
+      const worldY = (cy - view.y) / (Math.max(view.scale, 0.01) * PX);
       onViewChange({
         ...view,
         scale: nextScale,
-        x: cx - worldX * nextScale,
-        y: cy - worldY * nextScale,
+        x: cx - worldX * nextScale * PX,
+        y: cy - worldY * nextScale * PX,
       });
     };
     node.addEventListener("wheel", onWheel, { passive: false });
@@ -482,6 +707,11 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                 <text x={(room.width * PX) / 2} y={(room.depth * PX) / 2 + 10} textAnchor="middle" fill="#111111" fontFamily="Times, serif" fontSize="9">
                   {formatFtIn(room.width)} × {formatFtIn(room.depth)}
                 </text>
+                {room.from_scan || room.scan_verify ? (
+                  <text x={(room.width * PX) / 2} y={(room.depth * PX) / 2 + 22} textAnchor="middle" fill="#C45C26" fontFamily="Times, serif" fontSize="8">
+                    from scan – verify
+                  </text>
+                ) : null}
                 {!clientView && selected?.type === "room" && selected.id === room.id ? (
                   <rect x={room.width * PX - 8} y={room.depth * PX - 8} width="10" height="10" rx="1" fill="#C9A227" />
                 ) : null}
@@ -493,6 +723,7 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
           {layerOn(layers, "walls") ? (level.walls || []).filter((wall) => visibleForPhase(wall, phase)).map((wall) => {
             const len = wallLength(wall);
             const active = selected?.type === "wall" && selected.id === wall.id;
+            const picked = (highlightedWallIds || []).includes(wall.id);
             const demo = workOf(wall) === "demo";
             const fill = demo
               ? "#FFFFFF"
@@ -509,8 +740,8 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                   width={len * PX}
                   height={wall.thickness * PX}
                   fill={fill}
-                  stroke={active ? "#C9A227" : "#111111"}
-                  strokeWidth={active || wall.plumbing ? 1.6 : 0.7}
+                  stroke={picked ? "#C9A227" : active ? "#C9A227" : "#111111"}
+                  strokeWidth={picked ? 2.4 : active || wall.plumbing ? 1.6 : 0.7}
                   strokeDasharray={demo ? "5 3" : undefined}
                   opacity={demo ? 0.85 : 1}
                 />
@@ -538,14 +769,49 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                     )}
                   </g>
                 ))}
-                {active ? (
-                  <text x={(len * PX) / 2} y={-10} textAnchor="middle" fill="#111111" fontFamily="Times, serif" fontSize="9">
-                    {formatFtIn(len)}
+                {active || picked ? (
+                  <text x={(len * PX) / 2} y={-10} textAnchor="middle" fill={picked ? "#0B3A8F" : "#111111"} fontFamily="Times, serif" fontSize="9">
+                    {picked ? "Cabinets" : formatFtIn(len)}
                   </text>
                 ) : null}
               </g>
             );
           }) : null}
+
+          {drag?.kind === "opening" && drag.previewWallId ? (() => {
+            const target = (level.walls || []).find((w) => w.id === drag.previewWallId);
+            const source = (level.walls || []).find((w) => w.id === drag.wallId);
+            const opening = source?.openings?.find((o) => o.id === drag.id);
+            if (!target || !opening) return null;
+            const ghost = { ...opening, offset: drag.previewAlong };
+            const len = wallLength(target);
+            return (
+              <g
+                key="opening-rehost-preview"
+                data-testid="opening-rehost-preview"
+                transform={`translate(${target.x1 * PX} ${target.y1 * PX}) rotate(${wallAngle(target)})`}
+                opacity="0.55"
+              >
+                <rect
+                  x={0}
+                  y={-(target.thickness * PX) / 2 - 2}
+                  width={len * PX}
+                  height={target.thickness * PX + 4}
+                  fill="none"
+                  stroke="#C9A227"
+                  strokeWidth="1.2"
+                  strokeDasharray="4 3"
+                />
+                {ghost.type === "door" ? (
+                  <DoorSwing opening={ghost} thickness={target.thickness * PX} scale={PX} />
+                ) : ghost.type === "window" ? (
+                  <WindowLite opening={ghost} thickness={target.thickness * PX} scale={PX} />
+                ) : (
+                  <CasedOpening opening={ghost} thickness={target.thickness * PX} scale={PX} />
+                )}
+              </g>
+            );
+          })() : null}
 
           {layerOn(layers, "structure") ? (level.beams || []).filter((beam) => visibleForPhase(beam, phase)).map((beam) => {
             const active = selected?.type === "beam" && selected.id === beam.id;
@@ -585,7 +851,7 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
             const active = selected?.type === "object" && selected.id === obj.id;
             const outline = outlineFor(obj, active, phase);
             const fp = objectFootprint(obj);
-            const ori = objectSymbolOrient(obj.front || "south", obj.width, obj.depth);
+            const orient = objectOrientTransform(fp.front, fp.width, fp.depth);
             return (
               <g key={obj.id} transform={`translate(${fp.x * PX} ${fp.y * PX})`}>
                 <rect
@@ -596,23 +862,28 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                   strokeWidth={outline.width}
                   strokeDasharray={outline.dash}
                 />
-                <g transform={`scale(${PX}) ${ori.tf}`}>
-                  <svg width={ori.sw} height={ori.sd} viewBox={`0 0 ${ori.sw} ${ori.sd}`} overflow="visible">
-                    <ObjectSymbol
-                      item={{
-                        ...lib,
-                        ...obj,
-                        finish: obj.finish,
-                        id: obj.library_id || lib.id,
-                        library_id: obj.library_id || lib.id,
-                        instance_id: obj.id,
-                      }}
-                      width={ori.sw}
-                      depth={ori.sd}
-                    />
-                  </svg>
+                <g transform={`scale(${PX})${orient ? ` ${orient}` : ""}`}>
+                  <ObjectSymbol
+                    item={{
+                      ...lib,
+                      ...obj,
+                      width: fp.width,
+                      depth: fp.depth,
+                      finish: obj.finish,
+                      id: obj.library_id || lib.id,
+                      library_id: obj.library_id || lib.id,
+                      instance_id: obj.id,
+                    }}
+                    width={fp.width}
+                    depth={fp.depth}
+                  />
                 </g>
                 {!clientView && active ? <rect x={fp.w * PX - 8} y={fp.h * PX - 8} width="10" height="10" rx="1" fill="#C9A227" /> : null}
+                {obj.from_scan || obj.scan_verify ? (
+                  <text x={fp.w * PX / 2} y={-3} textAnchor="middle" fill="#C45C26" fontFamily="Times, serif" fontSize="7">
+                    VERIFY
+                  </text>
+                ) : null}
                 {obj.note ? <circle cx={4} cy={4} r="2.4" fill="#C9A227" /> : null}
               </g>
             );
@@ -625,48 +896,85 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                 const env = envelopeOf(rooms);
                 if (!env) return null;
                 const islands = (level.objects || []).filter((obj) => isIslandObject(obj) && visibleForPhase(obj, phase));
+                const wallOnSide = (room, side) => (level.walls || []).find(
+                  (w) => w.source_room_id === room.id && w.room_side === side,
+                );
+                const hasOpenings = (wall) => (wall?.openings || []).some(
+                  (o) => o.type === "door" || o.type === "window" || o.type === "cased",
+                );
+                const renderRoomSide = (room, side, dim, faceWorld, exteriorToward) => {
+                  if (!onEnvelope(room, env, side)) return null;
+                  const wall = wallOnSide(room, side);
+                  const feature = hasOpenings(wall);
+                  const lanes = exteriorLaneOffsets({ hasFeatureChain: feature });
+                  return (
+                    <g key={`dim-room-${room.id}-${side}`} data-dim-stack={side}>
+                      {lanes.mode === "stacked" && wall ? (
+                        <OpeningDimensionChain
+                          level={level}
+                          wall={wall}
+                          offsetPx={lanes.openingChain}
+                          scalePx={PX}
+                          onEditSpan={onOpeningSpanEdit}
+                          testid={`opening-dim-chain-${side}-${room.id}`}
+                        />
+                      ) : null}
+                      {lanes.mode === "combined" ? (
+                        <SegmentedRoomDimension
+                          dim={dim}
+                          faceWorld={faceWorld}
+                          offsetPx={lanes.roomAssembly}
+                          exteriorToward={exteriorToward}
+                          scalePx={PX}
+                          viewScale={view.scale}
+                          variant="full"
+                          testid={`segmented-room-dim-${side}-${room.id}`}
+                        />
+                      ) : (
+                        <>
+                          <SegmentedRoomDimension
+                            dim={dim}
+                            faceWorld={faceWorld}
+                            offsetPx={lanes.roomAssembly}
+                            exteriorToward={exteriorToward}
+                            scalePx={PX}
+                            viewScale={view.scale}
+                            variant="segments"
+                            testid={`segmented-room-dim-${side}-${room.id}`}
+                          />
+                          <SegmentedRoomDimension
+                            dim={dim}
+                            faceWorld={faceWorld}
+                            offsetPx={lanes.overall}
+                            overallOffsetPx={lanes.overall}
+                            exteriorToward={exteriorToward}
+                            scalePx={PX}
+                            viewScale={view.scale}
+                            variant="overall"
+                            testid={`overall-room-dim-${side}-${room.id}`}
+                          />
+                        </>
+                      )}
+                    </g>
+                  );
+                };
                 return (
                   <g>
-                    <DimString x1={env.x1} y1={env.y1} x2={env.x2} y2={env.y1} offset={-DIM_ENVELOPE} />
-                    <DimString x1={env.x1} y1={env.y1} x2={env.x1} y2={env.y2} offset={-DIM_ENVELOPE} />
-                    {rooms.map((room) => (
-                      <g key={`dim-room-${room.id}`}>
-                        {onEnvelope(room, env, "north") ? (
-                          <DimString x1={room.x} y1={room.y} x2={room.x + room.width} y2={room.y} offset={-DIM_ROOM} />
-                        ) : null}
-                        {onEnvelope(room, env, "west") ? (
-                          <DimString x1={room.x} y1={room.y} x2={room.x} y2={room.y + room.depth} offset={-DIM_ROOM} />
-                        ) : null}
-                        {onEnvelope(room, env, "south") ? (
-                          <DimString x1={room.x} y1={room.y + room.depth} x2={room.x + room.width} y2={room.y + room.depth} offset={DIM_ROOM} />
-                        ) : null}
-                        {onEnvelope(room, env, "east") ? (
-                          <DimString x1={room.x + room.width} y1={room.y} x2={room.x + room.width} y2={room.y + room.depth} offset={DIM_ROOM} />
-                        ) : null}
-                      </g>
-                    ))}
-                    {(level.walls || []).filter((wall) => visibleForPhase(wall, phase) && wall.kind === "exterior").map((wall) => {
-                      const len = wallLength(wall);
-                      const ux = (wall.x2 - wall.x1) / Math.max(len, 1);
-                      const uy = (wall.y2 - wall.y1) / Math.max(len, 1);
-                      const off = offsetOutside(wall.x1, wall.y1, wall.x2, wall.y2, env, DIM_OPENING);
+                    {rooms.length > 1 ? (
+                      <>
+                        <DimString x1={env.x1} y1={env.y1} x2={env.x2} y2={env.y1} offset={-DIM_ENVELOPE} />
+                        <DimString x1={env.x1} y1={env.y1} x2={env.x1} y2={env.y2} offset={-DIM_ENVELOPE} />
+                      </>
+                    ) : null}
+                    {rooms.map((room) => {
+                      const widthDim = segmentedWidthForRoom(level, room);
+                      const depthDim = segmentedDepthForRoom(level, room);
                       return (
-                        <g key={`dim-wall-${wall.id}`}>
-                          {(wall.openings || []).filter((op) => op.type === "window" || op.type === "door" || op.type === "cased").map((opening) => {
-                            const a = inches(opening.offset);
-                            const b = a + inches(opening.width);
-                            return (
-                              <DimString
-                                key={opening.id}
-                                x1={wall.x1 + ux * a}
-                                y1={wall.y1 + uy * a}
-                                x2={wall.x1 + ux * b}
-                                y2={wall.y1 + uy * b}
-                                offset={off}
-                                label={`${opening.type === "window" ? "W" : opening.type === "cased" ? "C.O." : "DR"} ${formatFtIn(opening.width)}`}
-                              />
-                            );
-                          })}
+                        <g key={`dim-room-${room.id}`}>
+                          {renderRoomSide(room, "north", widthDim, room.y, -1)}
+                          {renderRoomSide(room, "west", depthDim, room.x, -1)}
+                          {renderRoomSide(room, "south", widthDim, room.y + room.depth, 1)}
+                          {renderRoomSide(room, "east", depthDim, room.x + room.width, 1)}
                         </g>
                       );
                     })}
@@ -693,23 +1001,143 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
           ) : null}
 
           {(drawPoints || []).map((pt, idx) => (
-            <g key={`${pt.x}-${pt.y}-${idx}`}>
-              <circle cx={pt.x * PX} cy={pt.y * PX} r="3.2" fill="#C9A227" stroke="#0A4D68" strokeWidth="1" />
-              {idx > 0 ? (
-                <line x1={drawPoints[idx - 1].x * PX} y1={drawPoints[idx - 1].y * PX} x2={pt.x * PX} y2={pt.y * PX} stroke="#C9A227" strokeWidth="2" />
-              ) : null}
+            <g key={`draw-pt-${idx}`} data-testid="draw-transient-point">
+              <circle cx={pt.x * PX} cy={pt.y * PX} r="3.2" fill="#C9A227" stroke="#0B3A8F" strokeWidth="1" />
             </g>
           ))}
+          {(addCornerDraft || []).map((pt, idx) => (
+            <g key={`corner-draft-${idx}`} data-testid="add-corner-draft">
+              <circle cx={pt.x * PX} cy={pt.y * PX} r="4.5" fill="#C45C26" stroke="#fff" strokeWidth="1.2" />
+              <text x={pt.x * PX + 6} y={pt.y * PX - 6} fill="#C45C26" fontSize="8" fontFamily="Outfit,sans-serif" fontWeight="700">
+                P{idx + 1}
+              </text>
+            </g>
+          ))}
+          {selected?.type === "vertex" ? (() => {
+            const v = (level.vertices || []).find((row) => row.id === selected.id);
+            if (!v) return null;
+            return (
+              <g data-testid="selected-vertex-handle">
+                <circle cx={v.x * PX} cy={v.y * PX} r="5.5" fill="#0B3A8F" stroke="#C9A227" strokeWidth="2" />
+              </g>
+            );
+          })() : null}
+          {selected?.type === "wall" ? (() => {
+            const wall = (level.walls || []).find((w) => w.id === selected.id);
+            if (!wall || !(wall.is_reshape_span || wall.reshape_span || wall.is_bump_face)) return null;
+            return (
+              <line
+                x1={wall.x1 * PX}
+                y1={wall.y1 * PX}
+                x2={wall.x2 * PX}
+                y2={wall.y2 * PX}
+                stroke="#C45C26"
+                strokeWidth="4"
+                opacity="0.55"
+                strokeLinecap="round"
+                pointerEvents="none"
+              />
+            );
+          })() : null}
+          {mode === "draw" && (drawPoints || []).length === 1 && (drawSnap?.point || cursorWorld) ? (() => {
+            const end = drawSnap?.point || cursorWorld;
+            const start = drawPoints[0];
+            const label = drawSnap?.label || "";
+            return (
+              <g data-testid="draw-rubberband" pointerEvents="none">
+                {(drawSnap?.guides || []).map((g, i) => {
+                  if (g.kind === "h") {
+                    return <line key={`gh-${i}`} x1={-2000} y1={g.y * PX} x2={8000} y2={g.y * PX} stroke="#0B3A8F" strokeWidth="0.7" strokeDasharray="4 4" opacity="0.45" />;
+                  }
+                  if (g.kind === "v") {
+                    return <line key={`gv-${i}`} x1={g.x * PX} y1={-2000} x2={g.x * PX} y2={8000} stroke="#0B3A8F" strokeWidth="0.7" strokeDasharray="4 4" opacity="0.45" />;
+                  }
+                  if (g.kind === "point") {
+                    return <circle key={`gp-${i}`} cx={g.x * PX} cy={g.y * PX} r="5" fill="none" stroke="#C45C26" strokeWidth="1.2" />;
+                  }
+                  if (g.kind === "wall") {
+                    return (
+                      <line
+                        key={`gw-${i}`}
+                        x1={g.x1 * PX}
+                        y1={g.y1 * PX}
+                        x2={g.x2 * PX}
+                        y2={g.y2 * PX}
+                        stroke="#C45C26"
+                        strokeWidth="3.2"
+                        opacity="0.85"
+                      />
+                    );
+                  }
+                  return null;
+                })}
+                <line
+                  x1={start.x * PX}
+                  y1={start.y * PX}
+                  x2={end.x * PX}
+                  y2={end.y * PX}
+                  stroke="#C9A227"
+                  strokeWidth="2.2"
+                  strokeDasharray="5 4"
+                  opacity="0.95"
+                />
+                <circle cx={end.x * PX} cy={end.y * PX} r="2.8" fill="#C9A227" />
+                {label ? (
+                  <text x={end.x * PX + 8} y={end.y * PX - 8} fill="#0B3A8F" fontSize="9" fontFamily="Outfit,sans-serif" fontWeight="600">
+                    {label}
+                  </text>
+                ) : null}
+                {drawSnap?.point && start ? (() => {
+                  const len = Math.hypot(end.x - start.x, end.y - start.y);
+                  if (len < 6) return null;
+                  const mx = ((start.x + end.x) / 2) * PX;
+                  const my = ((start.y + end.y) / 2) * PX;
+                  const ft = Math.floor(len / 12);
+                  const inch = Math.round(len % 12);
+                  const dim = inch ? `${ft}'${inch}"` : `${ft}'`;
+                  return (
+                    <text x={mx} y={my - 6} fill="#1a1a1a" fontSize="8" fontFamily="Outfit,sans-serif" textAnchor="middle">
+                      {dim}
+                    </text>
+                  );
+                })() : null}
+              </g>
+            );
+          })() : null}
+
+          {drag?.kind === "draw-room" ? (() => {
+            const x = Math.min(drag.x0, drag.x1);
+            const y = Math.min(drag.y0, drag.y1);
+            const w = Math.abs(drag.x1 - drag.x0);
+            const d = Math.abs(drag.y1 - drag.y0);
+            return (
+              <g data-testid="room-draw-rubberband">
+                <rect
+                  x={x * PX}
+                  y={y * PX}
+                  width={w * PX}
+                  height={d * PX}
+                  fill="rgba(11,58,143,0.08)"
+                  stroke="#0B3A8F"
+                  strokeWidth="1.6"
+                  strokeDasharray="6 4"
+                />
+                <text x={(x + w / 2) * PX} y={(y + d / 2) * PX} textAnchor="middle" fill="#0B3A8F" fontFamily="Times, serif" fontSize="11" fontWeight="600">
+                  {formatFtIn(w)} × {formatFtIn(d)} outside
+                </text>
+              </g>
+            );
+          })() : null}
 
           {placingItem ? (
-            <text x="16" y="22" fill="#0A4D68" fontFamily="Outfit" fontSize="11">Tap to place {placingItem.name}</text>
+            <text x="16" y="22" fill="#0B3A8F" fontFamily="Outfit" fontSize="11">Tap to place {placingItem.name}</text>
           ) : null}
         </g>
       </svg>
           {clientView ? null : (
         <div className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-white/90 border border-slate-200 px-2 py-1 text-[10px] text-[#4B6370] font-['Outfit']">
           {["door", "window", "cased"].includes(mode)
-            ? "Click a wall to cut that opening. Cabinets slide clear. An LVL drops in over wide openings."
+            ? "Click a wall to cut that opening. Cabinets slide clear. A header is sized over wide openings (twin 2x10 / 2x12 if it checks, otherwise LVL)."
             : `⋮ Layers / Edit · Drag to slide · Double-click specs · Grid 1' · ${Math.round(view.scale * 100)}%`}
         </div>
       )}

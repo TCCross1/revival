@@ -330,58 +330,58 @@ function collectScene(level, layers = DEFAULT_LAYERS, phase = "all", cam = null,
           addBox(faces, fp.x - 0.4, fp.y - 0.4, fp.w + 0.8, fp.h + 0.8, 34.5, 1.5, obj.counter_material ? counterFill(obj) : "#E6E0D4", rot, 1, -16);
         }
         if (id.startsWith("range") || id.startsWith("cooktop")) {
-          addBox(faces, obj.x + 1.2, obj.y + 1.1, Math.max(obj.width - 2.4, 8), Math.max(obj.depth - 5.2, 8), mass.y0 + mass.h, 1.15, obj.fuel === "induction" ? "#1A1C1E" : "#16181B", rot, 1, -18);
-          const cols = obj.width >= 36 ? 3 : 2;
+          addBox(faces, fp.x + 1.2, fp.y + 1.1, Math.max(fp.w - 2.4, 8), Math.max(fp.h - 5.2, 8), mass.y0 + mass.h, 1.15, obj.fuel === "induction" ? "#1A1C1E" : "#16181B", rot, 1, -18);
+          const cols = fp.width >= 36 ? 3 : 2;
           const rows = 2;
           for (let row = 0; row < rows; row += 1) {
             for (let col = 0; col < cols; col += 1) {
-              const bx = obj.x + (obj.width / (cols + 1)) * (col + 1) - 1.3;
-              const bz = obj.y + 2.2 + ((obj.depth - 6) / (rows + 1)) * (row + 1);
+              const bx = fp.x + (fp.w / (cols + 1)) * (col + 1) - 1.3;
+              const bz = fp.y + 2.2 + ((fp.h - 6) / (rows + 1)) * (row + 1);
               addBox(faces, bx, bz, 2.6, 2.6, mass.y0 + mass.h + 1.1, 0.7, obj.fuel === "induction" ? "#2A3036" : "#8A9198", rot, 1, -18);
             }
           }
           if (!id.startsWith("cooktop")) {
-            addBox(faces, obj.x + 0.4, obj.y + obj.depth - 3.4, obj.width - 0.8, 3.1, mass.y0 + mass.h - 0.2, 2.2, color, rot, 1, -18);
+            addBox(faces, fp.x + 0.4, fp.y + fp.h - 3.4, fp.w - 0.8, 3.1, mass.y0 + mass.h - 0.2, 2.2, color, rot, 1, -18);
           }
         }
         if (id.startsWith("fridge") || id.startsWith("wine-fridge")) {
-          addBox(faces, obj.x + 0.6, obj.y + 0.5, obj.width * 0.46 - 0.4, obj.depth - 1, mass.y0 + 4, mass.h - 6, color, rot, 1, -16);
-          addBox(faces, obj.x + obj.width * 0.52, obj.y + 0.5, obj.width * 0.46 - 0.4, obj.depth - 1, mass.y0 + 4, mass.h - 6, color, rot, 1, -16);
-          addBox(faces, obj.x + obj.width * 0.42, obj.y + obj.depth - 1.1, 0.7, 0.7, mass.y0 + 18, 22, "#2A2E32", rot, 1, -16);
-          addBox(faces, obj.x + obj.width * 0.56, obj.y + obj.depth - 1.1, 0.7, 0.7, mass.y0 + 18, 22, "#2A2E32", rot, 1, -16);
+          addBox(faces, fp.x + 0.6, fp.y + 0.5, fp.w * 0.46 - 0.4, fp.h - 1, mass.y0 + 4, mass.h - 6, color, rot, 1, -16);
+          addBox(faces, fp.x + fp.w * 0.52, fp.y + 0.5, fp.w * 0.46 - 0.4, fp.h - 1, mass.y0 + 4, mass.h - 6, color, rot, 1, -16);
+          addBox(faces, fp.x + fp.w * 0.42, fp.y + fp.h - 1.1, 0.7, 0.7, mass.y0 + 18, 22, "#2A2E32", rot, 1, -16);
+          addBox(faces, fp.x + fp.w * 0.56, fp.y + fp.h - 1.1, 0.7, 0.7, mass.y0 + 18, 22, "#2A2E32", rot, 1, -16);
         }
         if (id.startsWith("dw-")) {
-          addBox(faces, obj.x + obj.width * 0.18, obj.y + obj.depth - 1.2, obj.width * 0.64, 0.8, mass.y0 + 28, 0.7, "#2A2E32", rot, 1, -16);
+          addBox(faces, fp.x + fp.w * 0.18, fp.y + fp.h - 1.2, fp.w * 0.64, 0.8, mass.y0 + 28, 0.7, "#2A2E32", rot, 1, -16);
         }
         if (id.startsWith("sink") || (id.includes("vanity") && !id.startsWith("vanity-top") && !id.startsWith("mirror"))) {
-          addBox(faces, obj.x + 2.2, obj.y + 4.2, Math.max(obj.width - 4.4, 8), Math.max(obj.depth - 7, 6), mass.y0 + mass.h - 1.2, 1.1, "#A9BCC6", rot, 1, -18);
-          addBox(faces, obj.x + obj.width / 2 - 0.45, obj.y + 1.1, 0.9, 0.9, mass.y0 + mass.h, 8.5, "#C9D2D8", rot, 1, -18);
+          addBox(faces, fp.x + 2.2, fp.y + 4.2, Math.max(fp.w - 4.4, 8), Math.max(fp.h - 7, 6), mass.y0 + mass.h - 1.2, 1.1, "#A9BCC6", rot, 1, -18);
+          addBox(faces, fp.x + fp.w / 2 - 0.45, fp.y + 1.1, 0.9, 0.9, mass.y0 + mass.h, 8.5, "#C9D2D8", rot, 1, -18);
         }
         if (id.startsWith("shower")) {
           const glass = obj.shower_glass === "bronze" ? "#C4A574" : obj.shower_glass === "frosted" ? "#E8EEF0" : "#C5D8E2";
-          addBox(faces, obj.x + 0.6, obj.y + 0.6, Math.max(obj.width - 1.2, 8), 1.1, 2, Math.min(mass.h, 78), glass, rot, 0.38, -12);
-          addBox(faces, obj.x + 0.6, obj.y + obj.depth - 1.7, Math.max(obj.width - 1.2, 8), 1.1, 2, Math.min(mass.h, 78), glass, rot, obj.shower_door === "framed" ? 0.55 : 0.32, -12);
+          addBox(faces, fp.x + 0.6, fp.y + 0.6, Math.max(fp.w - 1.2, 8), 1.1, 2, Math.min(mass.h, 78), glass, rot, 0.38, -12);
+          addBox(faces, fp.x + 0.6, fp.y + fp.h - 1.7, Math.max(fp.w - 1.2, 8), 1.1, 2, Math.min(mass.h, 78), glass, rot, obj.shower_door === "framed" ? 0.55 : 0.32, -12);
         }
         if (id.startsWith("tub")) {
-          addBox(faces, obj.x + 2.4, obj.y + 3.2, Math.max(obj.width - 4.8, 12), Math.max(obj.depth - 6.4, 10), mass.y0 + 4, Math.max(mass.h - 8, 8), "#D7E3E8", rot, 1, -18);
+          addBox(faces, fp.x + 2.4, fp.y + 3.2, Math.max(fp.w - 4.8, 12), Math.max(fp.h - 6.4, 10), mass.y0 + 4, Math.max(mass.h - 8, 8), "#D7E3E8", rot, 1, -18);
         }
         if (cutaway && (id.startsWith("island") || ((obj.tags || []).includes("island"))) && Number(obj.overhang) > 0.5) {
-          addBox(faces, obj.x - 0.4, obj.y + obj.depth - Number(obj.overhang) - 0.4, obj.width + 0.8, Number(obj.overhang) + 0.8, 34.5, 1.5, obj.counter_material ? counterFill(obj) : "#E6E0D4", rot, 1, -16);
+          addBox(faces, fp.x - 0.4, fp.y + fp.h - Number(obj.overhang) - 0.4, fp.w + 0.8, Number(obj.overhang) + 0.8, 34.5, 1.5, obj.counter_material ? counterFill(obj) : "#E6E0D4", rot, 1, -16);
         }
         if (!cutaway && id.startsWith("hood")) {
-          addBox(faces, obj.x + obj.width * 0.28, obj.y + 1, obj.width * 0.44, Math.max(obj.depth * 0.45, 6), mass.y0 + mass.h, 18, "#D4DBE1", rot, 1, -10);
+          addBox(faces, fp.x + fp.w * 0.28, fp.y + 1, fp.w * 0.44, Math.max(fp.h * 0.45, 6), mass.y0 + mass.h, 18, "#D4DBE1", rot, 1, -10);
         }
         if (id === "washer" || id === "dryer") {
-          addBox(faces, obj.x + obj.width * 0.28, obj.y + obj.depth * 0.42, obj.width * 0.44, obj.depth * 0.2, mass.y0 + 14, 16, "#1A1C1E", rot, 1, -16);
+          addBox(faces, fp.x + fp.w * 0.28, fp.y + fp.h * 0.42, fp.w * 0.44, fp.h * 0.2, mass.y0 + 14, 16, "#1A1C1E", rot, 1, -16);
         }
         const tag = fixtureLabel(obj);
         if (tag) {
           labels.push({
             kind: "object",
             text: tag,
-            x: obj.x + obj.width / 2,
+            x: fp.x + fp.w / 2,
             y: mass.y0 + mass.h + 6,
-            z: obj.y + obj.depth / 2,
+            z: fp.y + fp.h / 2,
           });
         }
       });
@@ -419,7 +419,7 @@ function appendLabel(svg, ns, label) {
   text.setAttribute("font-family", "Outfit, Work Sans, sans-serif");
   text.setAttribute("font-size", label.kind === "room" ? "13" : "10");
   text.setAttribute("font-weight", label.kind === "room" ? "600" : "500");
-  text.setAttribute("fill", label.kind === "room" ? "#0A4D68" : "#061A23");
+  text.setAttribute("fill", label.kind === "room" ? "#0B3A8F" : "#061A23");
   text.setAttribute("stroke", "#F4F7F8");
   text.setAttribute("stroke-width", "3.4");
   text.setAttribute("paint-order", "stroke");
@@ -467,7 +467,7 @@ function paintScene(svg, faces, labels, cam) {
     poly.setAttribute("points", face.points);
     poly.setAttribute("fill", face.fill);
     poly.setAttribute("opacity", String(face.opacity));
-    poly.setAttribute("stroke", "rgba(10,77,104,0.22)");
+    poly.setAttribute("stroke", "rgba(11,58,143,0.22)");
     poly.setAttribute("stroke-width", "0.35");
     svg.appendChild(poly);
   });
@@ -604,27 +604,27 @@ export default function FloorPlan3D({
   return (
     <div className="absolute inset-0 z-30 bg-[#E4ECF0]" data-testid="floorplan-3d">
       <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between gap-2">
-        <div className="rounded-full bg-white/92 border border-[#0A4D68]/15 px-3 py-1.5 text-sm font-['Outfit'] font-semibold text-[#0A4D68]">
+        <div className="rounded-full bg-white/92 border border-[#0B3A8F]/15 px-3 py-1.5 text-sm font-['Outfit'] font-semibold text-[#0B3A8F]">
           3D rooms · {level?.name}
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           <button
             type="button"
             onClick={() => setCutaway((v) => !v)}
-            className={`rounded-md px-3 py-1.5 text-sm ${cutaway ? "bg-[#C9A227] text-[#061A23]" : "bg-white/90 text-[#0A4D68] border border-slate-200"}`}
+            className={`rounded-md px-3 py-1.5 text-sm ${cutaway ? "bg-[#C9A227] text-[#061A23]" : "bg-white/90 text-[#0B3A8F] border border-slate-200"}`}
           >
             {cutaway ? "See inside" : "Full walls"}
           </button>
-          <button type="button" onClick={() => setWalk((v) => !v)} className={`rounded-md px-3 py-1.5 text-sm ${walk ? "bg-[#C9A227] text-[#061A23]" : "bg-white/90 text-[#0A4D68] border border-slate-200"}`}>
+          <button type="button" onClick={() => setWalk((v) => !v)} className={`rounded-md px-3 py-1.5 text-sm ${walk ? "bg-[#C9A227] text-[#061A23]" : "bg-white/90 text-[#0B3A8F] border border-slate-200"}`}>
             {walk ? "Walk" : "Orbit"}
           </button>
-          <button type="button" onClick={lookDown} className="rounded-md bg-white/90 text-[#0A4D68] border border-slate-200 px-3 py-1.5 text-sm">
+          <button type="button" onClick={lookDown} className="rounded-md bg-white/90 text-[#0B3A8F] border border-slate-200 px-3 py-1.5 text-sm">
             Look down
           </button>
-          <button type="button" onClick={exportPng} className="rounded-md bg-white/90 text-[#0A4D68] border border-slate-200 px-3 py-1.5 text-sm" data-testid="floorplan-3d-export">
+          <button type="button" onClick={exportPng} className="rounded-md bg-white/90 text-[#0B3A8F] border border-slate-200 px-3 py-1.5 text-sm" data-testid="floorplan-3d-export">
             Export image
           </button>
-          <button type="button" onClick={onClose} className="rounded-md bg-[#0A4D68] text-white px-3 py-1.5 text-sm" data-testid="floorplan-3d-close">
+          <button type="button" onClick={onClose} className="rounded-md bg-[#0B3A8F] text-white px-3 py-1.5 text-sm" data-testid="floorplan-3d-close">
             Back to 2D
           </button>
         </div>
@@ -651,7 +651,7 @@ export default function FloorPlan3D({
             points={face.points}
             fill={face.fill}
             opacity={face.opacity}
-            stroke="rgba(10,77,104,0.22)"
+            stroke="rgba(11,58,143,0.22)"
             strokeWidth="0.35"
           />
         ))}
@@ -664,7 +664,7 @@ export default function FloorPlan3D({
             fontFamily="Outfit, Work Sans, sans-serif"
             fontSize={label.kind === "room" ? 13 : 10}
             fontWeight={label.kind === "room" ? 600 : 500}
-            fill={label.kind === "room" ? "#0A4D68" : "#061A23"}
+            fill={label.kind === "room" ? "#0B3A8F" : "#061A23"}
             stroke="#F4F7F8"
             strokeWidth="3.4"
             paintOrder="stroke"

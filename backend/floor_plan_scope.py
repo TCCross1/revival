@@ -48,8 +48,8 @@ def _add(bucket, key, row):
     bucket[key] = dict(row)
 
 
-def build_scope(document: dict) -> dict:
-    takeoffs = compute_takeoffs(document or {})
+def build_scope(document: dict, project_type: str = "") -> dict:
+    takeoffs = compute_takeoffs(document or {}, project_type)
     qty = {}
     cabinets, appliances, lighting, doors, windows, finishes, notes = [], [], [], [], [], [], []
     for level in (document or {}).get("levels") or []:

@@ -54,8 +54,8 @@
       "placement": "Full lockup (emblem + REVIVAL HOME REMODELING + tagline) on the desktop landing/auth left panel. 1024px square JPEG."
     },
     "banner": {
-      "url": "/brand/revival-header-banner.png",
-      "placement": "Full-width app header hero and login brand panel. Royal blue, metallic gold, silver."
+      "url": "/brand/revival-header-banner.jpg",
+      "placement": "Full-width app header hero. Wide royal-blue lockup (~3:1). Prefer 3840×520 for retina full-bleed."
     }
   },
   "accessibility": {

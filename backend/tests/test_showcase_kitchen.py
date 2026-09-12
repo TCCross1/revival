@@ -5,7 +5,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from floor_plan import catalog, compute_takeoffs
-from showcase_kitchen import SHOWCASE_NAME, SHOWCASE_PLAN_ID, build_showcase_document, build_showcase_plan, showcase_stats
+from showcase_kitchen import SHOWCASE_NAME, SHOWCASE_PLAN_ID, build_showcase_document, build_showcase_plan, showcase_stats, should_replace_showcase
+
+
+def test_showcase_seed_does_not_replace_a_saved_copy():
+    assert should_replace_showcase(None) is True
+    assert should_replace_showcase({}) is False
+    assert should_replace_showcase({"id": SHOWCASE_PLAN_ID, "user_edited": True, "preserve_edits": True}) is False
+    factory = build_showcase_plan()
+    assert should_replace_showcase(factory) is False
 
 
 def test_showcase_uses_only_catalog_ids():
@@ -37,9 +45,11 @@ def test_showcase_is_a_large_proposed_kitchen():
 
 def test_showcase_takeoffs_and_finishes():
     doc = build_showcase_document()
-    take = compute_takeoffs(doc)
+    take = compute_takeoffs(doc, "Kitchen")
     assert take["totals"]["floor_sf"] > 400
     assert take["totals"]["wall_lf"] > 80
+    assert take["totals"]["roof_sf"] == 0
+    assert take["totals"]["roof_in_scope"] is False
     objects = doc["levels"][0]["objects"]
     assert any(o["library_id"] == "range-36" and o["appliance_finish"] == "black-stainless" for o in objects)
     assert any(o["library_id"] == "island-96" and o["finish"] == "walnut" for o in objects)
@@ -80,7 +90,8 @@ def test_showcase_appliances_sit_on_the_correct_walls():
     fridge = next(o for o in objects if o.get("library_id") == "fridge-36")
     last_north = next(
         o for o in objects
-        if o.get("library_id") == "cab-base-36" and o.get("front") == "south" and o.get("work") != "demo" and o.get("x") == 219
+        if o.get("front") == "south" and o.get("work") != "demo" and o.get("x") == 219
+        and str(o.get("library_id") or "").startswith(("cab-base-36", "cab-drawers-3-36"))
     )
     assert fridge["front"] == "south"
     assert fridge["width"] == 36
@@ -95,7 +106,11 @@ def test_showcase_appliances_sit_on_the_correct_walls():
     assert not _overlaps(_aabb(fridge), _aabb(filler))
     north_bases = [
         o for o in objects
-        if str(o.get("library_id") or "").startswith("cab-base")
+        if (
+            str(o.get("library_id") or "").startswith("cab-base")
+            or str(o.get("library_id") or "").startswith("cab-drawers")
+            or str(o.get("library_id") or "").startswith("cab-utensil")
+        )
         and o.get("work") != "demo"
         and o.get("front") == "south"
         and o.get("x", 0) < 255
@@ -129,7 +144,7 @@ def test_showcase_follows_2020_kitchen_rules():
     assert fireplace["front"] == "east"
     assert fireplace["depth"] == 12
     assert not any(str(o.get("library_id") or "").startswith("lvl-") for o in objects)
-    run_ids = ("cab-base", "cab-sink", "cab-trash", "cab-tall", "cab-micro", "range-", "dw-")
+    run_ids = ("cab-base", "cab-drawers", "cab-utensil", "cab-sink", "cab-trash", "cab-tall", "cab-micro", "range-", "dw-")
     for obj in objects:
         if obj.get("work") == "demo":
             continue
@@ -183,7 +198,10 @@ def test_showcase_professional_kitchen_standards():
         ]
         assert host, fixture.get("library_id")
 
-    kn = next(w for w in level["walls"] if w.get("source_room_id") == kitchen["id"] and abs(w["y1"] - kitchen["y"]) < 1 and abs(w["y2"] - kitchen["y"]) < 1)
+    kn = next(
+        w for w in level["walls"]
+        if w.get("source_room_id") == kitchen["id"] and w.get("room_side") == "north"
+    )
     kitchen_north_windows = [op for op in (kn.get("openings") or []) if op.get("type") == "window"]
     assert len(kitchen_north_windows) == 1
     assert kitchen_north_windows[0]["width"] == 36
@@ -206,29 +224,54 @@ def test_showcase_professional_kitchen_standards():
 
     fireplace = next(o for o in objects if o.get("library_id") == "fp-modern")
     nook = rooms["Breakfast nook"]
-    nw = next(w for w in level["walls"] if w.get("source_room_id") == nook["id"] and abs(w["x1"] - nook["x"]) < 1 and abs(w["x2"] - nook["x"]) < 1)
+    nw = next(
+        w for w in level["walls"]
+        if w.get("source_room_id") == nook["id"] and w.get("room_side") == "west"
+    )
     win = next(op for op in (nw.get("openings") or []) if op.get("type") == "window")
-    win_mid = nook["y"] + win["offset"] + win["width"] / 2
+    span = ((nw["x2"] - nw["x1"]) ** 2 + (nw["y2"] - nw["y1"]) ** 2) ** 0.5 or 1
+    mid_t = (win["offset"] + win["width"] / 2) / span
+    win_mid = nw["y1"] + (nw["y2"] - nw["y1"]) * mid_t
     fp_mid = fireplace["y"] + fireplace["width"] / 2
     assert abs(fp_mid - win_mid) <= 6
 
     ke = next(
         w for w in level["walls"]
-        if w.get("source_room_id") == kitchen["id"]
-        and abs(w["x1"] - (kitchen["x"] + kitchen["width"])) < 2
-        and abs(w["x2"] - (kitchen["x"] + kitchen["width"])) < 2
+        if w.get("source_room_id") == kitchen["id"] and w.get("room_side") == "east"
     )
     pantry_door = next(op for op in (ke.get("openings") or []) if op.get("type") == "door")
     assert pantry_door["width"] >= 32
-    door_y = kitchen["y"] + pantry_door["offset"] + pantry_door["width"] / 2
+    door_y = ke["y1"] + pantry_door["offset"] + pantry_door["width"] / 2
     assert pantry["y"] < door_y < pantry["y"] + pantry["depth"]
 
     pn = next(
         w for w in level["walls"]
-        if w.get("source_room_id") == pantry["id"]
-        and abs(w["y1"] - pantry["y"]) < 1
-        and abs(w["y2"] - pantry["y"]) < 1
+        if w.get("source_room_id") == pantry["id"] and w.get("room_side") == "north"
     )
     assert not any(op.get("type") == "window" for op in (pn.get("openings") or []))
     assert any(str(o.get("library_id") or "").startswith("hood") for o in objects)
+
+
+def test_showcase_utensil_and_drawer_bases_are_not_double_doors():
+    objects = [o for o in build_showcase_document()["levels"][0]["objects"] if o.get("work") != "demo"]
+    drawers = [
+        o for o in objects
+        if o.get("config") in ("drawers-3", "drawers-4")
+        or "drawer" in str(o.get("note") or "").lower()
+        or "utensil" in str(o.get("note") or "").lower()
+        or str(o.get("library_id") or "").startswith(("cab-drawers", "cab-utensil"))
+    ]
+    assert drawers
+    for cab in drawers:
+        lid = str(cab.get("library_id") or "")
+        name = str(cab.get("name") or "")
+        assert "double door" not in name.lower(), name
+        assert cab.get("config") in ("drawers-3", "drawers-4"), lid
+        assert lid.startswith("cab-drawers-") or lid.startswith("cab-utensil-"), lid
+    utensil = next(o for o in drawers if o.get("x") == 171 and o.get("front") == "south")
+    assert utensil["library_id"] == "cab-drawers-3-30"
+    assert utensil["width"] == 30
+    assert utensil["config"] == "drawers-3"
+    assert "3-drawer" in utensil["name"].lower() or "utensil" in utensil["name"].lower()
+
 

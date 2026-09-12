@@ -1,3 +1,5 @@
+// Catalog IDs must stay unique and match backend/floor_plan.py catalog().
+// Enforced by backend/tests/test_catalog_price_parity.py
 export const PROJECT_TYPES = ["Kitchen", "Bath", "Addition", "Whole House", "Deck", "Patio", "Basement", "Exterior", "Flooring", "Other"];
 export const LEVEL_PRESETS = ["1st Floor", "2nd Floor", "3rd Floor", "Basement", "Attic", "Garage", "Outdoor"];
 export const FLOORING = [
@@ -280,6 +282,9 @@ function sized(group, subgroup, prefix, label, widths, depth, height, tags) {
 const WALL_SIZES = [12, 15, 18, 21, 24, 27, 30, 33, 36, 42, 48];
 const BASE_SINGLE = [9, 12, 15, 18, 21];
 const BASE_DOUBLE = [24, 27, 30, 33, 36, 42, 48];
+const DRAWER_STACK_SIZES = [12, 15, 18, 21, 24, 27, 30, 33, 36, 42, 48];
+const UTENSIL_SIZES = [12, 15, 18, 21];
+const DRAWER_OVER_DOOR_SIZES = [18, 21, 24, 30, 36, 42];
 
 export const OBJECT_LIBRARY = [
   ...sized("Kitchen", "Base", "cab-base", "Single door base", BASE_SINGLE, 24, 34.5, ["cabinet", "base"]),
@@ -289,8 +294,8 @@ export const OBJECT_LIBRARY = [
   item("Kitchen", "Drawers", "cab-utensil-15", "Utensil 3-drawer 15", 15, 24, 34.5, ["cabinet", "base", "drawers"]),
   item("Kitchen", "Drawers", "cab-utensil-18", "Utensil 3-drawer 18", 18, 24, 34.5, ["cabinet", "base", "drawers"]),
   item("Kitchen", "Drawers", "cab-utensil-21", "Utensil 3-drawer 21", 21, 24, 34.5, ["cabinet", "base", "drawers"]),
-  ...sized("Kitchen", "Drawers", "cab-drawers-3", "3-drawer base", [12, 15, 18, 21, 24, 30, 36], 24, 34.5, ["cabinet", "base", "drawers"]),
-  ...sized("Kitchen", "Drawers", "cab-drawers-4", "4-drawer stack", [12, 15, 18, 21, 24, 30, 36], 24, 34.5, ["cabinet", "base", "drawers"]),
+  ...sized("Kitchen", "Drawers", "cab-drawers-3", "3-drawer / utensil", DRAWER_STACK_SIZES, 24, 34.5, ["cabinet", "base", "drawers"]),
+  ...sized("Kitchen", "Drawers", "cab-drawers-4", "4-drawer stack", DRAWER_STACK_SIZES, 24, 34.5, ["cabinet", "base", "drawers"]),
   ...sized("Kitchen", "Drawers", "cab-drawer-doors", "Drawer over doors", [18, 21, 24, 30, 36, 42], 24, 34.5, ["cabinet", "base"]),
   ...sized("Kitchen", "Sink bases", "cab-sink", "Sink base", [24, 30, 33, 36, 42], 24, 34.5, ["cabinet", "sink", "base"]),
   item("Kitchen", "Sink bases", "cab-farm-30", "Farm sink base 30", 30, 24, 34.5, ["cabinet", "sink", "base", "farm"]),
@@ -511,11 +516,19 @@ export const OBJECT_LIBRARY = [
   item("Finishes", "Trim", "filler", "Filler strip", 3, 24, 34.5, ["trim", "filler"]),
   item("Finishes", "Trim", "touchup", "Touch-up kit", 8, 6, 2, ["finish"]),
   item("MEP", "Electrical", "outlet-duplex", "Duplex outlet", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "outlet-quad", "Quad receptacle", 8, 6, 4, ["electrical"]),
   item("MEP", "Electrical", "outlet-gfci", "GFCI outlet", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "outlet-gfci-wr", "WR GFCI (damp/wet)", 6, 6, 4, ["electrical"]),
   item("MEP", "Electrical", "outlet-afci", "AFCI receptacle", 6, 6, 4, ["electrical"]),
-  item("MEP", "Electrical", "switch", "Light switch", 6, 6, 4, ["electrical"]),
-  item("MEP", "Electrical", "switch-dimmer", "Dimmer switch", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "outlet-dual", "Dual-function GFCI/AFCI", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "outlet-240", "240V receptacle", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "switch", "Single-pole switch", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "switch-dimmer", "LED dimmer", 6, 6, 4, ["electrical"]),
   item("MEP", "Electrical", "switch-3way", "3-way switch", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "switch-3way-dimmer", "3-way LED dimmer", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "switch-4way", "4-way switch", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "switch-fan", "Fan speed control", 6, 6, 4, ["electrical"]),
+  item("MEP", "Electrical", "switch-fan-light", "Fan / light dual control", 6, 6, 4, ["electrical"]),
   item("MEP", "Electrical", "switch-gfci", "GFCI switch", 6, 6, 4, ["electrical"]),
   item("MEP", "Electrical", "panel", "Electrical panel", 14, 4, 30, ["electrical"]),
   item("MEP", "Electrical", "smoke", "Smoke / CO", 6, 6, 4, ["electrical"]),
@@ -608,9 +621,76 @@ export function isWallCabinetObject(obj) {
 }
 
 export const DRAWER_CABINET_CONFIGS = ["drawer-doors", "drawers-3", "drawers-4"];
+export const DRAWER_STACK_CONFIGS = ["drawers-3", "drawers-4"];
 
 export function isDrawerCabinetConfig(config) {
   return DRAWER_CABINET_CONFIGS.includes(String(config || ""));
+}
+
+export function isDrawerStackConfig(config) {
+  return DRAWER_STACK_CONFIGS.includes(String(config || ""));
+}
+
+function closestCatalogSize(sizes, width) {
+  const w = Number(width) || 24;
+  return sizes.reduce((best, size) => (Math.abs(size - w) < Math.abs(best - w) ? size : best), sizes[0]);
+}
+
+function isSwappableBaseCabinet(id) {
+  return /^(cab-base-|cab-utensil-|cab-drawers-|cab-drawer-doors-)/.test(String(id || ""));
+}
+
+export function isDrawerStackCabinet(obj) {
+  if (!obj) return false;
+  const id = String(obj.library_id || obj.id || "");
+  if (isDrawerStackConfig(obj.config)) return true;
+  if (id.includes("utensil") || /^cab-drawers-[34]-/.test(id)) return true;
+  const tags = obj.tags || [];
+  return tags.includes("drawers") && !id.includes("drawer-doors");
+}
+
+export function catalogIdForCabinetConfig(config, width, currentId = "") {
+  const id = String(currentId || "");
+  const w = Number(width) || 24;
+  const cfg = String(config || "");
+  if (!isSwappableBaseCabinet(id) && id) return id;
+  if (cfg === "drawers-4") {
+    const size = closestCatalogSize(DRAWER_STACK_SIZES, w);
+    const next = `cab-drawers-4-${size}`;
+    return libraryById(next) ? next : id;
+  }
+  if (cfg === "drawers-3") {
+    if (w <= 21) {
+      const size = closestCatalogSize(UTENSIL_SIZES, w);
+      const utensil = `cab-utensil-${size}`;
+      if (libraryById(utensil)) return utensil;
+    }
+    const size = closestCatalogSize(DRAWER_STACK_SIZES, w);
+    const next = `cab-drawers-3-${size}`;
+    return libraryById(next) ? next : id;
+  }
+  if (cfg === "drawer-doors") {
+    const size = closestCatalogSize(DRAWER_OVER_DOOR_SIZES, w);
+    const next = `cab-drawer-doors-${size}`;
+    return libraryById(next) ? next : id;
+  }
+  if (cfg === "single" || cfg === "doors") {
+    const sizes = w < 24 ? BASE_SINGLE : BASE_DOUBLE;
+    const next = `cab-base-${closestCatalogSize(sizes, w)}`;
+    return libraryById(next) ? next : id;
+  }
+  return id;
+}
+
+function stockCabinetName(libraryId, width) {
+  const lib = libraryById(libraryId);
+  const w = Math.round(Number(width) || Number(lib?.width) || 0);
+  if (!lib?.name) return "";
+  return String(lib.name).replace(/\d+\s*$/, String(w));
+}
+
+function shouldReplaceCabinetName(name) {
+  return !name || /^(double door|single door|3-drawer|4-drawer|utensil|drawer over doors|custom base)/i.test(String(name).trim());
 }
 
 export function isOverToiletCabinet(obj) {
@@ -679,7 +759,7 @@ export function resolvedCabinetConfig(obj, level) {
 export function cabinetConfigOptions(obj, level) {
   const wall = isWallCabinetObject(obj);
   const allowDrawer = !wall || wallCabinetAllowsDrawer(obj, level);
-  const wide = Number(obj?.width) > 24;
+  const wide = Number(obj?.width) > 24 || isDoubleDoorBaseCabinet(obj);
   return CABINET_CONFIGS.filter((row) => {
     if (!allowDrawer && isDrawerCabinetConfig(row.id)) return false;
     if (wall && (row.id === "trash" || row.id === "sink")) return false;
@@ -688,13 +768,38 @@ export function cabinetConfigOptions(obj, level) {
   });
 }
 
-export function professionalDoorCount(width, config = "") {
-  const w = Number(width) || 0;
+export function isDoubleDoorBaseCabinet(obj) {
+  if (!obj) return false;
+  if (isDrawerStackCabinet(obj)) return false;
+  const cfg = String(obj.config || "");
+  if (["drawer-doors", "trash", "sink", "lazy-susan", "blind"].includes(cfg)) return false;
+  const id = String(obj.library_id || obj.id || "");
+  const name = String(obj.name || "");
+  if (/double door/i.test(name) && !/drawer/i.test(name)) return true;
+  if (id === "cab-base-custom" && (Number(obj.width) || 0) >= 24) return true;
+  const sized = id.match(/^cab-base-(\d+)$/);
+  return Boolean(sized && Number(sized[1]) >= 24);
+}
+
+export function professionalDoorCount(width, config = "", item = null) {
+  const w = Number(width) || Number(item?.width) || 0;
   const cfg = String(config || "");
-  if (cfg === "drawers-3" || cfg === "drawers-4") return 1;
-  if (cfg === "trash" && w <= 24) return 1;
-  if (cfg === "single" && w <= 24) return 1;
-  if (w <= 24) return 1;
+  const id = String(item?.library_id || item?.id || "");
+  const tags = item?.tags || [];
+  const tall = tags.includes("tall") || id.includes("tall") || id.includes("fridge-panel") || id.includes("cab-oven");
+  if (isDrawerStackConfig(cfg) || isDrawerStackCabinet(item)) return 0;
+  if (cfg === "trash") return w > 24 ? 2 : 1;
+  if (cfg === "lazy-susan" || cfg === "blind" || cfg === "shelf" || cfg === "fridge-wall" || cfg === "hood-wall") return 1;
+  if (isDoubleDoorBaseCabinet(item || { id, width: w, name: item?.name, config: cfg })) {
+    if (w <= 48) return 2;
+    let n = Math.round(w / 24);
+    if (n < 2) n = 2;
+    if (n % 2 === 1) n += 1;
+    return n;
+  }
+  if (cfg === "single" || /cab-base-(9|12|15|18|21)$/.test(id)) return 1;
+  if (tall && w <= 24) return 1;
+  if (w < 24) return 1;
   if (w <= 48) return 2;
   let n = Math.round(w / 24);
   if (n < 2) n = 2;
@@ -702,16 +807,78 @@ export function professionalDoorCount(width, config = "") {
   return n;
 }
 
+export function cabinetDoorCount(item, drawingWidth = 0, config = "") {
+  try {
+    const w = Number(item?.width) || Number(drawingWidth) || 0;
+    const cfg = String(config || item?.config || "");
+    if (isDrawerStackCabinet({ ...item, config: cfg }) || isDrawerStackConfig(cfg)) return 0;
+    if (isDoubleDoorBaseCabinet(item) && (cfg === "single" || !cfg)) {
+      return professionalDoorCount(w, "doors", item);
+    }
+    return professionalDoorCount(w, cfg || defaultCabinetConfig(item), item);
+  } catch (err) {
+    console.error("Cabinet door count failed", err, item?.library_id || item?.id);
+    return (Number(item?.width) || Number(drawingWidth) || 0) >= 24 ? 2 : 1;
+  }
+}
+
 export function enforceCabinetConfig(obj) {
   if (!obj) return obj;
   if (!isCabinetObject(obj) && !isIslandObject(obj)) return obj;
-  const w = Number(obj.width) || 0;
-  let config = obj.config || defaultCabinetConfig(obj);
-  if (w > 24 && config === "single") config = "doors";
-  if (isIslandObject(obj) && (obj.config === "sink" || String(obj.library_id || "").includes("sink")) && w > 24 && config === "single") {
-    config = "sink";
+  try {
+    const w = Number(obj.width) || 0;
+    const id = String(obj.library_id || obj.id || "");
+    let config = obj.config || defaultCabinetConfig(obj);
+    if (isSwappableBaseCabinet(id) && /drawer/i.test(`${obj.note || ""} ${obj.name || ""}`) && !isDrawerStackConfig(config) && config !== "drawer-doors" && !/door/i.test(obj.note || "")) {
+      config = "drawers-3";
+    }
+    if (isDoubleDoorBaseCabinet({ ...obj, config }) && (config === "single" || !config)) config = "doors";
+    if (w > 24 && config === "single") config = "doors";
+    if (isIslandObject(obj) && (obj.config === "sink" || String(obj.library_id || "").includes("sink")) && w > 24 && config === "single") {
+      config = "sink";
+    }
+    let library_id = id;
+    let name = obj.name;
+    let tags = Array.isArray(obj.tags) ? [...obj.tags] : [];
+    if (isSwappableBaseCabinet(id)) {
+      library_id = catalogIdForCabinetConfig(config, w, id) || id;
+      const lib = libraryById(library_id);
+      if (lib?.tags) tags = [...lib.tags];
+      const nextName = stockCabinetName(library_id, w);
+      if (nextName && shouldReplaceCabinetName(name)) name = nextName;
+    }
+    if (/double door/i.test(name || "") && isDrawerStackConfig(config)) {
+      name = stockCabinetName(library_id, w) || `3-drawer / utensil ${Math.round(w)}`;
+    }
+    return { ...obj, config, library_id, name, tags };
+  } catch (err) {
+    console.error("Could not keep cabinet fronts consistent", err, obj?.library_id || obj?.id);
+    return obj;
   }
-  return { ...obj, config };
+}
+
+export function normalizeLevelCabinets(level) {
+  if (!level) return level;
+  try {
+    const objects = (level.objects || []).map((obj) => applyWallCabinetDrawerRule(obj, level));
+    return { ...level, objects };
+  } catch (err) {
+    console.error("Could not normalize cabinet fronts on this level", err);
+    return level;
+  }
+}
+
+export function normalizeDocumentCabinets(doc) {
+  if (!doc) return doc;
+  try {
+    return {
+      ...doc,
+      levels: (doc.levels || []).map((level) => normalizeLevelCabinets(level)),
+    };
+  } catch (err) {
+    console.error("Could not normalize cabinet fronts on this plan", err);
+    return doc;
+  }
 }
 
 export function applyWallCabinetDrawerRule(obj, level) {
@@ -807,7 +974,8 @@ export function defaultCabinetConfig(libItem) {
     if (id.includes("single") || (libItem?.width || 0) < 24) return "single";
     return "doors";
   }
-  if (id.includes("single") || /cab-base-(12|15|18|21)$/.test(id)) return "single";
+  if (id.includes("single") || /cab-base-(9|12|15|18|21)$/.test(id)) return "single";
+  if (/^cab-base-(24|27|30|33|36|42|48)$/.test(id) || id === "cab-base-custom") return "doors";
   if (id.includes("shelf")) return "shelf";
   if (id.includes("glass")) return "glass";
   if (id.includes("blind")) return "blind";

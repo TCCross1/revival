@@ -19,6 +19,7 @@ import {
   IconCamera,
   IconSchedule,
   IconBids,
+  IconCalendar,
 } from "@/components/nav/NavIcons";
 import { LogOut, Building2, KeyRound, UserCog } from "lucide-react";
 import {
@@ -33,17 +34,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const MAIN_NAV = [
   { to: "/", label: "Dashboard", icon: IconDashboard, end: true, testid: "nav-dashboard", feature: "dashboard" },
-  { to: "/leads", label: "Leads", icon: IconLeads, testid: "nav-leads", feature: "leads" },
-  { to: "/clients", label: "Clients", icon: IconClients, testid: "nav-clients", feature: "clients" },
+  { to: "/calendar", label: "Calendar", icon: IconCalendar, testid: "nav-calendar", feature: "calendar" },
   { to: "/jobs", label: "Jobs", icon: IconJobs, testid: "nav-jobs", feature: "jobs" },
-  { to: "/subcontractors", label: "Bids", icon: IconBids, testid: "nav-subcontractors", feature: "subcontractors" },
-  { to: "/floor-plans", label: "Plans", icon: IconPlans, testid: "nav-floor-plans", feature: "floor_plans" },
+  { to: "/clients", label: "Clients", icon: IconClients, testid: "nav-clients", feature: "clients" },
   { to: "/estimates", label: "Estimates", icon: IconEstimates, testid: "nav-estimates", feature: "estimates" },
   { to: "/invoices", label: "Invoices", icon: IconInvoices, testid: "nav-invoices", feature: "invoices" },
-  { to: "/financials", label: "Financials", icon: IconFinancials, testid: "nav-financials", feature: "financials" },
+  { to: "/subcontractors", label: "Bids", icon: IconBids, testid: "nav-subcontractors", feature: "subcontractors" },
   { to: "/contracts", label: "Contracts", icon: IconContracts, testid: "nav-contracts", feature: "contracts" },
   { to: "/team", label: "Team", icon: IconTeam, testid: "nav-team", feature: "team" },
   { to: "/field", label: "Field", icon: IconField, testid: "nav-field", feature: "field_home" },
+  { to: "/leads", label: "Leads", icon: IconLeads, testid: "nav-leads", feature: "leads" },
+  { to: "/floor-plans", label: "Plans", icon: IconPlans, testid: "nav-floor-plans", feature: "floor_plans" },
+  { to: "/financials", label: "Financials", icon: IconFinancials, testid: "nav-financials", feature: "financials" },
 ];
 
 const FIELD_NAV = [
@@ -108,11 +110,9 @@ export default function Layout() {
           >
             <img
               className="rp-banner-art"
-              src="/brand/revival-header-banner.png"
-              srcSet="/brand/revival-header-banner.png 1024w, /brand/revival-header-banner@2x.png 2048w"
-              sizes="100vw"
+              src="/brand/revival-header-banner.jpg"
               width="1024"
-              height="322"
+              height="341"
               alt="Revival Home Remodeling"
               decoding="sync"
               fetchPriority="high"

@@ -176,7 +176,7 @@ export default function ClientDriveCard({
               <option key={option.id} value={option.id}>{option.label}</option>
             ))}
           </select>
-          <input ref={fileRef} type="file" className="hidden" onChange={onPickFile} data-testid="client-drive-file-input" />
+          <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.heic,.heif,.mov,.mp4" className="hidden" onChange={onPickFile} data-testid="client-drive-file-input" />
           <Button
             type="button"
             variant="outline"

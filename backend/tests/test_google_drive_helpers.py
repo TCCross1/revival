@@ -62,6 +62,7 @@ def test_kind_routes_to_client_subfolder():
     assert subfolder_name_for_kind("client_report") == "Reports"
     assert subfolder_name_for_kind("permit_details") == "Permit Details"
     assert subfolder_name_for_kind("job_sheet") == "Job Sheets"
+    assert subfolder_name_for_kind("deposit_receipt") == "Receipts"
     assert subfolder_name_for_kind("unknown") == JOB_SHEETS_FOLDER
 
 
@@ -83,6 +84,7 @@ def test_client_subfolders_match_owner_tree():
         "Reports",
         "Permit Details",
         "Job Sheets",
+        "Bid Packages",
     )
 
 
