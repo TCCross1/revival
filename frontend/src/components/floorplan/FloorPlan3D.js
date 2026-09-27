@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FLOORING, applianceFill, cabinetFill, counterFill, isApplianceFinishObject, isBaseRunObject, isCabinetObject, isCountertopObject, isWallCabinetObject } from "@/lib/floorPlan/library";
+import { FLOORING, applianceFill, cabinetFill, counterFill, isApplianceFinishObject, isBaseRunObject, isCabinetObject, isCountertopObject, isWallCabinetObject, rangeBurnerCount } from "@/lib/floorPlan/library";
 import { objectFootprint } from "@/lib/floorPlan/cabinetRun";
 import { DEFAULT_LAYERS, layerOn, objectLayer, objectVisible } from "@/lib/floorPlan/layers";
 import { visibleForPhase } from "@/lib/floorPlan/scope";
@@ -331,7 +331,7 @@ function collectScene(level, layers = DEFAULT_LAYERS, phase = "all", cam = null,
         }
         if (id.startsWith("range") || id.startsWith("cooktop")) {
           addBox(faces, fp.x + 1.2, fp.y + 1.1, Math.max(fp.w - 2.4, 8), Math.max(fp.h - 5.2, 8), mass.y0 + mass.h, 1.15, obj.fuel === "induction" ? "#1A1C1E" : "#16181B", rot, 1, -18);
-          const cols = fp.width >= 36 ? 3 : 2;
+          const cols = rangeBurnerCount(obj) === 6 ? 3 : 2;
           const rows = 2;
           for (let row = 0; row < rows; row += 1) {
             for (let col = 0; col < cols; col += 1) {

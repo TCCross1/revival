@@ -3,7 +3,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   APPLIANCE_FUELS, CABINET_DOOR_STYLES, CABINET_GLASS, COUNTER_MATERIALS,
-  FINISH_VARIANTS, HARDWARE_FINISHES, HARDWARE_SIZES, HARDWARE_STYLES, WOOD_SPECIES,
+  FINISH_VARIANTS, HARDWARE_FINISHES, HARDWARE_SIZES, HARDWARE_STYLES, RANGE_SIX_BURNER_MIN, RANGE_SIZE_OPTIONS,
+  WOOD_SPECIES, burnerOptionsFor,
 } from "@/lib/floorPlan/library";
 import { kitchenAnchorStatus, siteConditionReport } from "@/lib/floorPlan/kitchenDesign";
 import { formatFtIn, parseFtIn } from "@/lib/floorPlan/units";
@@ -92,10 +93,23 @@ export default function KitchenDesignPanel({
           </div>
           <div>
             <Label className="text-[10px]">Range width</Label>
-            <select className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs bg-white" value={String(design.range_width)} onChange={(e) => onDesignPatch({ range_width: Number(e.target.value) })}>
-              {[30, 36].map((w) => <option key={w} value={w}>{w}&quot;</option>)}
+            <select className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs bg-white" value={String(design.range_width)} onChange={(e) => onDesignPatch({ range_width: Number(e.target.value) })} data-testid="kitchen-range-width">
+              <optgroup label="Standard · 4 burner">
+                {RANGE_SIZE_OPTIONS.filter((row) => Number(row.id) < RANGE_SIX_BURNER_MIN).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </optgroup>
+              <optgroup label="Wide · 6 burner">
+                {RANGE_SIZE_OPTIONS.filter((row) => Number(row.id) >= RANGE_SIX_BURNER_MIN).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </optgroup>
             </select>
           </div>
+          {Number(design.range_width) >= RANGE_SIX_BURNER_MIN ? (
+            <div>
+              <Label className="text-[10px]">Burners</Label>
+              <select className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs bg-white" value={String(Number(design.range_burners) === 4 ? 4 : 6)} onChange={(e) => onDesignPatch({ range_burners: Number(e.target.value) })} data-testid="kitchen-range-burners">
+                {burnerOptionsFor(design.range_width).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </select>
+            </div>
+          ) : null}
           <div>
             <Label className="text-[10px]">Refrigerator</Label>
             <select className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs bg-white" value={String(design.fridge_width || 36)} onChange={(e) => onDesignPatch({ fridge_width: Number(e.target.value) })}>

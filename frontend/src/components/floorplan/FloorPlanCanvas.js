@@ -6,13 +6,16 @@ import { exteriorLaneOffsets } from "@/lib/floorPlan/dimensionLanes";
 import { wallAxis } from "@/lib/floorPlan/wallOpenings";
 import { DoorSwing, FloorHatchDefs, flooringFill, ObjectSymbol, WindowLite, CasedOpening } from "./symbols";
 import { libraryById, isIslandObject } from "@/lib/floorPlan/library";
-import { isFillerObject, objectFootprint, objectOrientTransform } from "@/lib/floorPlan/cabinetRun";
+import { isFillerObject, objectFootprint, objectOrientTransform, requiresWallHost } from "@/lib/floorPlan/cabinetRun";
 import { visibleForPhase, workOf } from "@/lib/floorPlan/scope";
+import { wallJointExtensions } from "@/lib/floorPlan/snapEngine";
 import { DEFAULT_LAYERS, layerOn, objectVisible, sortObjectsByLayer } from "@/lib/floorPlan/layers";
 import SegmentedRoomDimension from "./SegmentedRoomDimension";
 import OpeningDimensionChain from "./OpeningDimensionChain";
 
 const PX = 1.7;
+/** SVG px per world inch at view.scale = 1 (snap radii need true screen px per inch). */
+export const PLAN_PX = PX;
 const DIM_ENVELOPE = 78;
 const DIM_ROOM = 54;
 const DIM_OPENING = 40;
@@ -219,6 +222,8 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
     [level.objects, phase, layers],
   );
 
+  const wallJointExt = useMemo(() => wallJointExtensions(level.walls || []), [level.walls]);
+
   const toWorld = (clientX, clientY) => {
     const rect = wrapRef.current.getBoundingClientRect();
     const x = (clientX - rect.left - view.x) / (view.scale * PX);
@@ -259,7 +264,9 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
     dragMoved.current = false;
     const insertOpening = ["door", "window", "cased"].includes(mode);
 
-    if (mode !== "draw" && mode !== "lidar" && !placingAnchor) {
+    // While a catalog item or kitchen anchor is armed, a tap places it — it must not
+    // select / drag the room or wall underneath.
+    if (mode !== "draw" && mode !== "lidar" && !placingAnchor && !placingItem) {
       if (!insertOpening && !pickingWalls) {
         const hitObj = [...visibleObjects].reverse().find((obj) => {
           const fp = objectFootprint(obj);
@@ -732,12 +739,13 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                 : wall.kind === "exterior"
                   ? "#111111"
                   : "#6A6A6A";
+            const joint = wallJointExt[wall.id] || { start: 0, end: 0 };
             return (
               <g key={wall.id} transform={`translate(${wall.x1 * PX} ${wall.y1 * PX}) rotate(${wallAngle(wall)})`}>
                 <rect
-                  x="0"
+                  x={-joint.start * PX}
                   y={-(wall.thickness * PX) / 2}
-                  width={len * PX}
+                  width={(len + joint.start + joint.end) * PX}
                   height={wall.thickness * PX}
                   fill={fill}
                   stroke={picked ? "#C9A227" : active ? "#C9A227" : "#111111"}
@@ -1039,6 +1047,20 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
               />
             );
           })() : null}
+          {mode === "draw" && !(drawPoints || []).length && drawSnap?.point && drawSnap?.label && drawSnap.label !== "GRID" ? (
+            <g data-testid="draw-start-snap" pointerEvents="none">
+              {(drawSnap.guides || []).map((g, i) => (
+                g.kind === "wall" ? (
+                  <line key={`sw-${i}`} x1={g.x1 * PX} y1={g.y1 * PX} x2={g.x2 * PX} y2={g.y2 * PX} stroke="#C45C26" strokeWidth="3.2" opacity="0.55" />
+                ) : null
+              ))}
+              <circle cx={drawSnap.point.x * PX} cy={drawSnap.point.y * PX} r="5" fill="none" stroke="#C45C26" strokeWidth="1.4" />
+              <circle cx={drawSnap.point.x * PX} cy={drawSnap.point.y * PX} r="2.2" fill="#C9A227" />
+              <text x={drawSnap.point.x * PX + 8} y={drawSnap.point.y * PX - 8} fill="#0B3A8F" fontSize="9" fontFamily="Outfit,sans-serif" fontWeight="600">
+                {drawSnap.label}
+              </text>
+            </g>
+          ) : null}
           {mode === "draw" && (drawPoints || []).length === 1 && (drawSnap?.point || cursorWorld) ? (() => {
             const end = drawSnap?.point || cursorWorld;
             const start = drawPoints[0];
@@ -1068,6 +1090,9 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                         opacity="0.85"
                       />
                     );
+                  }
+                  if (g.kind === "segment") {
+                    return <line key={`gs-${i}`} x1={g.x1 * PX} y1={g.y1 * PX} x2={g.x2 * PX} y2={g.y2 * PX} stroke="#0B3A8F" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.6" />;
                   }
                   return null;
                 })}
@@ -1130,7 +1155,9 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
           })() : null}
 
           {placingItem ? (
-            <text x="16" y="22" fill="#0B3A8F" fontFamily="Outfit" fontSize="11">Tap to place {placingItem.name}</text>
+            <text x="16" y="22" fill="#0B3A8F" fontFamily="Outfit" fontSize="11">
+              {requiresWallHost({ library_id: placingItem.id, tags: placingItem.tags }) ? "Tap a wall to place" : "Tap to place"} {placingItem.name}
+            </text>
           ) : null}
         </g>
       </svg>

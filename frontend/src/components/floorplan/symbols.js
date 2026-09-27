@@ -1,6 +1,6 @@
 /** 20/20-style 2D kitchen CAD — black ink on paper, plan view. */
 
-import { cabinetDoorCount, isWallCabinetObject, resolvedCabinetConfig } from "@/lib/floorPlan/library";
+import { cabinetDoorCount, isWallCabinetObject, rangeBurnerCount, resolvedCabinetConfig } from "@/lib/floorPlan/library";
 
 const INK = "#111111";
 const PAPER = "#FFFFFF";
@@ -444,7 +444,7 @@ function Burner({ cx, cy, r }) {
 }
 
 function RangePlan({ w, d, item }) {
-  const six = w >= 35;
+  const six = rangeBurnerCount({ width: w, burners: item?.burners }) === 6;
   const cols = six ? 3 : 2;
   const rows = 2;
   const rail = Math.min(3.2, Math.max(2.5, d * 0.14));

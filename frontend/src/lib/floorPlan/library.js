@@ -360,12 +360,18 @@ export const OBJECT_LIBRARY = [
   item("Kitchen", "Vents", "vent-ceiling", "Ceiling vent", 12, 12, 2, ["vent"]),
   item("Kitchen", "Vents", "vent-wall", "Wall vent", 12, 4, 8, ["vent"]),
   item("Kitchen", "Vents", "vent-cabinet", "Cabinet vent", 6, 12, 4, ["vent"]),
-  item("Kitchen", "Appliances", "range-30", "Range 30", 30, 24, 36, ["appliance"]),
-  item("Kitchen", "Appliances", "range-36", "Range 36 stainless", 36, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-30", "Range 30 · 4 burner", 30, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-33", "Range 33 · 4 burner", 33, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-35", "Range 35 · 6 burner", 35, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-36", "Range 36 stainless · 6 burner", 36, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-40", "Range 40 · 6 burner", 40, 24, 36, ["appliance"]),
   item("Kitchen", "Appliances", "range-black-ss", "Black stainless range", 36, 24, 36, ["appliance"]),
   item("Kitchen", "Appliances", "range-white", "White enamel range", 30, 24, 36, ["appliance"]),
-  item("Kitchen", "Appliances", "range-gas-30", "Gas range 30", 30, 24, 36, ["appliance"]),
-  item("Kitchen", "Appliances", "range-gas-36", "Gas range 36", 36, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-gas-30", "Gas range 30 · 4 burner", 30, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-gas-33", "Gas range 33 · 4 burner", 33, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-gas-35", "Gas range 35 · 6 burner", 35, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-gas-36", "Gas range 36 · 6 burner", 36, 24, 36, ["appliance"]),
+  item("Kitchen", "Appliances", "range-gas-40", "Gas range 40 · 6 burner", 40, 24, 36, ["appliance"]),
   item("Kitchen", "Appliances", "range-induction-30", "Induction range 30", 30, 24, 36, ["appliance"]),
   item("Kitchen", "Appliances", "range-induction-36", "Induction range 36", 36, 24, 36, ["appliance"]),
   item("Kitchen", "Appliances", "cooktop-30", "Cooktop 30", 30, 21, 3, ["appliance"]),
@@ -1000,6 +1006,58 @@ export function defaultFuel(libItem) {
   if (id.includes("gas")) return "gas";
   if (id.startsWith("range") || id.startsWith("cooktop")) return "electric";
   return "";
+}
+
+export const RANGE_MIN_WIDTH = 30;
+export const RANGE_MAX_WIDTH = 40;
+export const RANGE_SIX_BURNER_MIN = 35;
+export const RANGE_STANDARD_WIDTHS = [30, 33];
+export const RANGE_WIDE_WIDTHS = [35, 36, 40];
+export const RANGE_SIZE_OPTIONS = [...RANGE_STANDARD_WIDTHS, ...RANGE_WIDE_WIDTHS].map((w) => ({
+  id: String(w),
+  name: `${w}" · ${w >= RANGE_SIX_BURNER_MIN ? "6" : "4"} burner`,
+}));
+
+export function isRangeObject(obj) {
+  return String(obj?.library_id || obj?.id || "").startsWith("range");
+}
+
+/** Four burners under 35"; 35" and wider default to six unless four was picked. */
+export function rangeBurnerCount(obj) {
+  const w = Number(obj?.width) || RANGE_MIN_WIDTH;
+  if (w < RANGE_SIX_BURNER_MIN) return 4;
+  return Number(obj?.burners) === 4 ? 4 : 6;
+}
+
+export function burnerOptionsFor(width) {
+  if ((Number(width) || 0) < RANGE_SIX_BURNER_MIN) return [{ id: "4", name: "4 burner" }];
+  return [{ id: "6", name: "6 burner" }, { id: "4", name: "4 burner" }];
+}
+
+export function normalizeRangeSpec(obj) {
+  if (!isRangeObject(obj)) return obj;
+  const raw = Number(obj.width);
+  const width = Number.isFinite(raw) && raw > 0
+    ? Math.min(RANGE_MAX_WIDTH, Math.max(RANGE_MIN_WIDTH, raw))
+    : RANGE_MIN_WIDTH;
+  const next = { ...obj, width };
+  const picked = Number(obj.burners);
+  if (width < RANGE_SIX_BURNER_MIN || (picked !== 4 && picked !== 6)) delete next.burners;
+  const same = width === obj.width && next.burners === obj.burners && ("burners" in next) === ("burners" in obj);
+  return same ? obj : next;
+}
+
+/** Same range family (electric / gas / induction) at the new width, when the catalog has it. */
+export function rangeLibraryIdFor(currentId, width) {
+  const id = String(currentId || "");
+  const w = Math.round(Number(width) || 0);
+  let family = "";
+  if (id.startsWith("range-gas-")) family = "range-gas";
+  else if (id.startsWith("range-induction-")) family = "range-induction";
+  else if (/^range-\d+$/.test(id)) family = "range";
+  if (!family) return id;
+  const next = `${family}-${w}`;
+  return libraryById(next) ? next : id;
 }
 
 export function defaultHoodType(libItem) {

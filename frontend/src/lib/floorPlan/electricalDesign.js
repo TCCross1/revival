@@ -10,7 +10,7 @@
  */
 import { inches, round2, uid } from "./units";
 import { emptyObject, wallLength, wallsFromRoom } from "./model";
-import { libraryById } from "./library";
+import { libraryById, RANGE_SIX_BURNER_MIN } from "./library";
 
 export const ELEC_DISCLAIMER = "Kentucky dwelling design from typical NEC practice (protective default). Confirm nameplate ratings, the adopted NEC edition, Kentucky amendments, and the AHJ. A licensed electrician must review before rough-in.";
 
@@ -274,7 +274,7 @@ function isSink(obj) {
 
 function applianceSpec(obj) {
   const id = String(obj?.library_id || "");
-  if (id.startsWith("range")) return { amps: id.includes("36") ? 50 : 40, volts: 240, dedicated: true, label: "Range", gfci: true, afci: false, library: "outlet-240" };
+  if (id.startsWith("range")) return { amps: (Number(obj?.width) || 0) >= RANGE_SIX_BURNER_MIN || id.includes("36") ? 50 : 40, volts: 240, dedicated: true, label: "Range", gfci: true, afci: false, library: "outlet-240" };
   if (id.startsWith("dryer")) return { amps: 30, volts: 240, dedicated: true, label: "Electric dryer", gfci: true, afci: false, library: "outlet-240" };
   if (id.startsWith("fridge")) return { amps: 15, volts: 120, dedicated: true, label: "Refrigerator", gfci: false, afci: true, library: "outlet-duplex" };
   if (id.startsWith("dw-")) return { amps: 15, volts: 120, dedicated: true, label: "Dishwasher", gfci: true, afci: true, library: "outlet-gfci" };

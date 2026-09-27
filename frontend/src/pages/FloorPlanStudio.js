@@ -6,7 +6,7 @@ import api, { formatApiError, downloadAuthenticatedPdfPost } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import FloorPlanCanvas from "@/components/floorplan/FloorPlanCanvas";
+import FloorPlanCanvas, { PLAN_PX } from "@/components/floorplan/FloorPlanCanvas";
 import DoorDetailsModal from "@/components/floorplan/DoorDetailsModal";
 import InteriorDoorDetailsModal from "@/components/floorplan/InteriorDoorDetailsModal";
 import WindowDetailsModal from "@/components/floorplan/WindowDetailsModal";
@@ -32,7 +32,9 @@ import {
   isBaseRunObject, applyWallCabinetDrawerRule, libraryById, normalizeDocumentCabinets, normalizeLevelCabinets,
 } from "@/lib/floorPlan/library";
 import { fitCountertops } from "@/lib/floorPlan/countertops";
-import { fitCabinetFillers, isRunOccupant, snapCabinetToWall, clearRunForOpening, planSymbolDepth } from "@/lib/floorPlan/cabinetRun";
+import {
+  fitCabinetFillers, isRunOccupant, snapCabinetToWall, clearRunForOpening, planSymbolDepth, requiresWallHost, snapApplianceToWall,
+} from "@/lib/floorPlan/cabinetRun";
 import {
   applyKitchenStyle, autoGenerateCabinets, ensureRangeHood, evaluateKitchen, generateKitchenCounters,
   kitchenDesignOf, placeKitchenAnchor,
@@ -40,7 +42,7 @@ import {
 import { pantryBlocksSink } from "@/lib/floorPlan/professionalLayout";
 import { lightingCountForRoom, placeRoomLights, placeSinkLight } from "@/lib/floorPlan/lighting";
 import {
-  activeLevel, applyTIntersections, clonePlanObject, emptyDocument, emptyLevel, emptyObject, emptyOpening,
+  activeLevel, clonePlanObject, emptyDocument, emptyLevel, emptyObject, emptyOpening,
   emptyRoof, emptyRoom, emptyWall, fitRoofToRooms, flagPlumbingWalls, moveRoom, nearestWall, resizeRoom, setWallLength,
   applyInteriorDoorDefaults, createRoomFromOutsideBounds, setRoomWallThickness, snapPoint, updateLevel, wallsFromRoom, wallLength,
 } from "@/lib/floorPlan/model";
@@ -71,6 +73,7 @@ import {
   nextChainPointsAfterCommit,
 } from "@/lib/floorPlan/wallDraw";
 import {
+  CORNER_SNAP_TYPES,
   emptySnapSession,
   resolveDrawSnap,
   SNAP_CONFIG,
@@ -82,6 +85,7 @@ import {
   commitDrawWall,
   mergeSharedPartition,
   signedWallDragDistance,
+  weldDrawnWall,
 } from "@/lib/floorPlan/planTopology";
 import {
   addTwoCornersOnWall,
@@ -364,6 +368,19 @@ export default function FloorPlanStudio() {
     setDoc(nextDoc);
   };
 
+  /** Undo / redo must mark the plan dirty so auto-save persists the reverted state. */
+  const stepHistory = (direction) => {
+    try {
+      const next = direction === "redo" ? history.current.redo(doc) : history.current.undo(doc);
+      if (next === doc) return;
+      markUnsaved();
+      setDoc(next);
+    } catch (err) {
+      console.error(`[History] ${direction} failed`, err);
+      toast.error(`Could not ${direction}. Please try again.`);
+    }
+  };
+
   const patchLevel = (updater) => {
     commit(updateLevel(doc, level.id, (lvl) => flagPlumbingWalls(syncOpeningBeams(normalizeLevelCabinets(updater(lvl))))));
   };
@@ -384,10 +401,23 @@ export default function FloorPlanStudio() {
     return next;
   };
 
-  const placeOrUpdateObject = (lvl, obj, { announce = false, insert = false } = {}) => {
+  const placeOrUpdateObject = (lvl, obj, { announce = false, insert = false, onReject = null } = {}) => {
     try {
       const others = (lvl.objects || []).filter((o) => o.id !== obj.id);
-      const result = snapCabinetToWall(obj, { ...lvl, objects: others }, doc.snap);
+      let result;
+      if (requiresWallHost(obj)) {
+        // Appliances only live on an interior or exterior wall; off-wall moves keep the last spot.
+        result = snapApplianceToWall(obj, { ...lvl, objects: others }, doc.snap);
+        if (!result.onWall) {
+          if (announce || insert) {
+            console.warn("[Placement] appliance rejected — no host wall", { item: obj.library_id, x: obj.x, y: obj.y });
+          }
+          onReject?.(result.reason);
+          return lvl;
+        }
+      } else {
+        result = snapCabinetToWall(obj, { ...lvl, objects: others }, doc.snap);
+      }
       if (announce && !result.fit && result.reason) toast.message(result.reason);
       const placed = applyWallCabinetDrawerRule(result.object, { ...lvl, objects: [...others, result.object] });
       if (pantryBlocksSink({ ...lvl, objects: [...others, placed] }, placed)) {
@@ -541,21 +571,52 @@ export default function FloorPlanStudio() {
     }
   };
 
+  const resolvePointLineSnap = (world, { origin = null, chainStart = null, chainWallIds = [], freeAngle = false } = {}) => {
+    try {
+      const resolved = resolveDrawSnap({
+        cursorWorld: world,
+        origin,
+        chainStart,
+        chainWallIds,
+        walls: level.walls,
+        rooms: level.rooms,
+        vertices: level.vertices,
+        gridSnap: doc.snap || 6,
+        scale: view.scale * PLAN_PX,
+        freeAngle,
+        session: drawSnapSession.current,
+      });
+      drawSnapSession.current = resolved.session;
+      return resolved;
+    } catch (err) {
+      console.error("[PointLine] snap resolve failed", { error: err?.message || err, world });
+      drawSnapSession.current = emptySnapSession();
+      return {
+        point: { x: round2(world.x), y: round2(world.y) },
+        candidate: { type: SNAP_TYPES.FREE, x: round2(world.x), y: round2(world.y), label: "" },
+        session: drawSnapSession.current,
+        label: "",
+        guides: [],
+      };
+    }
+  };
+
   const onCanvasTap = (world, extra) => {
     if (pickingCabinetWalls) return;
     const snapped = snapPoint(world.x, world.y, doc.snap || 6, level.walls);
     if (placingAnchor) {
-      let blocked = "";
+      const preview = placeKitchenAnchor(level, placingAnchor, snapped, kitchenDesignOf(doc), doc.house_standards?.defaults);
+      if (preview._kitchenError) {
+        // Keep the anchor armed so the next tap can land on a wall.
+        console.warn("[Placement] kitchen anchor rejected", { kind: placingAnchor, x: snapped.x, y: snapped.y, reason: preview._kitchenError });
+        toast.error(preview._kitchenError);
+        return;
+      }
       patchLevel((lvl) => {
         const next = placeKitchenAnchor(lvl, placingAnchor, snapped, kitchenDesignOf(doc), doc.house_standards?.defaults);
-        if (next._kitchenError) {
-          blocked = next._kitchenError;
-          return lvl;
-        }
-        return next;
+        return next._kitchenError ? lvl : next;
       });
-      if (blocked) toast.error(blocked);
-      else toast.success(`${placingAnchor === "range" ? "Range" : placingAnchor === "fridge" ? "Refrigerator" : placingAnchor === "sink" ? "Sink" : "Dishwasher"} locked to that utility`);
+      toast.success(`${placingAnchor === "range" ? "Range" : placingAnchor === "fridge" ? "Refrigerator" : placingAnchor === "sink" ? "Sink" : "Dishwasher"} locked to that utility`);
       setPlacingAnchor(null);
       return;
     }
@@ -579,20 +640,12 @@ export default function FloorPlanStudio() {
       const chainStartPt = previous?.chainStart
         || (drawPoints[0] && !drawPoints[0].fromCommit ? { x: drawPoints[0].x, y: drawPoints[0].y } : null);
       const chainWallIds = previous?.chainWallIds || drawPoints.find((p) => p.chainWallIds)?.chainWallIds || [];
-      const resolved = resolveDrawSnap({
-        cursorWorld: world,
+      const resolved = resolvePointLineSnap(world, {
         origin: previous,
         chainStart: chainStartPt,
         chainWallIds,
-        walls: level.walls,
-        rooms: level.rooms,
-        vertices: level.vertices,
-        gridSnap: doc.snap || 6,
-        scale: view.scale,
         freeAngle: freeAngleRef.current || Boolean(extra.freeAngle),
-        session: drawSnapSession.current,
       });
-      drawSnapSession.current = resolved.session;
       setDrawSnap(resolved);
       const snapped = resolved.point;
 
@@ -602,31 +655,38 @@ export default function FloorPlanStudio() {
         const viaExisting = Boolean(resolved.candidate?.meta?.viaExisting && resolved.candidate?.meta?.closingWallId);
         const wall = emptyWall(previous.x, previous.y, snapped.x, snapped.y, continued ? "interior" : "exterior");
         let formedRoom = false;
+        let commitFailed = false;
         patchLevel((lvl) => {
-          if (closing && viaExisting) {
-            const closed = commitAdjacentRoomClosure(lvl, {
-              wallPartial: wall,
-              chainStart: chainStartPt,
-              closingWallId: resolved.candidate.meta.closingWallId,
-              chainWallIds,
+          try {
+            if (closing && viaExisting) {
+              const closed = commitAdjacentRoomClosure(lvl, {
+                wallPartial: wall,
+                chainStart: chainStartPt,
+                closingWallId: resolved.candidate.meta.closingWallId,
+                chainWallIds,
+              });
+              formedRoom = Boolean(closed.room);
+              return closed.level;
+            }
+            const committed = commitDrawWall(lvl, wall, {
+              closeTo: closing ? snapped : null,
             });
-            formedRoom = Boolean(closed.room);
-            return closed.level;
+            return weldDrawnWall(committed.level, committed.wall.id).level;
+          } catch (err) {
+            commitFailed = true;
+            console.error("[PointLine] wall commit failed", {
+              error: err?.message || err,
+              from: { x: previous.x, y: previous.y },
+              to: snapped,
+              snap: resolved.candidate?.type,
+            });
+            return lvl;
           }
-          const committed = commitDrawWall(lvl, wall, {
-            closeTo: closing ? snapped : null,
-          });
-          const withoutNew = {
-            ...committed.level,
-            walls: (committed.level.walls || []).filter((w) => w.id !== committed.wall.id),
-          };
-          return {
-            ...committed.level,
-            walls: applyTIntersections(withoutNew.walls, committed.wall),
-            vertices: committed.level.vertices,
-            rooms: committed.level.rooms,
-          };
         });
+        if (commitFailed) {
+          toast.error("Could not place that wall. Please try again.");
+          return;
+        }
         if (closing) {
           setDrawPoints(clearDrawChain());
           setDrawSnap(null);
@@ -648,38 +708,44 @@ export default function FloorPlanStudio() {
         // Segment too short — keep chain, do not restart.
         return;
       }
-      // First click — prefer exact endpoint / corner; else project onto wall axis.
-      const onWall = nearestWall(level.walls, snapped.x, snapped.y, 14 / Math.max(view.scale, 0.35));
-      const isCorner = resolved.candidate?.type === SNAP_TYPES.ENDPOINT
-        || resolved.candidate?.type === SNAP_TYPES.VERTEX
-        || resolved.label === "START FROM CORNER"
-        || resolved.label === "ENDPOINT";
-      const startPt = isCorner
-        ? {
+      // First click — corner / endpoint wins; else the exact point ON the wall under the cursor.
+      const startType = resolved.candidate?.type;
+      const isCorner = CORNER_SNAP_TYPES.has(startType);
+      const onWallId = startType === SNAP_TYPES.WALL_AXIS ? resolved.candidate?.meta?.wallId : null;
+      const fallbackWall = !isCorner && !onWallId
+        ? nearestWall(level.walls, snapped.x, snapped.y, SNAP_CONFIG.acquireRadiusPx / Math.max(view.scale * PLAN_PX, 0.01))
+        : null;
+      let startPt;
+      if (isCorner) {
+        startPt = {
           x: snapped.x,
           y: snapped.y,
           fromCommit: false,
           chainStart: { x: snapped.x, y: snapped.y },
           chainWallIds: [],
-          startLabel: "START FROM CORNER",
-        }
-        : onWall
-          ? {
-            x: round2(onWall.x),
-            y: round2(onWall.y),
-            fromCommit: false,
-            onWallId: onWall.wall.id,
-            chainStart: { x: round2(onWall.x), y: round2(onWall.y) },
-            chainWallIds: [],
-            startLabel: "START FROM WALL",
-          }
-          : {
-            x: snapped.x,
-            y: snapped.y,
-            fromCommit: false,
-            chainStart: { x: snapped.x, y: snapped.y },
-            chainWallIds: [],
-          };
+          startLabel: resolved.label || "CORNER",
+        };
+      } else if (onWallId || fallbackWall) {
+        const sx = onWallId ? snapped.x : round2(fallbackWall.x);
+        const sy = onWallId ? snapped.y : round2(fallbackWall.y);
+        startPt = {
+          x: sx,
+          y: sy,
+          fromCommit: false,
+          onWallId: onWallId || fallbackWall.wall.id,
+          chainStart: { x: sx, y: sy },
+          chainWallIds: [],
+          startLabel: "ON WALL",
+        };
+      } else {
+        startPt = {
+          x: snapped.x,
+          y: snapped.y,
+          fromCommit: false,
+          chainStart: { x: snapped.x, y: snapped.y },
+          chainWallIds: [],
+        };
+      }
       setDrawPoints([startPt]);
       drawSnapSession.current = emptySnapSession();
       return;
@@ -723,10 +789,27 @@ export default function FloorPlanStudio() {
         return;
       }
       const draft = emptyObject(placing, snapped.x, snapped.y, doc.house_standards?.defaults);
-      const placed = isRunOccupant(draft)
+      const placed = isRunOccupant(draft) || requiresWallHost(draft)
         ? { ...draft, x: round2(snapped.x - inches(draft.width) / 2), y: round2(snapped.y - inches(draft.depth) / 2) }
         : draft;
-      patchLevel((lvl) => placeOrUpdateObject(lvl, placed, { announce: true, insert: true }));
+      if (requiresWallHost(placed)) {
+        const check = snapApplianceToWall(placed, level, doc.snap);
+        if (!check.onWall) {
+          console.warn("[Placement] appliance tap off-wall", { item: placed.library_id, x: snapped.x, y: snapped.y });
+          toast.error(check.reason);
+          return;
+        }
+      }
+      let rejected = "";
+      patchLevel((lvl) => placeOrUpdateObject(lvl, placed, {
+        announce: true,
+        insert: true,
+        onReject: (reason) => { rejected = reason || "Tap on or next to a wall to place that appliance."; },
+      }));
+      if (rejected) {
+        toast.error(rejected);
+        return;
+      }
       setSelected({ type: "object", id: placed.id });
       if (isElectricalObject(placed) || (placing.tags || []).includes("appliance")) {
         toast.message("Electrician notes are in the inspector.");
@@ -1297,6 +1380,12 @@ export default function FloorPlanStudio() {
     }
   };
 
+  const placementHint = (item) => (
+    requiresWallHost({ library_id: item?.id, tags: item?.tags })
+      ? `Tap an interior or exterior wall to place ${item.name}`
+      : `Tap the plan to place ${item?.name || "that item"}`
+  );
+
   const armCatalog = (id) => {
     const item = libraryById(id);
     if (!item) {
@@ -1307,7 +1396,7 @@ export default function FloorPlanStudio() {
     setMode("object");
     setPlacingAnchor(null);
     setDrawPoints([]);
-    toast.message(`Tap the plan to place ${item.name}`);
+    toast.message(placementHint(item));
   };
 
   const runDockAction = (id) => {
@@ -1317,14 +1406,14 @@ export default function FloorPlanStudio() {
         setDrawPoints(clearDrawChain());
         setDrawSnap(null);
         drawSnapSession.current = emptySnapSession();
-        setDoc(history.current.undo(doc));
+        stepHistory("undo");
         return;
       }
       if (id === "redo") {
         setDrawPoints(clearDrawChain());
         setDrawSnap(null);
         drawSnapSession.current = emptySnapSession();
-        setDoc(history.current.redo(doc));
+        stepHistory("redo");
         return;
       }
       if (["select", "pan", "room", "draw", "door", "window", "cased"].includes(id)) {
@@ -1468,8 +1557,8 @@ export default function FloorPlanStudio() {
                 >
                   {syncStatus === "live" ? "Live sync" : syncStatus === "polling" ? "Syncing…" : planId ? "Saved on this device" : "Unsaved plan"}
                 </span>
-                <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setDoc(history.current.undo(doc))}><Undo2 size={14} /></Button>
-                <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setDoc(history.current.redo(doc))}><Redo2 size={14} /></Button>
+                <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => stepHistory("undo")}><Undo2 size={14} /></Button>
+                <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => stepHistory("redo")}><Redo2 size={14} /></Button>
                 <Button
                   type="button"
                   size="sm"
@@ -1579,27 +1668,16 @@ export default function FloorPlanStudio() {
             onDrawCursor={(world) => {
               if (mode !== "draw" || clientView) return;
               const previous = drawPoints[drawPoints.length - 1] || null;
-              if (!previous) {
-                setDrawSnap(null);
-                return;
-              }
-              const chainStart = previous.chainStart
-                || (drawPoints[0] && !drawPoints[0].fromCommit ? { x: drawPoints[0].x, y: drawPoints[0].y } : null);
-              const chainWallIds = previous.chainWallIds || [];
-              const resolved = resolveDrawSnap({
-                cursorWorld: world,
+              const chainStart = previous
+                ? (previous.chainStart
+                  || (drawPoints[0] && !drawPoints[0].fromCommit ? { x: drawPoints[0].x, y: drawPoints[0].y } : null))
+                : null;
+              const resolved = resolvePointLineSnap(world, {
                 origin: previous,
                 chainStart,
-                chainWallIds,
-                walls: level.walls,
-                rooms: level.rooms,
-                vertices: level.vertices,
-                gridSnap: doc.snap || SNAP_CONFIG.drawingIncrementIn,
-                scale: view.scale,
+                chainWallIds: previous?.chainWallIds || [],
                 freeAngle: freeAngleRef.current,
-                session: drawSnapSession.current,
               });
-              drawSnapSession.current = resolved.session;
               setDrawSnap(resolved);
             }}
             drawSnap={clientView ? null : drawSnap}
@@ -2427,7 +2505,7 @@ export default function FloorPlanStudio() {
                     if (!current) return lvl;
                     const merged = { ...current, ...patch };
                     if (patch.width != null || patch.depth != null || patch.front != null || patch.height != null) {
-                      return placeOrUpdateObject(lvl, merged, { announce: true });
+                      return placeOrUpdateObject(lvl, merged, { announce: true, onReject: (reason) => toast.error(reason) });
                     }
                     return finishCabinetRun({
                       ...lvl,
@@ -2481,7 +2559,7 @@ export default function FloorPlanStudio() {
                   favorites: next,
                 },
               }))}
-              onPlace={(item) => { setPlacing(item); setMode("object"); toast.message(`Tap the plan to place ${item.name}`); }}
+              onPlace={(item) => { setPlacing(item); setMode("object"); toast.message(placementHint(item)); }}
             />
             <div className="mt-3 space-y-2">
               <Button type="button" className="w-full h-9 text-xs bg-[#0B3A8F] hover:bg-[#082C73]" onClick={() => sendEstimate.mutate(mergeEstimateId)} data-testid="send-to-estimate-btn">

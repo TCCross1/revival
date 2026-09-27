@@ -3,8 +3,11 @@
 import {
   HOUSE_STANDARD_DEFAULTS, applyWallCabinetDrawerRule, defaultCabinetConfig, defaultFuel, isBaseRunObject,
   isCabinetObject, isCountertopObject, isIslandObject, isWallCabinetObject, libraryById,
+  RANGE_MIN_WIDTH, RANGE_SIX_BURNER_MIN, RANGE_SIZE_OPTIONS,
 } from "./library";
-import { fitCabinetFillers, isFillerObject, objectFootprint, placeFlush, snapCabinetToWall, wallInterior } from "./cabinetRun";
+import {
+  fitCabinetFillers, isFillerObject, objectFootprint, placeFlush, snapApplianceToWall, snapCabinetToWall, wallInterior,
+} from "./cabinetRun";
 import { fitCountertops } from "./countertops";
 import { evaluateProfessionalLayout, pantryBlocksSink } from "./professionalLayout";
 import { dist, formatFtIn, inches, round2, uid } from "./units";
@@ -87,11 +90,16 @@ function libOr(id, fallbackId) {
   return libraryById(id) || libraryById(fallbackId);
 }
 
+function designRangeWidth(design) {
+  const w = Number(design?.range_width);
+  return RANGE_SIZE_OPTIONS.some((row) => Number(row.id) === w) ? w : RANGE_MIN_WIDTH;
+}
+
 function rangeLib(design) {
-  const w = Number(design.range_width) === 36 ? 36 : 30;
-  if (design.fuel === "induction") return libOr(`range-induction-${w}`, "range-30");
+  const w = designRangeWidth(design);
+  if (design.fuel === "induction") return libOr(`range-induction-${w}`, libOr(`range-${w}`, "range-30"));
   if (design.fuel === "electric") return libOr(`range-${w}`, "range-30");
-  return libOr(`range-gas-${w}`, "range-30");
+  return libOr(`range-gas-${w}`, libOr(`range-${w}`, "range-30"));
 }
 
 function fridgeLib(design) {
@@ -687,8 +695,9 @@ export function placeKitchenAnchor(level, kind, world, design, standards) {
     if (kind === "range") {
       lib = rangeLib(cfg);
       extra.fuel = cfg.fuel === "induction" ? "induction" : cfg.fuel === "electric" ? "electric" : "gas";
-      extra.width = Number(cfg.range_width) === 36 ? 36 : 30;
+      extra.width = designRangeWidth(cfg);
       extra.depth = 24;
+      if (extra.width >= RANGE_SIX_BURNER_MIN && Number(cfg.range_burners) === 4) extra.burners = 4;
     } else if (kind === "fridge") {
       lib = fridgeLib(cfg);
       extra.width = Number(cfg.fridge_width) || 36;
@@ -723,7 +732,22 @@ export function placeKitchenAnchor(level, kind, world, design, standards) {
         draft.wall_id = sink.wall_id || "";
       }
     }
-    const snapped = snapCabinetToWall(draft, { ...level, objects: others }, 1).object;
+    let snapped;
+    if (kind === "sink") {
+      snapped = snapCabinetToWall(draft, { ...level, objects: others }, 1).object;
+    } else {
+      // Range, refrigerator and dishwasher only sit on an interior or exterior wall.
+      const hosted = snapApplianceToWall(draft, { ...level, objects: others }, 1);
+      if (!hosted.onWall) {
+        return {
+          ...level,
+          _kitchenError: kind === "dishwasher" && others.some((obj) => obj.anchor === "sink")
+            ? "The dishwasher goes beside the sink on a wall run. Move the sink to a wall first."
+            : hosted.reason,
+        };
+      }
+      snapped = hosted.object;
+    }
     let objects = [...others, snapped];
     if (kind === "sink") {
       const dwLib = libOr("dw-24", "dw-24");
@@ -745,8 +769,9 @@ export function ensureRangeHood(level, standards) {
     const { range } = kitchenObjects(level);
     if (!range) return level;
     if (hoodNearCooking(level, range)) return level;
-    const w = inches(range.width) >= 36 ? 36 : 30;
-    const lib = libOr(`hood-under-${w}`, libOr(`hood-wall-${w}`, "hood-under-30"));
+    const w = Math.max(RANGE_MIN_WIDTH, Math.round(inches(range.width)) || RANGE_MIN_WIDTH);
+    const libW = w >= 36 ? 36 : 30;
+    const lib = libOr(`hood-under-${libW}`, libOr(`hood-wall-${libW}`, "hood-under-30"));
     if (!lib) return level;
     const hood = makeItem(lib, range.x, range.y, {
       auto_fill: true,

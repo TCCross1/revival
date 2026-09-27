@@ -134,6 +134,125 @@ export function commitDrawWall(level, wallPartial, { closeTo } = {}) {
 }
 
 /**
+ * Merge vertices closer than `tol` into one survivor and rewire every wall to it,
+ * so coincident endpoints become one topological joint.
+ */
+export function mergeCoincidentVertices(level, tol = SNAP_CONFIG.weldTolIn) {
+  const next = ensureLevelVertices(level);
+  const survivors = [];
+  const remap = {};
+  (next.vertices || []).forEach((v) => {
+    const keep = survivors.find((s) => dist(s.x, s.y, v.x, v.y) <= tol);
+    if (keep) remap[v.id] = keep.id;
+    else survivors.push(v);
+  });
+  if (!Object.keys(remap).length) return next;
+  const byId = {};
+  survivors.forEach((v) => { byId[v.id] = v; });
+  return {
+    ...next,
+    vertices: survivors,
+    walls: (next.walls || []).map((w) => {
+      const startVertexId = remap[w.startVertexId] || w.startVertexId;
+      const endVertexId = remap[w.endVertexId] || w.endVertexId;
+      if (startVertexId === w.startVertexId && endVertexId === w.endVertexId) return w;
+      return syncWallFromVertices({ ...w, startVertexId, endVertexId }, byId);
+    }),
+  };
+}
+
+/** Split a free wall at `vertex` (on its span); openings keep their positions. */
+function splitFreeWallAtVertex(level, host, vertex) {
+  const a = wallAxis(host);
+  const along = (inches(vertex.x) - a.x1) * a.ux + (inches(vertex.y) - a.y1) * a.uy;
+  const openings = (host.openings || []).map((op) => ({ ...op }));
+  const crossing = openings.some((op) => {
+    const start = inches(op.offset);
+    const end = start + inches(op.width);
+    return along > start + 0.05 && along < end - 0.05;
+  });
+  if (crossing) return { level, split: false };
+  const left = {
+    ...host,
+    x2: vertex.x,
+    y2: vertex.y,
+    endVertexId: vertex.id,
+    openings: openings.filter((op) => inches(op.offset) + inches(op.width) <= along + 0.05),
+  };
+  const right = {
+    ...host,
+    id: uid(),
+    x1: vertex.x,
+    y1: vertex.y,
+    startVertexId: vertex.id,
+    openings: openings
+      .filter((op) => inches(op.offset) >= along - 0.05)
+      .map((op) => ({ ...op, offset: round2(inches(op.offset) - along) })),
+  };
+  const walls = [];
+  (level.walls || []).forEach((w) => {
+    if (w.id === host.id) walls.push(left, right);
+    else walls.push(w);
+  });
+  return { level: { ...level, walls }, split: true, rightId: right.id };
+}
+
+/**
+ * Post-commit weld for a Point & Line wall so the plan is topologically connected:
+ * 1) vertices within `tol` (1/16") merge into one joint
+ * 2) free walls whose endpoint sits on the new wall's vertex adopt that vertex id
+ * 3) a new endpoint landing on another free wall's span splits it (T) at a shared vertex
+ * Room-owned walls are never split here; they regenerate from their room rectangle.
+ */
+export function weldDrawnWall(level, wallId, tol = SNAP_CONFIG.weldTolIn) {
+  let next = mergeCoincidentVertices(ensureLevelVertices(level), tol);
+  const wall = (next.walls || []).find((w) => w.id === wallId);
+  if (!wall) return { level: next, splitWallIds: [], joinedWallIds: [] };
+  const verts = indexVertices(next);
+  const splitWallIds = [];
+  const joinedWallIds = [];
+
+  [wall.startVertexId, wall.endVertexId].forEach((vid) => {
+    const v = verts[vid];
+    if (!v) return;
+
+    next = {
+      ...next,
+      walls: (next.walls || []).map((w) => {
+        if (w.id === wallId || w.source_room_id) return w;
+        let patched = w;
+        if (w.startVertexId !== vid && dist(w.x1, w.y1, v.x, v.y) <= tol) {
+          patched = { ...patched, startVertexId: vid, x1: v.x, y1: v.y };
+        }
+        if (w.endVertexId !== vid && dist(w.x2, w.y2, v.x, v.y) <= tol) {
+          patched = { ...patched, endVertexId: vid, x2: v.x, y2: v.y };
+        }
+        if (patched !== w) joinedWallIds.push(w.id);
+        return patched;
+      }),
+    };
+
+    const host = (next.walls || []).find((w) => {
+      if (w.id === wallId || w.source_room_id) return false;
+      if (w.startVertexId === vid || w.endVertexId === vid) return false;
+      const a = wallAxis(w);
+      const along = (v.x - a.x1) * a.ux + (v.y - a.y1) * a.uy;
+      if (along < 1 || along > a.len - 1) return false;
+      const perp = Math.abs((v.x - a.x1) * a.nx + (v.y - a.y1) * a.ny);
+      return perp <= SNAP_CONFIG.vertexMergeIn;
+    });
+    if (!host) return;
+    const res = splitFreeWallAtVertex(next, host, v);
+    if (res.split) {
+      next = res.level;
+      splitWallIds.push(host.id, res.rightId);
+    }
+  });
+
+  return { level: next, splitWallIds, joinedWallIds };
+}
+
+/**
  * Commit closing segment that lands on an existing wall and form Room B
  * using that wall as the shared fourth boundary (no duplicate wall).
  */

@@ -81,6 +81,9 @@ const ALIAS = {
   "cab-trash-18": "cab-base-24",
   "cab-micro-30": "cab-tall-24",
   "cab-specialty": "cab-base-24",
+  "range-33": "range-30",
+  "range-35": "range-36",
+  "range-40": "range-36",
 };
 
 function thumbUrl(id) {

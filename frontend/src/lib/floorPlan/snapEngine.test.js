@@ -1,17 +1,22 @@
 import {
   SNAP_CONFIG,
   SNAP_TYPES,
+  collectSnapCorners,
   emptySnapSession,
   resolveDrawSnap,
+  snapRadiiWorld,
+  wallJointExtensions,
 } from "./snapEngine";
 import {
   applyWallMoveFromOrigin,
   bindCoincidentWallVertices,
   commitAdjacentRoomClosure,
   commitDrawWall,
+  mergeCoincidentVertices,
   mergeSharedPartition,
   signedWallDragDistance,
   wallIsOrthogonal,
+  weldDrawnWall,
 } from "./planTopology";
 import { emptyWall, emptyRoom, emptyLevel, wallsFromRoom, wallLength } from "./model";
 
@@ -330,6 +335,226 @@ describe("planTopology wall move", () => {
     level = mergeSharedPartition(level, b.id, east.id);
     expect(level.walls.some((w) => w.source_room_id === b.id && w.room_side === "west")).toBe(false);
     expect(level.walls.find((w) => w.id === east.id).shared_partition).toBe(true);
+  });
+});
+
+describe("Point & line joins existing corners (field video, Kitchen)", () => {
+  // 100% zoom: view.scale 1 × plan px 1.7 → acquire ≈ 8.2", release ≈ 12.9"
+  const PX_PER_IN = 1.7;
+
+  function kitchen() {
+    const room = emptyRoom("Kitchen", 0, 0, 144, 120); // 3 1/2" walls
+    const walls = wallsFromRoom(room);
+    return { room, walls, level: { ...emptyLevel(), rooms: [room], walls, vertices: [] } };
+  }
+
+  function snap(opts) {
+    return resolveDrawSnap({
+      rooms: [],
+      vertices: [],
+      gridSnap: 6,
+      scale: PX_PER_IN,
+      freeAngle: false,
+      session: emptySnapSession(),
+      ...opts,
+    });
+  }
+
+  test("visible face corners: 4 outer + 4 inner, no straight-edge seams", () => {
+    const { walls } = kitchen();
+    const corners = collectSnapCorners(walls, []).filter((p) => p.type === SNAP_TYPES.CORNER);
+    const keys = corners.map((p) => `${p.x},${p.y}`).sort();
+    expect(keys).toEqual([
+      "0,0", "0,120", "140.5,116.5", "140.5,3.5", "144,0", "144,120", "3.5,116.5", "3.5,3.5",
+    ].sort());
+    expect(keys).not.toContain("0,3.5");
+    // Room-owned centerline endpoints (inset by t/2) are not offered — they are not visible corners
+    expect(collectSnapCorners(walls, []).some((p) => p.x === 144 && p.y === 1.75)).toBe(false);
+  });
+
+  test("start of stroke near the outer corner snaps to the exact CORNER, not the wall line", () => {
+    const { walls, room } = kitchen();
+    const r = snap({ cursorWorld: { x: 146, y: 2.5 }, walls, rooms: [room] });
+    expect(r.candidate.type).toBe(SNAP_TYPES.CORNER);
+    expect(r.label).toBe("CORNER");
+    expect(r.point).toEqual({ x: 144, y: 0 });
+  });
+
+  test("start of stroke on a wall away from corners lands ON WALL", () => {
+    const { walls } = kitchen();
+    const r = snap({ cursorWorld: { x: 70.3, y: 2.9 }, walls });
+    expect(r.candidate.type).toBe(SNAP_TYPES.WALL_AXIS);
+    expect(r.label).toBe("ON WALL");
+    expect(r.point.y).toBeCloseTo(1.75, 5);
+  });
+
+  test("inner corner snaps to the inner face corner", () => {
+    const { walls } = kitchen();
+    const r = snap({ cursorWorld: { x: 4.6, y: 4.9 }, walls });
+    expect(r.candidate.type).toBe(SNAP_TYPES.CORNER);
+    expect(r.candidate.meta.face).toBe("inner");
+    expect(r.point).toEqual({ x: 3.5, y: 3.5 });
+  });
+
+  test("vertical run from the top corner: bottom end JOINS the bottom corner (no gap)", () => {
+    const { walls } = kitchen();
+    const r = snap({ cursorWorld: { x: 144.6, y: 118.9 }, origin: { x: 144, y: 0 }, walls });
+    expect(r.candidate.type).toBe(SNAP_TYPES.CORNER);
+    expect(r.label).toBe("CORNER");
+    expect(r.point).toEqual({ x: 144, y: 120 });
+  });
+
+  test("free end beside the room comes LEVEL with the bottom corner (exact Y, X kept)", () => {
+    const { walls, room } = kitchen();
+    const topRun = emptyWall(144, 0, 240, 0, "exterior");
+    const r = snap({
+      cursorWorld: { x: 171, y: 118.6 },
+      origin: { x: 170, y: 0 },
+      walls: [...walls, topRun],
+      rooms: [room],
+    });
+    expect(r.candidate.type).toBe(SNAP_TYPES.HORIZONTAL);
+    expect(r.label).toBe("LEVEL");
+    expect(r.point).toEqual({ x: 170, y: 120 });
+  });
+
+  test("corner beats a sticky PERPENDICULAR; perpendicular point follows the cursor", () => {
+    const { walls } = kitchen();
+    const topRun = emptyWall(144, 0, 240, 0, "exterior");
+    const all = [...walls, topRun];
+    const session = emptySnapSession();
+    const origin = { x: 160, y: 0 };
+    const a = snap({ cursorWorld: { x: 160.3, y: 60 }, origin, walls: all, session });
+    expect(a.label).toBe("PERPENDICULAR");
+    expect(a.point).toEqual({ x: 160, y: 60 });
+    const b = snap({ cursorWorld: { x: 160.3, y: 80 }, origin, walls: all, session });
+    expect(b.label).toBe("PERPENDICULAR");
+    expect(b.point).toEqual({ x: 160, y: 80 });
+    const c = snap({ cursorWorld: { x: 144.5, y: 119.4 }, origin, walls: all, session });
+    expect(c.candidate.type).toBe(SNAP_TYPES.CORNER);
+    expect(c.point).toEqual({ x: 144, y: 120 });
+  });
+
+  test("away from every corner PERPENDICULAR still wins", () => {
+    const { walls } = kitchen();
+    const r = snap({ cursorWorld: { x: 60.4, y: -48 }, origin: { x: 60, y: 1.75 }, walls });
+    expect(r.label).toBe("PERPENDICULAR");
+    // 1" drawing increment is measured from the origin: 50" run from y = 1.75
+    expect(r.point).toEqual({ x: 60, y: -48.25 });
+  });
+
+  test("screen radius with world minimum: 3\" off a corner snaps at 100% but not zoomed in", () => {
+    const { walls } = kitchen();
+    expect(snapRadiiWorld(4.5 * PX_PER_IN).acquire).toBeCloseTo(SNAP_CONFIG.acquireMinWorldIn, 5);
+    const cursor = { x: 147, y: -0.2 };
+    const near = snap({ cursorWorld: cursor, walls, scale: PX_PER_IN });
+    expect(near.candidate.type).toBe(SNAP_TYPES.CORNER);
+    const zoomed = snap({ cursorWorld: cursor, walls, scale: 4.5 * PX_PER_IN });
+    expect(zoomed.candidate.type).not.toBe(SNAP_TYPES.CORNER);
+  });
+
+  test("committed wall uses the exact corner coordinates", () => {
+    const { level } = kitchen();
+    const res = commitDrawWall(level, emptyWall(144, 0, 144, 120, "exterior"));
+    const welded = weldDrawnWall(res.level, res.wall.id).level;
+    const w = welded.walls.find((row) => row.id === res.wall.id);
+    expect([w.x1, w.y1, w.x2, w.y2]).toEqual([144, 0, 144, 120]);
+  });
+});
+
+describe("legacy centerline room loop (Health check kitchen data)", () => {
+  function legacyLoop() {
+    const mk = (x1, y1, x2, y2) => ({ ...emptyWall(x1, y1, x2, y2, "exterior"), source_room_id: "kitchen" });
+    return [mk(24, 24, 168, 24), mk(168, 24, 168, 156), mk(168, 156, 24, 156), mk(24, 156, 24, 24)];
+  }
+
+  test("joints extend by the partner half thickness (no corner notch)", () => {
+    const walls = legacyLoop();
+    const ext = wallJointExtensions(walls);
+    walls.forEach((w) => expect(ext[w.id]).toEqual({ start: 3, end: 3 }));
+  });
+
+  test("snap corners are the solid outline corners plus the centerline joints — no notch corners", () => {
+    const corners = collectSnapCorners(legacyLoop(), []);
+    const keys = corners.map((p) => `${p.x},${p.y}`);
+    ["21,21", "171,21", "171,159", "21,159", "27,27", "165,27", "165,153", "27,153", "24,24", "168,24"]
+      .forEach((k) => expect(keys).toContain(k));
+    expect(keys).not.toContain("168,21");
+    expect(keys).not.toContain("171,24");
+  });
+
+  test("Point & line off the top wall joins the visible outer corner", () => {
+    const r = resolveDrawSnap({
+      cursorWorld: { x: 172.5, y: 22.4 },
+      walls: legacyLoop(),
+      rooms: [],
+      vertices: [],
+      gridSnap: 6,
+      scale: 1.7,
+      session: emptySnapSession(),
+    });
+    expect(r.label).toBe("CORNER");
+    expect(r.point).toEqual({ x: 171, y: 21 });
+  });
+
+  test("free end beside the loop levels with the visible bottom face, not the hidden centerline joint", () => {
+    const r = resolveDrawSnap({
+      cursorWorld: { x: 192.6, y: 157.4 },
+      origin: { x: 192, y: 27 },
+      walls: legacyLoop(),
+      rooms: [],
+      vertices: [],
+      gridSnap: 6,
+      scale: 1.7,
+      session: emptySnapSession(),
+    });
+    expect(r.label).toBe("LEVEL");
+    expect(r.point).toEqual({ x: 192, y: 159 });
+  });
+});
+
+describe("Point & line weld", () => {
+  test("L: second segment shares the first segment's end vertex", () => {
+    let level = { ...emptyLevel(), walls: [], vertices: [] };
+    const a = commitDrawWall(level, emptyWall(0, 0, 120, 0, "exterior"));
+    level = weldDrawnWall(a.level, a.wall.id).level;
+    const b = commitDrawWall(level, emptyWall(120, 0, 120, 96, "interior"));
+    level = weldDrawnWall(b.level, b.wall.id).level;
+    const wa = level.walls.find((w) => w.id === a.wall.id);
+    const wb = level.walls.find((w) => w.id === b.wall.id);
+    expect(wb.startVertexId).toBe(wa.endVertexId);
+    expect(level.vertices).toHaveLength(3);
+  });
+
+  test("T: endpoint on another free wall's span splits it at one shared vertex; openings kept", () => {
+    let level = { ...emptyLevel(), walls: [], vertices: [] };
+    const host = { ...emptyWall(0, 0, 120, 0, "exterior"), openings: [{ id: "w1", type: "window", offset: 80, width: 30 }] };
+    const a = commitDrawWall(level, host);
+    level = a.level;
+    const b = commitDrawWall(level, emptyWall(60, 96, 60, 0, "interior"));
+    const res = weldDrawnWall(b.level, b.wall.id);
+    level = res.level;
+    expect(res.splitWallIds).toHaveLength(2);
+    const stem = level.walls.find((w) => w.id === b.wall.id);
+    const left = level.walls.find((w) => w.id === a.wall.id);
+    const right = level.walls.find((w) => w.id === res.splitWallIds[1]);
+    expect(left.endVertexId).toBe(stem.endVertexId);
+    expect(right.startVertexId).toBe(stem.endVertexId);
+    expect([left.x2, left.y2]).toEqual([60, 0]);
+    expect(left.openings).toHaveLength(0);
+    expect(right.openings).toEqual([{ id: "w1", type: "window", offset: 20, width: 30 }]);
+  });
+
+  test("vertices within 1/16\" merge into one joint", () => {
+    const level = {
+      ...emptyLevel(),
+      vertices: [{ id: "v1", x: 10, y: 10 }, { id: "v2", x: 10.04, y: 10 }, { id: "v3", x: 50, y: 10 }],
+      walls: [{ ...emptyWall(10.04, 10, 50, 10, "interior"), startVertexId: "v2", endVertexId: "v3" }],
+    };
+    const merged = mergeCoincidentVertices(level);
+    expect(merged.vertices.map((v) => v.id)).toEqual(["v1", "v3"]);
+    expect(merged.walls[0].startVertexId).toBe("v1");
+    expect(merged.walls[0].x1).toBe(10);
   });
 });
 
