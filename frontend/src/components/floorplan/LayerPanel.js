@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   AppWindow, Box, BoxSelect, Copy, DoorOpen, Frame, Hand, Layers3, MoreVertical,
   RotateCw,   ScanLine, Square, Trash2, Lock, Unlock, Ruler, Refrigerator,
-  Columns3, Minus, MousePointer2, Flame, Lightbulb, Undo2, Redo2, Zap,
+  Columns3, Minus, MousePointer2, Flame, Lightbulb, Undo2, Redo2, Zap, SquareAsterisk,
 } from "lucide-react";
 import { PLAN_LAYERS, layerOn } from "@/lib/floorPlan/layers";
 
@@ -32,7 +32,8 @@ const EDIT_GROUPS = [
     label: "Draw",
     tools: [
       { id: "room", label: "Room block", hint: "Click-drag an outside rectangle; walls butt-join at corners", icon: Square },
-      { id: "draw", label: "Point & line", hint: "Click wall endpoints, double-click to finish", icon: Layers3 },
+      { id: "draw", label: "Point & line", hint: "Click wall endpoints, double-click to finish. Type a length to lock it.", icon: Layers3 },
+      { id: "square-up", label: "Square up", hint: "Straighten nearly-square walls and close gaps", icon: SquareAsterisk },
     ],
   },
   {

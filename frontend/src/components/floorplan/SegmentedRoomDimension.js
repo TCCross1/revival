@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from "react";
 import { segmentedLabels } from "@/lib/floorPlan/segmentedRoomDimension";
 import { DIM_GROUP, LABEL_BAND_PX, labelSideForGroup } from "@/lib/floorPlan/dimensionLanes";
+import { formatFtInTight, parseFtIn } from "@/lib/floorPlan/units";
 
 /**
  * Room dimension group(s):
@@ -8,6 +10,7 @@ import { DIM_GROUP, LABEL_BAND_PX, labelSideForGroup } from "@/lib/floorPlan/dim
  * - "overall": outside-to-outside only — entire group in one lane
  *
  * Line, ticks, and labels always share the same lane offset (move as one unit).
+ * Overall and interior-clear labels are tap-to-edit when onEditSpan is provided.
  */
 export default function SegmentedRoomDimension({
   dim,
@@ -19,7 +22,20 @@ export default function SegmentedRoomDimension({
   scalePx = 1.7,
   viewScale = 1,
   testid = "segmented-room-dim",
+  roomId = "",
+  axis = "horizontal",
+  onEditSpan = null,
 }) {
+  const [editing, setEditing] = useState(null); // { kind: "overall"|"interior", text }
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
   if (!dim) return null;
   const labels = segmentedLabels(dim);
   const horizontal = dim.orientation !== "vertical";
@@ -29,13 +45,12 @@ export default function SegmentedRoomDimension({
   const showSegments = variant === "full" || variant === "segments";
   const showOverall = variant === "full" || variant === "overall";
   const overallLane = overallOffsetPx != null ? overallOffsetPx : offsetPx;
+  const editable = typeof onEditSpan === "function" && roomId;
 
   const groupType = variant === "overall"
     ? DIM_GROUP.OVERALL
     : DIM_GROUP.ROOM_ASSEMBLY;
 
-  // Stacked segments: keep labels in this group's band (toward wall / opening).
-  // Combined full mode: overall exterior, segments room-facing (classic string).
   const segmentLabelToward = variant === "segments"
     ? labelSideForGroup(DIM_GROUP.ROOM_ASSEMBLY, exteriorToward)
     : -exteriorToward;
@@ -92,23 +107,79 @@ export default function SegmentedRoomDimension({
       label: labels.startWall,
       worldLen: dim.startWallThickness,
       wallish: true,
+      kind: "startWall",
     },
     {
       along: (dim.insideStart + dim.insideEnd) / 2,
       label: labels.interior,
       worldLen: dim.interiorClearLength,
       wallish: false,
+      kind: "interior",
     },
     {
       along: (dim.insideEnd + dim.outsideEnd) / 2,
       label: labels.endWall,
       worldLen: dim.endWallThickness,
       wallish: true,
+      kind: "endWall",
     },
   ];
 
   const minLabelPx = 20;
   const screenSegPx = (worldIn) => Math.abs(worldIn) * scalePx * Math.max(viewScale, 0.35);
+
+  const commitEdit = () => {
+    if (!editing) return;
+    try {
+      const next = parseFtIn(editing.text);
+      if (!(next >= 24)) {
+        setEditing(null);
+        return;
+      }
+      onEditSpan?.({
+        roomId,
+        axis: axis === "vertical" || axis === "depth" ? "depth" : "width",
+        measure: editing.kind === "interior" ? "inside" : "outside",
+        length: next,
+      });
+    } catch (err) {
+      console.error("[RoomDim] could not parse length", err);
+    }
+    setEditing(null);
+  };
+
+  const editField = (kind, text, placed) => (
+    <foreignObject key={`edit-${kind}`} x={placed.x - 36} y={placed.y - 12} width={72} height={24}>
+      <input
+        ref={inputRef}
+        data-testid={`room-dim-edit-${kind}`}
+        value={editing?.text || ""}
+        onChange={(e) => setEditing({ ...editing, text: e.target.value })}
+        onBlur={commitEdit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitEdit();
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            setEditing(null);
+          }
+        }}
+        style={{
+          width: "68px",
+          height: "20px",
+          fontFamily: "Times, serif",
+          fontSize: "11px",
+          textAlign: "center",
+          border: "1px solid #1e3a5f",
+          borderRadius: "2px",
+          padding: "0 2px",
+          background: "#fff",
+        }}
+      />
+    </foreignObject>
+  );
 
   return (
     <g
@@ -139,8 +210,6 @@ export default function SegmentedRoomDimension({
           })}
           {segments.map((seg, idx) => {
             const pt = alongToScreen(seg.along, offsetPx);
-            // Cramped wall-thickness text stays in this group's label band —
-            // nudge further along the group's label side, never into another lane.
             const cramped = seg.wallish && screenSegPx(seg.worldLen) < minLabelPx;
             const toward = segmentLabelToward;
             const extra = cramped ? 4 : 0;
@@ -155,6 +224,10 @@ export default function SegmentedRoomDimension({
               placed.x = pt.x + toward * (labelOff + extra);
               placed.rotate = `rotate(-90 ${placed.x} ${placed.y})`;
             }
+            if (editing?.kind === seg.kind) {
+              return editField(seg.kind, seg.label, placed);
+            }
+            const canEdit = editable && seg.kind === "interior" && (variant === "full" || variant === "segments");
             return (
               <g key={`seg-${idx}`} data-dim-part="assembly-label">
                 {cramped ? (
@@ -179,6 +252,12 @@ export default function SegmentedRoomDimension({
                   fontFamily="Times, serif"
                   fontSize={seg.wallish ? "7.5" : "8.5"}
                   transform={placed.rotate || undefined}
+                  style={{ cursor: canEdit ? "text" : "default" }}
+                  onClick={(e) => {
+                    if (!canEdit) return;
+                    e.stopPropagation();
+                    setEditing({ kind: "interior", text: formatFtInTight(seg.worldLen) });
+                  }}
                 >
                   {seg.label}
                 </text>
@@ -209,21 +288,29 @@ export default function SegmentedRoomDimension({
       ) : null}
 
       {showOverall ? (
-        <text
-          data-dim-part="overall-label"
-          x={overallLabel.x}
-          y={overallLabel.y}
-          textAnchor="middle"
-          dominantBaseline={overallLabel.baseline}
-          fill={ink}
-          stroke="none"
-          fontFamily="Times, serif"
-          fontSize="9"
-          fontWeight="600"
-          transform={overallLabel.rotate || undefined}
-        >
-          {labels.overall}
-        </text>
+        editing?.kind === "overall" ? editField("overall", labels.overall, overallLabel) : (
+          <text
+            data-dim-part="overall-label"
+            x={overallLabel.x}
+            y={overallLabel.y}
+            textAnchor="middle"
+            dominantBaseline={overallLabel.baseline}
+            fill={ink}
+            stroke="none"
+            fontFamily="Times, serif"
+            fontSize="9"
+            fontWeight="600"
+            transform={overallLabel.rotate || undefined}
+            style={{ cursor: editable ? "text" : "default" }}
+            onClick={(e) => {
+              if (!editable) return;
+              e.stopPropagation();
+              setEditing({ kind: "overall", text: formatFtInTight(dim.overallLength) });
+            }}
+          >
+            {labels.overall}
+          </text>
+        )
       ) : null}
     </g>
   );

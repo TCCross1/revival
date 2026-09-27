@@ -13,6 +13,7 @@ export const PLAN_LAYERS = [
   { id: "electrical", label: "Electrical", hint: "Outlets, switches, panel" },
   { id: "structure", label: "Structure", hint: "LVLs and beams" },
   { id: "dimensions", label: "Dimensions", hint: "Architectural measurements" },
+  { id: "inside_dims", label: "Inside dims", hint: "Clear interior width and depth inside each room" },
   { id: "hvac", label: "HVAC", hint: "Vents, hoods, air handler" },
   { id: "trim", label: "Notes / trim", hint: "Crown, base, fillers" },
 ];
@@ -28,6 +29,7 @@ export const DEFAULT_LAYERS = {
   electrical: false,
   structure: true,
   dimensions: true,
+  inside_dims: false,
   hvac: false,
   trim: false,
 };

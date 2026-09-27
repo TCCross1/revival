@@ -1,9 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { formatFtIn, inches } from "@/lib/floorPlan/units";
+import { formatFtIn, inches, parseFtIn } from "@/lib/floorPlan/units";
 import { nearestWall, wallLength } from "@/lib/floorPlan/model";
 import { segmentedDepthForRoom, segmentedWidthForRoom } from "@/lib/floorPlan/segmentedRoomDimension";
 import { exteriorLaneOffsets } from "@/lib/floorPlan/dimensionLanes";
 import { wallAxis } from "@/lib/floorPlan/wallOpenings";
+import { roomInteriorMetrics } from "@/lib/floorPlan/calc";
 import { DoorSwing, FloorHatchDefs, flooringFill, ObjectSymbol, WindowLite, CasedOpening } from "./symbols";
 import { libraryById, isIslandObject } from "@/lib/floorPlan/library";
 import { isFillerObject, objectFootprint, objectOrientTransform, requiresWallHost } from "@/lib/floorPlan/cabinetRun";
@@ -153,6 +154,8 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
   onOpeningMoveEnd,
   onOpeningRehost,
   onOpeningSpanEdit,
+  onRoomSpanEdit,
+  onWallLengthEdit,
   onOpeningClick,
   onWallMove,
   onWallMoveStart,
@@ -171,6 +174,7 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
   placingItem,
   drawPoints,
   drawSnap = null,
+  drawEntry = null,
   onDrawCursor,
   wirePath,
   phase = "all",
@@ -187,6 +191,7 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
   const dragMoved = useRef(false);
   const [drag, setDrag] = useState(null);
   const [cursorWorld, setCursorWorld] = useState(null);
+  const [wallLenEdit, setWallLenEdit] = useState(null); // { wallId, text }
 
   useImperativeHandle(ref, () => ({
     capturePng: () => new Promise((resolve, reject) => {
@@ -456,13 +461,21 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
       const pts = [...pointers.current.values()];
       const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
       const factor = dist / Math.max(pinch.current.dist, 1);
+      const cx = (pts[0].x + pts[1].x) / 2;
+      const cy = (pts[0].y + pts[1].y) / 2;
       if (pinch.current.roomId && onRoomResize) {
         const room = (level.rooms || []).find((r) => r.id === pinch.current.roomId);
         if (room) onRoomResize(room.id, room.x + pinch.current.roomW * factor, room.y + pinch.current.roomD * factor);
         return;
       }
       const nextScale = Math.min(4.5, Math.max(0.35, pinch.current.scale * factor));
-      onViewChange({ ...view, scale: nextScale });
+      // Two-finger pan: follow the midpoint while pinching (Magicplan-style).
+      onViewChange({
+        ...view,
+        scale: nextScale,
+        x: pinch.current.vx + (cx - pinch.current.cx),
+        y: pinch.current.vy + (cy - pinch.current.cy),
+      });
       return;
     }
     if (!drag) {
@@ -495,6 +508,7 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
       return;
     }
     if (drag.kind === "vertex-move") {
+      setCursorWorld(world);
       if (!dragMoved.current) {
         if (Math.hypot(e.clientX - (drag.sx || e.clientX), e.clientY - (drag.sy || e.clientY)) < 6) return;
         dragMoved.current = true;
@@ -684,7 +698,7 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
           <FloorHatchDefs />
         </defs>
         <rect width="100%" height="100%" fill={`url(#${patternId})`} />
-        <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
+        <g id="fp-plan-root" transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
           {asbuilt?.dataUrl ? (
             <image
               href={asbuilt.dataUrl}
@@ -708,14 +722,24 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                   strokeWidth={outline.width || 1.1}
                   strokeDasharray={outline.dash}
                 />
-                <text x={(room.width * PX) / 2} y={(room.depth * PX) / 2 - 6} textAnchor="middle" fill="#111111" fontFamily="Times, serif" fontSize="12" fontWeight="600">
+                <text x={(room.width * PX) / 2} y={(room.depth * PX) / 2 - 10} textAnchor="middle" fill="#111111" fontFamily="Times, serif" fontSize="12" fontWeight="600">
                   {room.name}
                 </text>
-                <text x={(room.width * PX) / 2} y={(room.depth * PX) / 2 + 10} textAnchor="middle" fill="#111111" fontFamily="Times, serif" fontSize="9">
-                  {formatFtIn(room.width)} × {formatFtIn(room.depth)}
-                </text>
+                {(() => {
+                  const m = roomInteriorMetrics(room, level.walls || []);
+                  return (
+                    <>
+                      <text x={(room.width * PX) / 2} y={(room.depth * PX) / 2 + 4} textAnchor="middle" fill="#111111" fontFamily="Times, serif" fontSize="9">
+                        {formatFtIn(m.width_in)} × {formatFtIn(m.depth_in)} inside
+                      </text>
+                      <text x={(room.width * PX) / 2} y={(room.depth * PX) / 2 + 16} textAnchor="middle" fill="#4B6370" fontFamily="Times, serif" fontSize="8.5">
+                        {m.net_sf.toFixed(1)} SF
+                      </text>
+                    </>
+                  );
+                })()}
                 {room.from_scan || room.scan_verify ? (
-                  <text x={(room.width * PX) / 2} y={(room.depth * PX) / 2 + 22} textAnchor="middle" fill="#C45C26" fontFamily="Times, serif" fontSize="8">
+                  <text x={(room.width * PX) / 2} y={(room.depth * PX) / 2 + 28} textAnchor="middle" fill="#C45C26" fontFamily="Times, serif" fontSize="8">
                     from scan – verify
                   </text>
                 ) : null}
@@ -778,9 +802,58 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                   </g>
                 ))}
                 {active || picked ? (
-                  <text x={(len * PX) / 2} y={-10} textAnchor="middle" fill={picked ? "#0B3A8F" : "#111111"} fontFamily="Times, serif" fontSize="9">
-                    {picked ? "Cabinets" : formatFtIn(len)}
-                  </text>
+                  wallLenEdit?.wallId === wall.id ? (
+                    <foreignObject x={(len * PX) / 2 - 36} y={-22} width={72} height={22}>
+                      <input
+                        data-testid="wall-length-edit"
+                        autoFocus
+                        defaultValue={wallLenEdit.text}
+                        onBlur={(e) => {
+                          const next = parseFtIn(e.target.value);
+                          setWallLenEdit(null);
+                          if (next >= 6) onWallLengthEdit?.({ wallId: wall.id, length: next });
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            e.currentTarget.blur();
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setWallLenEdit(null);
+                          }
+                        }}
+                        style={{
+                          width: "68px",
+                          height: "18px",
+                          fontFamily: "Times, serif",
+                          fontSize: "11px",
+                          textAlign: "center",
+                          border: "1px solid #1e3a5f",
+                          borderRadius: "2px",
+                          padding: "0 2px",
+                          background: "#fff",
+                        }}
+                      />
+                    </foreignObject>
+                  ) : (
+                    <text
+                      x={(len * PX) / 2}
+                      y={-10}
+                      textAnchor="middle"
+                      fill={picked ? "#0B3A8F" : "#111111"}
+                      fontFamily="Times, serif"
+                      fontSize="9"
+                      style={{ cursor: picked ? "default" : "text" }}
+                      onClick={(e) => {
+                        if (picked || clientView) return;
+                        e.stopPropagation();
+                        setWallLenEdit({ wallId: wall.id, text: formatFtIn(len) });
+                      }}
+                    >
+                      {picked ? "Cabinets" : formatFtIn(len)}
+                    </text>
+                  )
                 ) : null}
               </g>
             );
@@ -915,6 +988,7 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                   const wall = wallOnSide(room, side);
                   const feature = hasOpenings(wall);
                   const lanes = exteriorLaneOffsets({ hasFeatureChain: feature });
+                  const axis = side === "north" || side === "south" ? "width" : "depth";
                   return (
                     <g key={`dim-room-${room.id}-${side}`} data-dim-stack={side}>
                       {lanes.mode === "stacked" && wall ? (
@@ -936,6 +1010,9 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                           scalePx={PX}
                           viewScale={view.scale}
                           variant="full"
+                          roomId={room.id}
+                          axis={axis}
+                          onEditSpan={onRoomSpanEdit}
                           testid={`segmented-room-dim-${side}-${room.id}`}
                         />
                       ) : (
@@ -948,6 +1025,9 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                             scalePx={PX}
                             viewScale={view.scale}
                             variant="segments"
+                            roomId={room.id}
+                            axis={axis}
+                            onEditSpan={onRoomSpanEdit}
                             testid={`segmented-room-dim-${side}-${room.id}`}
                           />
                           <SegmentedRoomDimension
@@ -959,6 +1039,9 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                             scalePx={PX}
                             viewScale={view.scale}
                             variant="overall"
+                            roomId={room.id}
+                            axis={axis}
+                            onEditSpan={onRoomSpanEdit}
                             testid={`overall-room-dim-${side}-${room.id}`}
                           />
                         </>
@@ -1046,7 +1129,93 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                 pointerEvents="none"
               />
             );
-          })() : null}
+          })(          ) : null}
+
+          {layerOn(layers, "inside_dims") ? (
+            <g data-testid="inside-dims" pointerEvents="none">
+              {(level.rooms || []).filter((room) => visibleForPhase(room, phase)).map((room) => {
+                const m = roomInteriorMetrics(room, level.walls || []);
+                const left = inches(room.x) + m.thicknesses.west;
+                const top = inches(room.y) + m.thicknesses.north;
+                const midY = top + m.depth_in / 2;
+                const midX = left + m.width_in / 2;
+                return (
+                  <g key={`inside-${room.id}`}>
+                    <line
+                      x1={left * PX}
+                      y1={midY * PX}
+                      x2={(left + m.width_in) * PX}
+                      y2={midY * PX}
+                      stroke="#0B3A8F"
+                      strokeWidth="0.7"
+                      strokeDasharray="3 2"
+                      opacity="0.55"
+                    />
+                    <text x={midX * PX} y={midY * PX - 4} textAnchor="middle" fill="#0B3A8F" fontFamily="Times, serif" fontSize="8">
+                      {formatFtIn(m.width_in)}
+                    </text>
+                    <line
+                      x1={midX * PX}
+                      y1={top * PX}
+                      x2={midX * PX}
+                      y2={(top + m.depth_in) * PX}
+                      stroke="#0B3A8F"
+                      strokeWidth="0.7"
+                      strokeDasharray="3 2"
+                      opacity="0.55"
+                    />
+                    <text
+                      x={midX * PX + 6}
+                      y={(top + m.depth_in / 2) * PX}
+                      textAnchor="start"
+                      fill="#0B3A8F"
+                      fontFamily="Times, serif"
+                      fontSize="8"
+                      transform={`rotate(-90 ${midX * PX + 6} ${(top + m.depth_in / 2) * PX})`}
+                    >
+                      {formatFtIn(m.depth_in)}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          ) : null}
+
+          {/* Non-90° corner angle labels */}
+          <g data-testid="corner-angles" pointerEvents="none">
+            {(() => {
+              const verts = level.vertices || [];
+              if (!verts.length) return null;
+              const walls = level.walls || [];
+              return verts.map((v) => {
+                const connected = walls.filter((w) => w.startVertexId === v.id || w.endVertexId === v.id);
+                if (connected.length !== 2) return null;
+                const dirs = connected.map((w) => {
+                  const other = w.startVertexId === v.id
+                    ? { x: inches(w.x2), y: inches(w.y2) }
+                    : { x: inches(w.x1), y: inches(w.y1) };
+                  return Math.atan2(other.y - v.y, other.x - v.x);
+                });
+                let deg = Math.abs(((dirs[0] - dirs[1]) * 180) / Math.PI);
+                if (deg > 180) deg = 360 - deg;
+                if (Math.abs(deg - 90) < 1.5 || Math.abs(deg - 180) < 1.5) return null;
+                return (
+                  <text
+                    key={`ang-${v.id}`}
+                    x={v.x * PX + 6}
+                    y={v.y * PX - 6}
+                    fill="#C45C26"
+                    fontFamily="Outfit,sans-serif"
+                    fontSize="8"
+                    fontWeight="600"
+                  >
+                    {`${Math.round(deg)}°`}
+                  </text>
+                );
+              });
+            })()}
+          </g>
+
           {mode === "draw" && !(drawPoints || []).length && drawSnap?.point && drawSnap?.label && drawSnap.label !== "GRID" ? (
             <g data-testid="draw-start-snap" pointerEvents="none">
               {(drawSnap.guides || []).map((g, i) => (
@@ -1069,10 +1238,24 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
               <g data-testid="draw-rubberband" pointerEvents="none">
                 {(drawSnap?.guides || []).map((g, i) => {
                   if (g.kind === "h") {
-                    return <line key={`gh-${i}`} x1={-2000} y1={g.y * PX} x2={8000} y2={g.y * PX} stroke="#0B3A8F" strokeWidth="0.7" strokeDasharray="4 4" opacity="0.45" />;
+                    return (
+                      <g key={`gh-${i}`}>
+                        <line x1={-2000} y1={g.y * PX} x2={8000} y2={g.y * PX} stroke="#0B3A8F" strokeWidth="0.7" strokeDasharray="4 4" opacity="0.45" />
+                        {g.label ? (
+                          <text x={(end.x * PX) + 10} y={g.y * PX - 4} fill="#0B3A8F" fontSize="8" fontFamily="Outfit,sans-serif">{g.label}</text>
+                        ) : null}
+                      </g>
+                    );
                   }
                   if (g.kind === "v") {
-                    return <line key={`gv-${i}`} x1={g.x * PX} y1={-2000} x2={g.x * PX} y2={8000} stroke="#0B3A8F" strokeWidth="0.7" strokeDasharray="4 4" opacity="0.45" />;
+                    return (
+                      <g key={`gv-${i}`}>
+                        <line x1={g.x * PX} y1={-2000} x2={g.x * PX} y2={8000} stroke="#0B3A8F" strokeWidth="0.7" strokeDasharray="4 4" opacity="0.45" />
+                        {g.label ? (
+                          <text x={g.x * PX + 4} y={(end.y * PX) - 8} fill="#0B3A8F" fontSize="8" fontFamily="Outfit,sans-serif">{g.label}</text>
+                        ) : null}
+                      </g>
+                    );
                   }
                   if (g.kind === "point") {
                     return <circle key={`gp-${i}`} cx={g.x * PX} cy={g.y * PX} r="5" fill="none" stroke="#C45C26" strokeWidth="1.2" />;
@@ -1112,18 +1295,27 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
                     {label}
                   </text>
                 ) : null}
-                {drawSnap?.point && start ? (() => {
+                {start ? (() => {
                   const len = Math.hypot(end.x - start.x, end.y - start.y);
                   if (len < 6) return null;
                   const mx = ((start.x + end.x) / 2) * PX;
                   const my = ((start.y + end.y) / 2) * PX;
-                  const ft = Math.floor(len / 12);
-                  const inch = Math.round(len % 12);
-                  const dim = inch ? `${ft}'${inch}"` : `${ft}'`;
+                  const angle = Math.abs((Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI);
+                  const mod = angle % 90;
+                  const showAngle = mod > 1.5 && mod < 88.5;
+                  // Round to nearest 1/2" for the live label.
+                  const rounded = Math.round(len * 2) / 2;
                   return (
-                    <text x={mx} y={my - 6} fill="#1a1a1a" fontSize="8" fontFamily="Outfit,sans-serif" textAnchor="middle">
-                      {dim}
-                    </text>
+                    <g>
+                      <text x={mx} y={my - 6} fill="#1a1a1a" fontSize="9" fontFamily="Times, serif" textAnchor="middle" fontWeight="600">
+                        {drawEntry?.mode === "length" && drawEntry.text ? drawEntry.text : formatFtIn(rounded)}
+                      </text>
+                      {showAngle ? (
+                        <text x={mx} y={my + 8} fill="#4B6370" fontSize="8" fontFamily="Outfit,sans-serif" textAnchor="middle">
+                          {`${Math.round(angle)}°`}
+                        </text>
+                      ) : null}
+                    </g>
                   );
                 })() : null}
               </g>
@@ -1160,14 +1352,58 @@ const FloorPlanCanvas = forwardRef(function FloorPlanCanvas({
             </text>
           ) : null}
         </g>
+
+        {(() => {
+          // Loupe while dragging a corner, drawing a room, or placing a Point & line tip.
+          const world = drag?.kind === "vertex-move" && cursorWorld
+            ? cursorWorld
+            : drag?.kind === "draw-room"
+              ? { x: drag.x1, y: drag.y1 }
+              : mode === "draw" && (drawSnap?.point || cursorWorld)
+                ? (drawSnap?.point || cursorWorld)
+                : null;
+          if (!world || clientView) return null;
+          const screenX = view.x + world.x * PX * view.scale;
+          const screenY = view.y + world.y * PX * view.scale - 72;
+          const mag = 2.5;
+          return (
+            <g data-testid="plan-loupe" transform={`translate(${screenX} ${screenY})`} pointerEvents="none">
+              <defs>
+                <clipPath id="fp-loupe-clip">
+                  <circle cx="0" cy="0" r="46" />
+                </clipPath>
+              </defs>
+              <circle r="50" fill="#FFFFFF" stroke="#0B3A8F" strokeWidth="2" opacity="0.96" />
+              <g clipPath="url(#fp-loupe-clip)">
+                <g transform={`scale(${mag}) translate(${-world.x * PX} ${-world.y * PX})`}>
+                  <use href="#fp-plan-root" />
+                </g>
+              </g>
+              <line x1="-10" y1="0" x2="10" y2="0" stroke="#C45C26" strokeWidth="1.2" />
+              <line x1="0" y1="-10" x2="0" y2="10" stroke="#C45C26" strokeWidth="1.2" />
+              <circle r="50" fill="none" stroke="#C9A227" strokeWidth="1.5" />
+            </g>
+          );
+        })()}
       </svg>
           {clientView ? null : (
         <div className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-white/90 border border-slate-200 px-2 py-1 text-[10px] text-[#4B6370] font-['Outfit']">
-          {["door", "window", "cased"].includes(mode)
+          {mode === "draw" && (drawPoints || []).length
+            ? "Type a length (12'6) then Enter · Tab for angle · Esc cancels"
+            : ["door", "window", "cased"].includes(mode)
             ? "Click a wall to cut that opening. Cabinets slide clear. A header is sized over wide openings (twin 2x10 / 2x12 if it checks, otherwise LVL)."
             : `⋮ Layers / Edit · Drag to slide · Double-click specs · Grid 1' · ${Math.round(view.scale * 100)}%`}
         </div>
-      )}
+          )}
+          {mode === "draw" && drawEntry?.text ? (
+            <div
+              data-testid="draw-entry-badge"
+              className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-md bg-[#0B3A8F] text-white px-3 py-1.5 text-sm font-['Outfit'] shadow"
+            >
+              {drawEntry.mode === "angle" ? "Angle" : "Length"}: {drawEntry.text}
+              <span className="opacity-70 ml-2 text-[11px]">Enter to place · Tab to switch</span>
+            </div>
+          ) : null}
     </div>
   );
 });

@@ -481,6 +481,14 @@ export function maybeDetectOrthogonalRoom(level) {
       && Math.abs(r.depth - depth) < 0.75
     ));
     if (exists) return;
+    // Prefer the thickness of the walls that closed this loop (exterior 6" / interior 4.5"),
+    // not a hard-coded stud depth that drifts from the drawn walls.
+    const loopWalls = walls.filter((w) => (
+      component.includes(w.startVertexId) && component.includes(w.endVertexId)
+    ));
+    const avgT = loopWalls.length
+      ? loopWalls.reduce((s, w) => s + Math.max(1, inches(w.thickness) || 3.5), 0) / loopWalls.length
+      : 3.5;
     next = {
       ...next,
       rooms: [...(next.rooms || []), {
@@ -491,7 +499,7 @@ export function maybeDetectOrthogonalRoom(level) {
         y,
         width,
         depth,
-        wall_thickness: 3.5,
+        wall_thickness: round2(avgT),
         flooring: "lvp",
         wall_finish: "",
         note: "",
@@ -741,4 +749,373 @@ export function wallIsOrthogonal(wall, tolDeg = 1.5) {
 
 export function makeDrawWallPartial(x1, y1, x2, y2, kind = "interior") {
   return emptyWall(x1, y1, x2, y2, kind);
+}
+
+/** Which room face sits at a wall's start or end endpoint (N/S/E/W room walls). */
+function roomFaceAtEndpoint(wall, which) {
+  const side = wall.room_side;
+  if (side === "north") return which === "start" ? "west" : "east";
+  if (side === "south") return which === "start" ? "east" : "west";
+  if (side === "east") return which === "start" ? "north" : "south";
+  if (side === "west") return which === "start" ? "south" : "north";
+  return null;
+}
+
+function thicknessForSide(level, room, side) {
+  const owned = (level.walls || []).find((w) => w.source_room_id === room.id && w.room_side === side);
+  if (owned) return Math.max(1, inches(owned.thickness));
+  return Math.max(1, inches(room.wall_thickness) || 3.5);
+}
+
+/**
+ * Resize a wall's length so connected corners stay joined.
+ * Room walls resize the room (and shared partitions) via moveWallPerpendicular.
+ * Free walls slide the neighbor at the moving end, or extend a free tip.
+ *
+ * @param {"start"|"end"} options.keep  Fixed endpoint (default "start")
+ * @param {"centerline"|"inside"} options.measure  How to interpret newLen (default "centerline")
+ */
+export function resizeWallLength(level, wallId, newLenInches, options = {}) {
+  try {
+    const keep = options.keep === "end" ? "end" : "start";
+    const measure = options.measure === "inside" ? "inside" : "centerline";
+    const wall = (level.walls || []).find((w) => w.id === wallId);
+    if (!wall) return level;
+    const targetRaw = Math.max(6, inches(newLenInches));
+    if (!Number.isFinite(targetRaw)) return level;
+
+    if (wall.source_room_id && wall.room_side) {
+      return resizeRoomOwnedWallLength(level, wall, targetRaw, keep, measure);
+    }
+    return resizeFreeWallLength(level, wall, targetRaw, keep);
+  } catch (err) {
+    console.error("[resizeWallLength] failed", { wallId, error: err?.message || err });
+    return level;
+  }
+}
+
+function resizeRoomOwnedWallLength(level, wall, targetRaw, keep, measure) {
+  const room = (level.rooms || []).find((r) => r.id === wall.source_room_id);
+  if (!room) return level;
+  const side = wall.room_side;
+  const horizontal = side === "north" || side === "south";
+  const westT = thicknessForSide(level, room, "west");
+  const eastT = thicknessForSide(level, room, "east");
+  const northT = thicknessForSide(level, room, "north");
+  const southT = thicknessForSide(level, room, "south");
+
+  let targetOutside;
+  if (horizontal) {
+    // N/S centerline spans the outside width.
+    targetOutside = measure === "inside" ? targetRaw + westT + eastT : targetRaw;
+  } else {
+    // E/W centerline = outside depth − N/S thicknesses; inside face ≈ same.
+    const tSum = northT + southT;
+    targetOutside = measure === "inside" ? targetRaw + tSum : targetRaw + tSum;
+  }
+  targetOutside = Math.max(36, round2(targetOutside));
+
+  const currentOutside = horizontal ? inches(room.width) : inches(room.depth);
+  const delta = round2(targetOutside - currentOutside);
+  if (Math.abs(delta) < 0.05) return level;
+
+  const keepFace = roomFaceAtEndpoint(wall, keep);
+  const moveFace = oppositeSide(keepFace);
+  if (!moveFace) return level;
+
+  // Slide the face opposite the kept endpoint. Sign matches moveRoomOwnedWall:
+  // east/south positive = grow; west/north positive = shrink (move inward).
+  let signed = delta;
+  if (moveFace === "west" || moveFace === "north") signed = -delta;
+
+  const mover = (level.walls || []).find((w) => w.source_room_id === room.id && w.room_side === moveFace)
+    || (level.walls || []).find((w) => (
+      w.shared_partition
+      && (w.adjacent_room_ids || []).includes(room.id)
+      && w.room_side === oppositeSide(moveFace)
+    ));
+  if (mover) {
+    return moveWallPerpendicular(level, mover.id, signed, mover);
+  }
+
+  // No dedicated mover wall (shared side): adjust room AABB directly.
+  let { x, y, width, depth } = room;
+  if (horizontal) {
+    width = targetOutside;
+    if (keepFace === "east") x = round2(inches(room.x) + inches(room.width) - width);
+  } else {
+    depth = targetOutside;
+    if (keepFace === "south") y = round2(inches(room.y) + inches(room.depth) - depth);
+  }
+  const next = {
+    ...level,
+    rooms: (level.rooms || []).map((r) => (
+      r.id === room.id
+        ? { ...r, x: round2(x), y: round2(y), width: round2(width), depth: round2(depth) }
+        : r
+    )),
+  };
+  return regenerateRoomWallsPreservingShared(next, room.id);
+}
+
+/**
+ * Resize a room's outside or inside clear span on one axis.
+ * Used when the user taps an exterior dimension string.
+ */
+export function resizeRoomSpan(level, roomId, axis, newLenInches, options = {}) {
+  try {
+    const room = (level.rooms || []).find((r) => r.id === roomId);
+    if (!room) return level;
+    const keep = options.keep === "end" ? "end" : "start";
+    const measure = options.measure === "inside" ? "inside" : "outside";
+    const horizontal = axis === "width" || axis === "horizontal";
+    const westT = thicknessForSide(level, room, "west");
+    const eastT = thicknessForSide(level, room, "east");
+    const northT = thicknessForSide(level, room, "north");
+    const southT = thicknessForSide(level, room, "south");
+    const raw = Math.max(24, inches(newLenInches));
+    let targetOutside;
+    if (horizontal) {
+      targetOutside = measure === "inside" ? raw + westT + eastT : raw;
+    } else {
+      targetOutside = measure === "inside" ? raw + northT + southT : raw;
+    }
+    targetOutside = Math.max(36, round2(targetOutside));
+    const current = horizontal ? inches(room.width) : inches(room.depth);
+    if (Math.abs(targetOutside - current) < 0.05) return level;
+
+    let { x, y, width, depth } = room;
+    if (horizontal) {
+      width = targetOutside;
+      // keep=start → keep west; keep=end → keep east
+      if (keep === "end") x = round2(inches(room.x) + inches(room.width) - width);
+    } else {
+      depth = targetOutside;
+      if (keep === "end") y = round2(inches(room.y) + inches(room.depth) - depth);
+    }
+    const next = {
+      ...level,
+      rooms: (level.rooms || []).map((r) => (
+        r.id === room.id
+          ? { ...r, x: round2(x), y: round2(y), width: round2(width), depth: round2(depth) }
+          : r
+      )),
+    };
+    return regenerateRoomWallsPreservingShared(next, room.id);
+  } catch (err) {
+    console.error("[resizeRoomSpan] failed", { roomId, error: err?.message || err });
+    return level;
+  }
+}
+
+function resizeFreeWallLength(level, wall, target, keep) {
+  let next = bindCoincidentWallVertices(level);
+  const live = (next.walls || []).find((w) => w.id === wall.id) || wall;
+  const axis = wallAxis(live);
+  const delta = round2(target - axis.len);
+  if (Math.abs(delta) < 0.05) return next;
+
+  const moveVertexId = keep === "start" ? live.endVertexId : live.startVertexId;
+  if (!moveVertexId) {
+    // No topology — stretch the free tip.
+    const sized = {
+      ...live,
+      ...(keep === "start"
+        ? { x2: round2(axis.x1 + axis.ux * target), y2: round2(axis.y1 + axis.uy * target) }
+        : { x1: round2(axis.x2 - axis.ux * target), y1: round2(axis.y2 - axis.uy * target) }),
+    };
+    return { ...next, walls: (next.walls || []).map((w) => (w.id === live.id ? sized : w)) };
+  }
+
+  const dx = axis.ux * delta * (keep === "start" ? 1 : -1);
+  const dy = axis.uy * delta * (keep === "start" ? 1 : -1);
+
+  const neighbors = (next.walls || []).filter((w) => (
+    w.id !== live.id
+    && (w.startVertexId === moveVertexId || w.endVertexId === moveVertexId)
+  ));
+  const perp = neighbors.find((w) => {
+    const a = wallAxis(w);
+    const dot = Math.abs(a.ux * axis.ux + a.uy * axis.uy);
+    return dot < 0.4;
+  }) || neighbors[0];
+
+  if (perp) {
+    const nAxis = wallAxis(perp);
+    const moveDist = round2(dx * nAxis.nx + dy * nAxis.ny);
+    if (Math.abs(moveDist) >= 0.05) {
+      return moveWallPerpendicular(next, perp.id, moveDist, perp);
+    }
+  }
+
+  const verts = (next.vertices || []).map((v) => (
+    v.id === moveVertexId ? { ...v, x: round2(v.x + dx), y: round2(v.y + dy) } : v
+  ));
+  const byId = {};
+  verts.forEach((v) => { byId[v.id] = v; });
+  return {
+    ...next,
+    vertices: verts,
+    walls: (next.walls || []).map((w) => syncWallFromVertices(w, byId)),
+  };
+}
+
+/**
+ * Straighten nearly-orthogonal walls, cluster near-equal coordinates, and close gaps.
+ * Returns { level, changed } where changed is the number of walls adjusted.
+ */
+export function squareUpLevel(level, options = {}) {
+  const angleTolDeg = Number(options.angleTolDeg) || 8;
+  const alignTolIn = Number(options.alignTolIn) || 3;
+  const gapTolIn = Number(options.gapTolIn) || 3;
+  try {
+    let next = bindCoincidentWallVertices(level);
+    let changed = 0;
+    const verts = [...(next.vertices || [])].map((v) => ({ ...v }));
+    const byId = {};
+    verts.forEach((v) => { byId[v.id] = v; });
+
+    // 1. Force near-ortho walls onto exact H/V by snapping the moving tip to the axis.
+    (next.walls || []).forEach((wall) => {
+      if (!wall.startVertexId || !wall.endVertexId) return;
+      if (!wallIsOrthogonal(wall, angleTolDeg)) return;
+      if (wallIsOrthogonal(wall, 0.4)) return;
+      const a = byId[wall.startVertexId];
+      const b = byId[wall.endVertexId];
+      if (!a || !b) return;
+      const dx = Math.abs(b.x - a.x);
+      const dy = Math.abs(b.y - a.y);
+      if (dx >= dy) {
+        // Prefer horizontal: equalize y to the midpoint.
+        const y = round2((a.y + b.y) / 2);
+        if (Math.abs(a.y - y) > 0.01 || Math.abs(b.y - y) > 0.01) {
+          a.y = y;
+          b.y = y;
+          changed += 1;
+        }
+      } else {
+        const x = round2((a.x + b.x) / 2);
+        if (Math.abs(a.x - x) > 0.01 || Math.abs(b.x - x) > 0.01) {
+          a.x = x;
+          b.x = x;
+          changed += 1;
+        }
+      }
+    });
+
+    // 2. Cluster nearly-equal X and Y coordinates across the plan.
+    const clusterAxis = (key) => {
+      const values = verts.map((v) => v[key]).sort((a, b) => a - b);
+      const groups = [];
+      values.forEach((val) => {
+        const group = groups.find((g) => Math.abs(g.mean - val) <= alignTolIn);
+        if (group) {
+          group.values.push(val);
+          group.mean = group.values.reduce((s, n) => s + n, 0) / group.values.length;
+        } else {
+          groups.push({ mean: val, values: [val] });
+        }
+      });
+      const snap = {};
+      groups.forEach((g) => {
+        const target = round2(g.mean);
+        g.values.forEach((v) => { snap[round2(v)] = target; });
+      });
+      verts.forEach((v) => {
+        const nextVal = snap[round2(v[key])];
+        if (nextVal != null && Math.abs(nextVal - v[key]) > 0.01) {
+          v[key] = nextVal;
+          changed += 1;
+        }
+      });
+    };
+    clusterAxis("x");
+    clusterAxis("y");
+
+    next = {
+      ...next,
+      vertices: verts,
+      walls: (next.walls || []).map((w) => syncWallFromVertices(w, byId)),
+    };
+    next = mergeCoincidentVertices(next, gapTolIn);
+    next = bindCoincidentWallVertices(next, gapTolIn);
+
+    // 3. Sync axis-aligned room AABBs from their owned walls so labels match geometry.
+    (next.rooms || []).forEach((room) => {
+      const owned = (next.walls || []).filter((w) => w.source_room_id === room.id && w.room_side);
+      if (owned.length < 2) return;
+      const xs = [];
+      const ys = [];
+      owned.forEach((w) => {
+        xs.push(inches(w.x1), inches(w.x2));
+        ys.push(inches(w.y1), inches(w.y2));
+        const half = inches(w.thickness) / 2;
+        if (w.room_side === "west") xs.push(inches(w.x1) - half);
+        if (w.room_side === "east") xs.push(inches(w.x1) + half);
+        if (w.room_side === "north") ys.push(inches(w.y1) - half);
+        if (w.room_side === "south") ys.push(inches(w.y1) + half);
+      });
+      if (!xs.length || !ys.length) return;
+      const left = Math.min(...xs);
+      const right = Math.max(...xs);
+      const top = Math.min(...ys);
+      const bottom = Math.max(...ys);
+      const width = round2(right - left);
+      const depth = round2(bottom - top);
+      if (width < 24 || depth < 24) return;
+      if (
+        Math.abs(left - inches(room.x)) > 0.1
+        || Math.abs(top - inches(room.y)) > 0.1
+        || Math.abs(width - inches(room.width)) > 0.1
+        || Math.abs(depth - inches(room.depth)) > 0.1
+      ) {
+        next = {
+          ...next,
+          rooms: (next.rooms || []).map((r) => (
+            r.id === room.id
+              ? { ...r, x: round2(left), y: round2(top), width, depth }
+              : r
+          )),
+        };
+        next = regenerateRoomWallsPreservingShared(next, room.id);
+        changed += 1;
+      }
+    });
+
+    return { level: next, changed };
+  } catch (err) {
+    console.error("[squareUpLevel] failed", err);
+    return { level, changed: 0 };
+  }
+}
+
+/**
+ * Snap a dragged room-block rectangle flush to nearby room faces.
+ * Returns { x, y, width, depth, snapped } in outside-bounds inches.
+ */
+export function magnetRoomBounds(bounds, rooms, tolIn = 4) {
+  try {
+    let { x, y, width, depth } = bounds;
+    let snapped = false;
+    const right = x + width;
+    const bottom = y + depth;
+    const tol = Math.max(0.5, inches(tolIn));
+    (rooms || []).forEach((room) => {
+      const b = roomOutsideBounds(room);
+      // Flush left/right edges
+      if (Math.abs(x - b.right) <= tol) { x = b.right; snapped = true; }
+      if (Math.abs(x - b.left) <= tol) { x = b.left; snapped = true; }
+      if (Math.abs(right - b.left) <= tol) { x = b.left - width; snapped = true; }
+      if (Math.abs(right - b.right) <= tol) { x = b.right - width; snapped = true; }
+      // Flush top/bottom edges
+      if (Math.abs(y - b.bottom) <= tol) { y = b.bottom; snapped = true; }
+      if (Math.abs(y - b.top) <= tol) { y = b.top; snapped = true; }
+      if (Math.abs(bottom - b.top) <= tol) { y = b.top - depth; snapped = true; }
+      if (Math.abs(bottom - b.bottom) <= tol) { y = b.bottom - depth; snapped = true; }
+    });
+    return { x: round2(x), y: round2(y), width: round2(width), depth: round2(depth), snapped };
+  } catch (err) {
+    console.error("[magnetRoomBounds] failed", err);
+    return { ...bounds, snapped: false };
+  }
 }

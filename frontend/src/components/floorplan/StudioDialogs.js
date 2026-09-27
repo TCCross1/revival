@@ -7,14 +7,12 @@ import {
 import ClientReportPreview from "@/components/floorplan/ClientReportPreview";
 import PermitDetailsPreview from "@/components/floorplan/PermitDetailsPreview";
 import { parseFtIn } from "@/lib/floorPlan/units";
-import { setWallLength } from "@/lib/floorPlan/model";
+import { resizeRoom } from "@/lib/floorPlan/model";
 import { hasNativeRoomPlan, isIPhone, requestNativeScan } from "@/lib/floorPlan/roomplan";
 import { toast } from "sonner";
 import { ScanLine, Upload } from "lucide-react";
 
 export default function StudioDialogs({
-  wallDialog,
-  setWallDialog,
   roomDialog,
   setRoomDialog,
   lidarOpen,
@@ -46,21 +44,6 @@ export default function StudioDialogs({
 }) {
   return (
     <>
-      <Dialog open={Boolean(wallDialog)} onOpenChange={() => setWallDialog(null)}>
-        <DialogContent className="bg-white max-w-sm">
-          <DialogHeader><DialogTitle className="font-['Outfit']">Wall length</DialogTitle></DialogHeader>
-          <Input value={wallDialog?.length || ""} onChange={(e) => setWallDialog({ ...wallDialog, length: e.target.value })} placeholder={`10' 6"`} />
-          <DialogFooter>
-            <Button type="button" className="bg-[#0B3A8F] hover:bg-[#082C73]" onClick={() => {
-              const next = parseFtIn(wallDialog.length);
-              if (next < 12) return toast.error("Enter a length of at least 1 foot.");
-              patchLevel((lvl) => ({ ...lvl, walls: lvl.walls.map((w) => w.id === wallDialog.id ? setWallLength(w, next) : w) }));
-              setWallDialog(null);
-            }}>Set length</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={Boolean(roomDialog)} onOpenChange={() => setRoomDialog(null)}>
         <DialogContent className="bg-white max-w-sm">
           <DialogHeader><DialogTitle className="font-['Outfit']">Room size</DialogTitle></DialogHeader>
@@ -70,11 +53,19 @@ export default function StudioDialogs({
           </div>
           <DialogFooter>
             <Button type="button" className="bg-[#0B3A8F] hover:bg-[#082C73]" onClick={() => {
-              patchLevel((lvl) => ({
-                ...lvl,
-                rooms: lvl.rooms.map((r) => r.id === roomDialog.id ? { ...r, width: parseFtIn(roomDialog.w), depth: parseFtIn(roomDialog.d) } : r),
-              }));
-              setRoomDialog(null);
+              try {
+                const width = parseFtIn(roomDialog.w);
+                const depth = parseFtIn(roomDialog.d);
+                if (width < 36 || depth < 36) {
+                  toast.error("Enter a room at least 3' × 3'.");
+                  return;
+                }
+                patchLevel((lvl) => resizeRoom(lvl, roomDialog.id, width, depth));
+                setRoomDialog(null);
+              } catch (err) {
+                console.error("[RoomSize] could not resize the room", err);
+                toast.error("Could not resize that room. Please try again.");
+              }
             }}>Set size</Button>
           </DialogFooter>
         </DialogContent>

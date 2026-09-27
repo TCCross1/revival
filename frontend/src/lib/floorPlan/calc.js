@@ -42,6 +42,46 @@ function roomSf(room) {
   return round2((inches(room.width) * inches(room.depth)) / 144);
 }
 
+/**
+ * Inside-face metrics for a rectangular room (net floor area, clear W×D, perimeter).
+ * Falls back to room.wall_thickness when owned walls are missing.
+ */
+export function roomInteriorMetrics(room, walls = []) {
+  try {
+    const widthOut = inches(room?.width);
+    const depthOut = inches(room?.depth);
+    const fallback = Math.max(1, inches(room?.wall_thickness) || 3.5);
+    const sideT = (side) => {
+      const owned = (walls || []).find((w) => w.source_room_id === room.id && w.room_side === side);
+      return Math.max(1, owned ? inches(owned.thickness) : fallback);
+    };
+    const west = sideT("west");
+    const east = sideT("east");
+    const north = sideT("north");
+    const south = sideT("south");
+    const widthIn = Math.max(0, round2(widthOut - west - east));
+    const depthIn = Math.max(0, round2(depthOut - north - south));
+    return {
+      width_out: round2(widthOut),
+      depth_out: round2(depthOut),
+      width_in: widthIn,
+      depth_in: depthIn,
+      net_sf: round2((widthIn * depthIn) / 144),
+      gross_sf: round2((widthOut * depthOut) / 144),
+      perimeter_in: round2(2 * (widthIn + depthIn)),
+      perimeter_lf: round2((2 * (widthIn + depthIn)) / 12),
+      thicknesses: { west, east, north, south },
+    };
+  } catch (err) {
+    console.error("[roomInteriorMetrics] failed", err);
+    return {
+      width_out: 0, depth_out: 0, width_in: 0, depth_in: 0,
+      net_sf: 0, gross_sf: 0, perimeter_in: 0, perimeter_lf: 0,
+      thicknesses: { west: 0, east: 0, north: 0, south: 0 },
+    };
+  }
+}
+
 function computeRoof(level, { projectType = "", roofInTakeoff, document } = {}) {
   const doc = { ...(document || {}) };
   if (roofInTakeoff !== undefined) doc.roof_in_takeoff = roofInTakeoff;
@@ -132,10 +172,14 @@ export function computeLevelTakeoffs(level, { projectType = "", roofInTakeoff, d
   const objects = level?.objects || [];
   const roomRows = rooms.map((room) => {
     const perim = 2 * (inches(room.width) + inches(room.depth));
+    const interior = roomInteriorMetrics(room, walls);
     return {
       id: room.id,
       name: room.name || "Room",
       sf: roomSf(room),
+      net_sf: interior.net_sf,
+      width_in: interior.width_in,
+      depth_in: interior.depth_in,
       perimeter_lf: round2(perim / 12),
       wall_height: inches(room.wall_height || DEFAULT_H),
       ceiling_height: inches(room.ceiling_height || DEFAULT_H),
@@ -143,6 +187,7 @@ export function computeLevelTakeoffs(level, { projectType = "", roofInTakeoff, d
     };
   });
   const floorSf = round2(roomRows.reduce((s, r) => s + r.sf, 0));
+  const netFloorSf = round2(roomRows.reduce((s, r) => s + (r.net_sf || 0), 0));
   let wallSf = 0;
   let wallLf = 0;
   let openingSf = 0;
@@ -168,6 +213,7 @@ export function computeLevelTakeoffs(level, { projectType = "", roofInTakeoff, d
     rooms: roomRows,
     room_count: rooms.length,
     floor_sf: floorSf,
+    net_floor_sf: netFloorSf,
     ceiling_sf: floorSf,
     wall_sf: round2(wallSf / 144),
     wall_lf: round2(wallLf / 12),

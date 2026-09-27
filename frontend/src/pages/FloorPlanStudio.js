@@ -42,9 +42,10 @@ import {
 import { pantryBlocksSink } from "@/lib/floorPlan/professionalLayout";
 import { lightingCountForRoom, placeRoomLights, placeSinkLight } from "@/lib/floorPlan/lighting";
 import {
-  activeLevel, clonePlanObject, emptyDocument, emptyLevel, emptyObject, emptyOpening,
-  emptyRoof, emptyRoom, emptyWall, fitRoofToRooms, flagPlumbingWalls, moveRoom, nearestWall, resizeRoom, setWallLength,
-  applyInteriorDoorDefaults, createRoomFromOutsideBounds, setRoomWallThickness, snapPoint, updateLevel, wallsFromRoom, wallLength,
+  activeLevel, clonePlanObject, createRoomFromOutsideBounds, emptyDocument, emptyLevel, emptyObject, emptyOpening,
+  emptyRoof, emptyRoom, emptyWall, fitRoofToRooms, flagPlumbingWalls, moveRoom, nearestWall,
+  resizeRoom, setRoomWallThickness, snapPoint, updateLevel, wallsFromRoom, wallLength,
+  applyInteriorDoorDefaults,
 } from "@/lib/floorPlan/model";
 import { importRoomPlan, installRoomPlanListener, hasNativeRoomPlan, requestNativeScan, SAMPLE_KITCHEN_SCAN, needsScanVerify } from "@/lib/floorPlan/roomplan";
 import { createSyncOrigin, usePlanSync } from "@/lib/floorPlan/planSync";
@@ -83,8 +84,12 @@ import {
   applyWallMoveFromOrigin,
   commitAdjacentRoomClosure,
   commitDrawWall,
+  magnetRoomBounds,
   mergeSharedPartition,
+  resizeRoomSpan,
+  resizeWallLength,
   signedWallDragDistance,
+  squareUpLevel,
   weldDrawnWall,
 } from "@/lib/floorPlan/planTopology";
 import {
@@ -136,13 +141,14 @@ export default function FloorPlanStudio() {
   const [placing, setPlacing] = useState(null);
   const [drawPoints, setDrawPoints] = useState([]);
   const [drawSnap, setDrawSnap] = useState(null);
+  const [drawEntry, setDrawEntry] = useState(null); // { mode: "length"|"angle", text }
   const drawSnapSession = useRef(emptySnapSession());
   const wallMoveBase = useRef(null);
   const freeAngleRef = useRef(false);
+  const onCanvasTapRef = useRef(null);
   const [reshapeMode, setReshapeMode] = useState(null); // null | "add-corners" | "move-corner"
   const [addCornerDraft, setAddCornerDraft] = useState([]); // [{x,y,along}]
   const [show3d, setShow3d] = useState(false);
-  const [wallDialog, setWallDialog] = useState(null);
   const [roomDialog, setRoomDialog] = useState(null);
   const [lidarOpen, setLidarOpen] = useState(false);
   const [lidarText, setLidarText] = useState("");
@@ -463,21 +469,123 @@ export default function FloorPlanStudio() {
 
   const saveRef = useRef(save);
   saveRef.current = save;
+  const stepHistoryRef = useRef(stepHistory);
+  stepHistoryRef.current = stepHistory;
+
+  /** Commit a Point & line segment from a typed length (and optional angle). */
+  const commitTypedDrawEntry = () => {
+    if (!drawEntry?.text || !(drawPoints || []).length) return;
+    const previous = drawPoints[drawPoints.length - 1];
+    if (!previous) return;
+    const modeKind = drawEntry.mode || "length";
+    let end;
+    if (modeKind === "angle") {
+      const deg = Number(drawEntry.text);
+      if (!Number.isFinite(deg)) {
+        toast.error("Enter an angle in degrees.");
+        return;
+      }
+      const len = drawSnap?.point
+        ? Math.hypot(drawSnap.point.x - previous.x, drawSnap.point.y - previous.y)
+        : 96;
+      const rad = (deg * Math.PI) / 180;
+      end = { x: round2(previous.x + Math.cos(rad) * Math.max(len, 6)), y: round2(previous.y + Math.sin(rad) * Math.max(len, 6)) };
+    } else {
+      const len = parseFtIn(drawEntry.text);
+      if (!(len >= 6)) {
+        toast.error("Enter a length of at least 6\".");
+        return;
+      }
+      let ux = 1;
+      let uy = 0;
+      if (drawSnap?.point) {
+        const dx = drawSnap.point.x - previous.x;
+        const dy = drawSnap.point.y - previous.y;
+        const d = Math.hypot(dx, dy) || 1;
+        ux = dx / d;
+        uy = dy / d;
+      }
+      end = { x: round2(previous.x + ux * len), y: round2(previous.y + uy * len) };
+    }
+    setDrawEntry(null);
+    // Defer to the same tap path as a click so weld / close-room logic stays shared.
+    window.setTimeout(() => {
+      try {
+        onCanvasTapRef.current?.(end, { doubled: false, fromTypedEntry: true });
+      } catch (err) {
+        console.error("[DrawEntry] commit failed", err);
+        toast.error("Could not place that wall. Please try again.");
+      }
+    }, 0);
+  };
+  const commitTypedDrawEntryRef = useRef(commitTypedDrawEntry);
+  commitTypedDrawEntryRef.current = commitTypedDrawEntry;
 
   useEffect(() => {
     const onKey = (event) => {
-      if (!(event.metaKey || event.ctrlKey) || String(event.key || "").toLowerCase() !== "s") return;
-      event.preventDefault();
-      if (clientView || presenting) return;
-      try {
-        saveRef.current.mutate();
-      } catch (err) {
-        console.error("Could not save the floor plan", err);
+      const key = String(event.key || "").toLowerCase();
+      const meta = event.metaKey || event.ctrlKey;
+      const tag = String(event.target?.tagName || "").toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || event.target?.isContentEditable;
+
+      if (meta && key === "s") {
+        event.preventDefault();
+        if (clientView || presenting) return;
+        try {
+          saveRef.current.mutate();
+        } catch (err) {
+          console.error("Could not save the floor plan", err);
+        }
+        return;
+      }
+
+      if (meta && !typing && (key === "z" || key === "y")) {
+        event.preventDefault();
+        if (clientView || presenting) return;
+        if (key === "y" || (key === "z" && event.shiftKey)) stepHistoryRef.current("redo");
+        else stepHistoryRef.current("undo");
+        return;
+      }
+
+      if (!typing && mode === "draw" && (drawPoints || []).length >= 1 && !clientView && !presenting) {
+        if (key === "tab") {
+          event.preventDefault();
+          setDrawEntry((prev) => ({
+            mode: prev?.mode === "angle" ? "length" : "angle",
+            text: prev?.text || "",
+          }));
+          return;
+        }
+        if (key === "enter" && drawEntry?.text) {
+          event.preventDefault();
+          commitTypedDrawEntryRef.current();
+          return;
+        }
+        if (key === "backspace" && drawEntry) {
+          event.preventDefault();
+          setDrawEntry((prev) => {
+            if (!prev) return null;
+            const next = prev.text.slice(0, -1);
+            return next ? { ...prev, text: next } : null;
+          });
+          return;
+        }
+        if (key === "escape") {
+          setDrawEntry(null);
+          return;
+        }
+        if (/^[0-9]$/.test(event.key) || ["'", '"', "-", ".", "/", " "].includes(event.key)) {
+          event.preventDefault();
+          setDrawEntry((prev) => ({
+            mode: prev?.mode || "length",
+            text: `${prev?.text || ""}${event.key}`,
+          }));
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clientView, presenting]);
+  }, [clientView, presenting, mode, drawPoints, drawEntry]);
 
   const duplicate = useMutation({
     mutationFn: async () => (await api.post(`/floor-plans/${planId}/duplicate`, { version_kind: meta.version_kind === "existing" ? "proposed" : "existing" })).data,
@@ -598,6 +706,21 @@ export default function FloorPlanStudio() {
         label: "",
         guides: [],
       };
+    }
+  };
+
+  const runSquareUp = () => {
+    try {
+      const { level: squared, changed } = squareUpLevel(level, { angleTolDeg: 8, alignTolIn: 3, gapTolIn: 3 });
+      if (!changed) {
+        toast.message("Walls are already square.");
+        return;
+      }
+      patchLevel(() => squared);
+      toast.success(`Straightened ${changed} wall${changed === 1 ? "" : "s"}. Undo to revert.`);
+    } catch (err) {
+      console.error("[SquareUp] failed", err);
+      toast.error("Could not square up the plan. Please try again.");
     }
   };
 
@@ -825,6 +948,7 @@ export default function FloorPlanStudio() {
       attachOpening(hit.wall, mode === "cased" ? "cased" : mode, null, world);
     }
   };
+  onCanvasTapRef.current = onCanvasTap;
 
   const attach = useMutation({
     mutationFn: async (payload) => (await api.post(`/floor-plans/${planId}/attach`, payload)).data,
@@ -1146,10 +1270,14 @@ export default function FloorPlanStudio() {
         });
       } else if (next.type === "wall") {
         patchLevel((lvl) => {
-          const nextWalls = (lvl.walls || []).map((w) => {
+          let working = lvl;
+          const current = (lvl.walls || []).find((w) => w.id === next.id);
+          if (current && next.data.length && Math.abs(inches(next.data.length) - wallLength(current)) > 0.05) {
+            working = resizeWallLength(lvl, next.id, next.data.length, { keep: "start", measure: "centerline" });
+          }
+          const nextWalls = (working.walls || []).map((w) => {
             if (w.id !== next.id) return w;
-            const sized = next.data.length ? setWallLength(w, next.data.length) : w;
-            let openings = sized.openings || [];
+            let openings = w.openings || [];
             const selectedHeaderId = next.data.selected_header_opening_id;
             if (selectedHeaderId) {
               openings = openings.map((op) => {
@@ -1166,23 +1294,23 @@ export default function FloorPlanStudio() {
               });
             }
             return {
-              ...sized,
+              ...w,
               openings,
-              thickness: next.data.thickness || sized.thickness,
-              height: next.data.height || sized.height,
-              kind: next.data.kind || sized.kind,
+              thickness: next.data.thickness || w.thickness,
+              height: next.data.height || w.height,
+              kind: next.data.kind || w.kind,
               plumbing: Boolean(next.data.plumbing),
               bearing: next.data.bearing ?? next.data.kind === "exterior",
-              work: next.data.work || sized.work || "existing",
+              work: next.data.work || w.work || "existing",
               note: next.data.note || "",
-              stud_spacing: Number(next.data.stud_spacing) || sized.stud_spacing || 16,
+              stud_spacing: Number(next.data.stud_spacing) || w.stud_spacing || 16,
               foundation_contact: Boolean(next.data.foundation_contact),
               bottom_plate_treatment: next.data.foundation_contact
                 ? "pressure-treated"
                 : (next.data.bottom_plate_treatment || "standard"),
             };
           });
-          return { ...lvl, walls: nextWalls };
+          return { ...working, walls: nextWalls };
         });
       } else if (next.type === "beam") {
         patchLevel((lvl) => ({
@@ -1226,22 +1354,49 @@ export default function FloorPlanStudio() {
         navigate(`/floor-plans/${created.id}`, { replace: true });
       }
       const saved = (await api.post(`/floor-plans/${targetId}/import-roomplan`, payload)).data;
-      applySavedPlan(saved);
+      const incoming = saved.document || saved;
+      const importedLevel = activeLevel(incoming);
+      let finalDoc = incoming;
+      let changed = 0;
+      try {
+        const squared = squareUpLevel(importedLevel, { angleTolDeg: 8, alignTolIn: 3, gapTolIn: 3 });
+        changed = squared.changed;
+        if (changed > 0) {
+          finalDoc = updateLevel(incoming, importedLevel.id, () => squared.level);
+        }
+      } catch (sqErr) {
+        console.error("[SquareUp] post-scan straighten failed", sqErr);
+      }
+      applySavedPlan({ ...saved, document: finalDoc });
+      if (changed > 0) {
+        // One undo step restores the raw scan before straighten.
+        history.current.push(incoming);
+        markUnsaved();
+        toast.success(`Rough layout created – straightened ${changed} wall${changed === 1 ? "" : "s"}. Undo to revert. Measurements still need verification.`);
+      } else {
+        toast.success("Rough layout created – measurements need verification.");
+      }
       setLidarOpen(false);
       setLidarText("");
       const next = new URLSearchParams(params);
       next.delete("scan");
       setParams(next, { replace: true });
-      toast.success("Rough layout created – measurements need verification.");
     } catch (err) {
       console.error("LiDAR import failed", err);
       try {
         const scanned = importRoomPlan(payload, emptyLevel("LiDAR Scan", level.sort_order));
         scanned.id = level.id;
         scanned.name = level.name;
-        patchLevel(() => scanned);
+        const { level: squared, changed } = squareUpLevel(scanned, { angleTolDeg: 8, alignTolIn: 3, gapTolIn: 3 });
+        squared.id = level.id;
+        squared.name = level.name;
+        patchLevel(() => squared);
         setLidarOpen(false);
-        toast.success("Rough layout created – measurements need verification.");
+        toast.success(
+          changed > 0
+            ? `Rough layout created – straightened ${changed} wall${changed === 1 ? "" : "s"}. Undo to revert.`
+            : "Rough layout created – measurements need verification.",
+        );
       } catch (fallbackErr) {
         toast.error(fallbackErr.message || err.message || "Could not read that scan file.");
       }
@@ -1416,15 +1571,21 @@ export default function FloorPlanStudio() {
         stepHistory("redo");
         return;
       }
+      if (id === "square-up") {
+        runSquareUp();
+        return;
+      }
       if (["select", "pan", "room", "draw", "door", "window", "cased"].includes(id)) {
         setMode(id);
         setPlacing(null);
         setPlacingAnchor(null);
+        setDrawEntry(null);
         if (id !== "draw") setDrawPoints([]);
         if (id === "door") toast.message("Click a wall to cut a door. Cabinets slide clear.");
         if (id === "window") toast.message("Click a wall to place a window.");
         if (id === "cased") toast.message("Click a wall for a cased opening.");
         if (id === "pan") toast.message("Drag the drawing to pan.");
+        if (id === "draw") toast.message("Click endpoints. Type a length then Enter to lock it.");
         return;
       }
       if (id === "french-48") {
@@ -1681,6 +1842,7 @@ export default function FloorPlanStudio() {
               setDrawSnap(resolved);
             }}
             drawSnap={clientView ? null : drawSnap}
+            drawEntry={clientView ? null : drawEntry}
             drawPoints={clientView ? [] : drawPoints}
             placingItem={clientView ? null : placing}
             wirePath={clientView ? [] : wirePath}
@@ -1809,12 +1971,25 @@ export default function FloorPlanStudio() {
             })}
             onRoomDraw={(bounds) => {
               const snap = doc.snap || 6;
+              let x1 = snapTo(bounds.x1, snap);
+              let y1 = snapTo(bounds.y1, snap);
+              let x2 = snapTo(bounds.x2, snap);
+              let y2 = snapTo(bounds.y2, snap);
+              const draft = {
+                x: Math.min(x1, x2),
+                y: Math.min(y1, y2),
+                width: Math.abs(x2 - x1),
+                depth: Math.abs(y2 - y1),
+              };
+              // Magnet to nearby room faces (~4" world / ~14px at 100%).
+              const magnetTol = Math.max(4, 14 / Math.max(view.scale * PLAN_PX, 0.01));
+              const mag = magnetRoomBounds(draft, level.rooms || [], magnetTol);
               const room = createRoomFromOutsideBounds(
                 "Room",
-                snapTo(bounds.x1, snap),
-                snapTo(bounds.y1, snap),
-                snapTo(bounds.x2, snap),
-                snapTo(bounds.y2, snap),
+                mag.x,
+                mag.y,
+                mag.x + mag.width,
+                mag.y + mag.depth,
               );
               patchLevel((lvl) => {
                 let next = fitRoofToRooms({
@@ -1935,6 +2110,22 @@ export default function FloorPlanStudio() {
                 }
                 return lvl;
               });
+            }}
+            onRoomSpanEdit={({ roomId, axis, measure, length }) => {
+              try {
+                patchLevel((lvl) => resizeRoomSpan(lvl, roomId, axis, length, { measure, keep: "start" }));
+              } catch (err) {
+                console.error("[RoomSpan] edit failed", err);
+                toast.error("Could not resize that room. Please try again.");
+              }
+            }}
+            onWallLengthEdit={({ wallId, length }) => {
+              try {
+                patchLevel((lvl) => resizeWallLength(lvl, wallId, length, { keep: "start", measure: "centerline" }));
+              } catch (err) {
+                console.error("[WallLength] edit failed", err);
+                toast.error("Could not resize that wall. Please try again.");
+              }
             }}
             onBeamMove={(bid, x, y, spanX, spanY) => patchLevel((lvl) => ({
               ...lvl,
@@ -2089,6 +2280,7 @@ export default function FloorPlanStudio() {
             <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F]">Live take-offs · {level.name}</div>
             <div className="mt-2 grid grid-cols-2 gap-2 text-sm" data-testid="takeoff-panel">
               <TakeoffStat label="Floor SF" value={levelTake?.floor_sf} />
+              <TakeoffStat label="Net floor SF" value={levelTake?.net_floor_sf} />
               <TakeoffStat label="Ceiling SF" value={levelTake?.ceiling_sf} />
               <TakeoffStat label="Wall SF" value={levelTake?.wall_sf} />
               <TakeoffStat label="Wall LF" value={levelTake?.wall_lf} />
@@ -2801,8 +2993,6 @@ export default function FloorPlanStudio() {
       ) : null}
 
       <StudioDialogs
-        wallDialog={wallDialog}
-        setWallDialog={setWallDialog}
         roomDialog={roomDialog}
         setRoomDialog={setRoomDialog}
         lidarOpen={lidarOpen}
