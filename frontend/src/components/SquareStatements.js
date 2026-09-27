@@ -55,7 +55,7 @@ export default function SquareStatements() {
     <div className="space-y-6" data-testid="square-statements">
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <div className="flex flex-col lg:flex-row lg:items-start gap-5">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#0A4D68]/10 text-[#0A4D68]">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#0B3A8F]/10 text-[#0B3A8F]">
             <FileText size={22} />
           </span>
           <div className="min-w-0 flex-1">
@@ -95,7 +95,7 @@ export default function SquareStatements() {
                   }}
                 />
                 <span className="inline-flex">
-                  <Button type="button" disabled={uploading} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2 pointer-events-none">
+                  <Button type="button" disabled={uploading} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2 pointer-events-none">
                     <Upload size={16} /> {uploading ? "Uploading…" : "Upload statement"}
                   </Button>
                 </span>
@@ -130,7 +130,7 @@ export default function SquareStatements() {
                     <td className="px-5 py-3 font-medium">{MONTHS[(row.month || 1) - 1]} {row.year}</td>
                     <td className="px-5 py-3">
                       {row.web_view_link ? (
-                        <a href={row.web_view_link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#0A4D68] hover:underline">
+                        <a href={row.web_view_link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#0B3A8F] hover:underline">
                           <ExternalLink size={14} /> {row.filename || "Open statement"}
                         </a>
                       ) : (row.filename || "—")}
@@ -166,7 +166,7 @@ export default function SquareStatements() {
             <p className="text-[#4B6370] mt-2 max-w-2xl leading-relaxed">
               Square payout sync coming next. This section will match card payments from Square against Revival Pro invoices so you can see what’s settled, what’s missing, and what still needs to be recorded.
             </p>
-            <Button type="button" disabled className="mt-5 bg-[#0A4D68]/40 text-white cursor-not-allowed">
+            <Button type="button" disabled className="mt-5 bg-[#0B3A8F]/40 text-white cursor-not-allowed">
               Connect Square (coming next)
             </Button>
           </div>

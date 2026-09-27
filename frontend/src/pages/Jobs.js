@@ -130,7 +130,7 @@ export default function Jobs() {
         </div>
         <Dialog open={jobOpen} onOpenChange={(v) => { setJobOpen(v); if (!v) setEditingJob(null); }}>
           <DialogTrigger asChild>
-            <Button data-testid="add-job-btn" onClick={openNewJob} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2"><Plus size={18} /> New Job</Button>
+            <Button data-testid="add-job-btn" onClick={openNewJob} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2"><Plus size={18} /> New Job</Button>
           </DialogTrigger>
           <DialogContent className="bg-white max-w-lg">
             <DialogHeader><DialogTitle className="font-['Outfit'] text-2xl">{editingJob ? "Edit Job" : "New Job"}</DialogTitle></DialogHeader>
@@ -166,7 +166,7 @@ export default function Jobs() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setJobOpen(false)} disabled={saveJob.isPending}>Cancel</Button>
-                <Button data-testid="save-job-btn" type="submit" disabled={saveJob.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+                <Button data-testid="save-job-btn" type="submit" disabled={saveJob.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                   {saveJob.isPending ? "Saving…" : editingJob ? "Save Changes" : "Create Job"}
                 </Button>
               </DialogFooter>
@@ -192,7 +192,7 @@ export default function Jobs() {
               key={job.id}
               ref={job.id === highlight ? highlightRef : undefined}
               data-testid={`job-card-${job.id}`}
-              className={`bg-white rounded-xl border shadow-sm p-6 ${job.id === highlight ? "border-[#0A4D68] ring-2 ring-[#C9A227]/70" : "border-slate-200"}`}
+              className={`bg-white rounded-xl border shadow-sm p-6 ${job.id === highlight ? "border-[#0B3A8F] ring-2 ring-[#C9A227]/70" : "border-slate-200"}`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -203,13 +203,13 @@ export default function Jobs() {
                   <div className="text-sm text-[#4B6370] mt-0.5">{job.job_number} · {job.client_name}</div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button data-testid={`open-job-sheet-${job.id}`} onClick={() => navigate(`/jobs/${job.id}`)} title="Open job" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]">
+                  <button data-testid={`open-job-sheet-${job.id}`} onClick={() => navigate(`/jobs/${job.id}`)} title="Open job" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]">
                     <ClipboardList size={16} />
                   </button>
-                  <button data-testid={`open-job-floorplan-${job.id}`} onClick={() => navigate(`/floor-plans/new?job=${job.id}`)} title="Floor plan" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]">
+                  <button data-testid={`open-job-floorplan-${job.id}`} onClick={() => navigate(`/floor-plans/new?job=${job.id}`)} title="Floor plan" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]">
                     <PenTool size={16} />
                   </button>
-                  <button data-testid={`edit-job-${job.id}`} onClick={() => openEditJob(job)} title="Edit job" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]">
+                  <button data-testid={`edit-job-${job.id}`} onClick={() => openEditJob(job)} title="Edit job" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]">
                     <Pencil size={16} />
                   </button>
                   <button data-testid={`delete-job-${job.id}`} onClick={() => { if (window.confirm("Delete this job?")) removeJob.mutate(job.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
@@ -219,7 +219,7 @@ export default function Jobs() {
               <div className="grid grid-cols-3 gap-3 mt-5">
                 <div className="rounded-lg bg-slate-50 p-3">
                   <div className="text-xs text-[#4B6370]">Budget</div>
-                  <div className="font-semibold font-['Outfit'] text-[#0A4D68]">{usd(job.budget)}</div>
+                  <div className="font-semibold font-['Outfit'] text-[#0B3A8F]">{usd(job.budget)}</div>
                 </div>
                 <div className="rounded-lg bg-slate-50 p-3">
                   <div className="text-xs text-[#4B6370]">Committed</div>
@@ -259,10 +259,10 @@ export default function Jobs() {
               )}
 
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <Button data-testid={`open-sheet-${job.id}`} onClick={() => navigate(`/jobs/${job.id}`)} variant="outline" size="sm" className="gap-1 border-[#0A4D68]/30 text-[#0A4D68] hover:bg-[#0A4D68]/5">
+                <Button data-testid={`open-sheet-${job.id}`} onClick={() => navigate(`/jobs/${job.id}`)} variant="outline" size="sm" className="gap-1 border-[#0B3A8F]/30 text-[#0B3A8F] hover:bg-[#0B3A8F]/5">
                   <ClipboardList size={14} /> Open job
                 </Button>
-                <Button data-testid={`log-expense-${job.id}`} onClick={() => openExpense(job)} disabled={expBusy} variant="outline" size="sm" className="gap-1 border-[#0A4D68]/30 text-[#0A4D68] hover:bg-[#0A4D68]/5">
+                <Button data-testid={`log-expense-${job.id}`} onClick={() => openExpense(job)} disabled={expBusy} variant="outline" size="sm" className="gap-1 border-[#0B3A8F]/30 text-[#0B3A8F] hover:bg-[#0B3A8F]/5">
                   <Plus size={14} /> {expBusy ? "Saving…" : "Log expense"}
                 </Button>
               </div>
@@ -304,7 +304,7 @@ export default function Jobs() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setExpOpen(false)} disabled={addExpense.isPending}>Cancel</Button>
-              <Button data-testid="save-expense-btn" type="submit" disabled={addExpense.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+              <Button data-testid="save-expense-btn" type="submit" disabled={addExpense.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                 {addExpense.isPending ? "Saving…" : "Save Expense"}
               </Button>
             </DialogFooter>

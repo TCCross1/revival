@@ -2,12 +2,90 @@ import { inches, round2 } from "./units";
 import { wallLength } from "./model";
 
 const DEFAULT_H = 96;
+const ROOF_PROJECT_HINTS = [
+  "addition", "whole house", "whole-house", "exterior", "roof",
+  "new construction", "new-construction", "garage", "porch", "sunroom", "room add",
+];
+const INTERIOR_NO_ROOF_HINTS = [
+  "kitchen", "bath", "laundry", "interior", "flooring", "closet", "basement", "cabinet",
+];
+
+export function projectInvolvesRoof(projectType) {
+  const text = String(projectType || "").trim().toLowerCase();
+  return ROOF_PROJECT_HINTS.some((hint) => text.includes(hint));
+}
+
+export function interiorSkipsRoof(projectType) {
+  const text = String(projectType || "").trim().toLowerCase();
+  if (projectInvolvesRoof(text)) return false;
+  return INTERIOR_NO_ROOF_HINTS.some((hint) => text.includes(hint));
+}
+
+export function roofTakeoffInScope(document, level, projectType) {
+  const flag = document?.roof_in_takeoff;
+  if (flag === true) return true;
+  if (flag === false) return false;
+  const ptype = projectType || document?.project_type || "";
+  if (projectInvolvesRoof(ptype)) return true;
+  if (interiorSkipsRoof(ptype)) return false;
+  return Boolean(level?.roofs?.length);
+}
+
+function emptyRoofTakeoff() {
+  return {
+    roof_sf: 0, roof_perimeter_lf: 0, ridge_lf: 0, gable_lf: 0, valley_lf: 0, gutter_lf: 0,
+    pitch: "", pitch_deg: 0, roof_in_scope: false,
+  };
+}
 
 function roomSf(room) {
   return round2((inches(room.width) * inches(room.depth)) / 144);
 }
 
-function computeRoof(level) {
+/**
+ * Inside-face metrics for a rectangular room (net floor area, clear W×D, perimeter).
+ * Falls back to room.wall_thickness when owned walls are missing.
+ */
+export function roomInteriorMetrics(room, walls = []) {
+  try {
+    const widthOut = inches(room?.width);
+    const depthOut = inches(room?.depth);
+    const fallback = Math.max(1, inches(room?.wall_thickness) || 3.5);
+    const sideT = (side) => {
+      const owned = (walls || []).find((w) => w.source_room_id === room.id && w.room_side === side);
+      return Math.max(1, owned ? inches(owned.thickness) : fallback);
+    };
+    const west = sideT("west");
+    const east = sideT("east");
+    const north = sideT("north");
+    const south = sideT("south");
+    const widthIn = Math.max(0, round2(widthOut - west - east));
+    const depthIn = Math.max(0, round2(depthOut - north - south));
+    return {
+      width_out: round2(widthOut),
+      depth_out: round2(depthOut),
+      width_in: widthIn,
+      depth_in: depthIn,
+      net_sf: round2((widthIn * depthIn) / 144),
+      gross_sf: round2((widthOut * depthOut) / 144),
+      perimeter_in: round2(2 * (widthIn + depthIn)),
+      perimeter_lf: round2((2 * (widthIn + depthIn)) / 12),
+      thicknesses: { west, east, north, south },
+    };
+  } catch (err) {
+    console.error("[roomInteriorMetrics] failed", err);
+    return {
+      width_out: 0, depth_out: 0, width_in: 0, depth_in: 0,
+      net_sf: 0, gross_sf: 0, perimeter_in: 0, perimeter_lf: 0,
+      thicknesses: { west: 0, east: 0, north: 0, south: 0 },
+    };
+  }
+}
+
+function computeRoof(level, { projectType = "", roofInTakeoff, document } = {}) {
+  const doc = { ...(document || {}) };
+  if (roofInTakeoff !== undefined) doc.roof_in_takeoff = roofInTakeoff;
+  if (!roofTakeoffInScope(doc, level, projectType)) return emptyRoofTakeoff();
   const roofs = level.roofs || [];
   const rooms = level.rooms || [];
   let width;
@@ -32,9 +110,7 @@ function computeRoof(level) {
     width = maxX - minX;
     depth = maxY - minY;
   } else {
-    return {
-      roof_sf: 0, roof_perimeter_lf: 0, ridge_lf: 0, gable_lf: 0, valley_lf: 0, gutter_lf: 0, pitch: "6/12", pitch_deg: 0,
-    };
+    return emptyRoofTakeoff();
   }
   const pitchRad = Math.atan(rise / run);
   const pitchDeg = round2((pitchRad * 180) / Math.PI);
@@ -44,7 +120,7 @@ function computeRoof(level) {
   const slope = 1 / Math.max(Math.cos(pitchRad), 0.15);
   const perimeter = round2((2 * (fw + fd)) / 12);
   if (kind === "flat") {
-    return { roof_sf: round2(footprintSf), roof_perimeter_lf: perimeter, ridge_lf: 0, gable_lf: 0, valley_lf: 0, gutter_lf: perimeter, pitch: `${Math.round(rise)}/${Math.round(run)}`, pitch_deg: pitchDeg };
+    return { roof_sf: round2(footprintSf), roof_perimeter_lf: perimeter, ridge_lf: 0, gable_lf: 0, valley_lf: 0, gutter_lf: perimeter, pitch: `${Math.round(rise)}/${Math.round(run)}`, pitch_deg: pitchDeg, roof_in_scope: true };
   }
   if (kind === "hip") {
     const hip = Math.hypot(fd / 2, (fd / 2) * (rise / run));
@@ -57,6 +133,7 @@ function computeRoof(level) {
       gutter_lf: perimeter,
       pitch: `${Math.round(rise)}/${Math.round(run)}`,
       pitch_deg: pitchDeg,
+      roof_in_scope: true,
     };
   }
   if (kind === "shed") {
@@ -69,6 +146,7 @@ function computeRoof(level) {
       gutter_lf: round2((2 * fw + 2 * fd) / 12),
       pitch: `${Math.round(rise)}/${Math.round(run)}`,
       pitch_deg: pitchDeg,
+      roof_in_scope: true,
     };
   }
   const alongLength = fw >= fd;
@@ -84,19 +162,24 @@ function computeRoof(level) {
     gutter_lf: round2((2 * ridgeIn) / 12),
     pitch: `${Math.round(rise)}/${Math.round(run)}`,
     pitch_deg: pitchDeg,
+    roof_in_scope: true,
   };
 }
 
-export function computeLevelTakeoffs(level) {
+export function computeLevelTakeoffs(level, { projectType = "", roofInTakeoff, document } = {}) {
   const rooms = level?.rooms || [];
   const walls = level?.walls || [];
   const objects = level?.objects || [];
   const roomRows = rooms.map((room) => {
     const perim = 2 * (inches(room.width) + inches(room.depth));
+    const interior = roomInteriorMetrics(room, walls);
     return {
       id: room.id,
       name: room.name || "Room",
       sf: roomSf(room),
+      net_sf: interior.net_sf,
+      width_in: interior.width_in,
+      depth_in: interior.depth_in,
       perimeter_lf: round2(perim / 12),
       wall_height: inches(room.wall_height || DEFAULT_H),
       ceiling_height: inches(room.ceiling_height || DEFAULT_H),
@@ -104,6 +187,7 @@ export function computeLevelTakeoffs(level) {
     };
   });
   const floorSf = round2(roomRows.reduce((s, r) => s + r.sf, 0));
+  const netFloorSf = round2(roomRows.reduce((s, r) => s + (r.net_sf || 0), 0));
   let wallSf = 0;
   let wallLf = 0;
   let openingSf = 0;
@@ -118,7 +202,7 @@ export function computeLevelTakeoffs(level) {
     wallSf += Math.max(length * height - holes, 0);
     wallLf += length;
   });
-  const roof = computeRoof(level || {});
+  const roof = computeRoof(level || {}, { projectType, roofInTakeoff, document });
   const baseboard = round2(roomRows.reduce((s, r) => s + r.perimeter_lf, 0));
   const plumbingLf = round2((walls.filter((w) => w.plumbing).reduce((s, w) => s + wallLength(w), 0)) / 12);
   const beamLf = round2(((level?.beams || []).reduce((s, b) => s + wallLength(b), 0)) / 12);
@@ -129,6 +213,7 @@ export function computeLevelTakeoffs(level) {
     rooms: roomRows,
     room_count: rooms.length,
     floor_sf: floorSf,
+    net_floor_sf: netFloorSf,
     ceiling_sf: floorSf,
     wall_sf: round2(wallSf / 144),
     wall_lf: round2(wallLf / 12),
@@ -144,8 +229,14 @@ export function computeLevelTakeoffs(level) {
   };
 }
 
-export function computeTakeoffs(document) {
-  const levels = (document?.levels || []).map(computeLevelTakeoffs);
+export function computeTakeoffs(document, projectType = "") {
+  const ptype = projectType || document?.project_type || "";
+  const flag = document?.roof_in_takeoff;
+  const levels = (document?.levels || []).map((level) => computeLevelTakeoffs(level, {
+    projectType: ptype,
+    roofInTakeoff: flag,
+    document,
+  }));
   const sum = (key) => round2(levels.reduce((s, r) => s + (r[key] || 0), 0));
   return {
     levels,
@@ -167,7 +258,8 @@ export function computeTakeoffs(document) {
       lvl_lf: sum("lvl_lf"),
       level_count: levels.length,
       room_count: levels.reduce((s, r) => s + r.room_count, 0),
+      roof_in_scope: levels.some((l) => l.roof_in_scope),
     },
-    pitch: levels.find((l) => l.roof_sf)?.pitch || "6/12",
+    pitch: levels.find((l) => l.roof_in_scope && l.pitch)?.pitch || "",
   };
 }

@@ -47,7 +47,7 @@ export default function Profile() {
       </div>
 
       <form onSubmit={submit} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2 px-6 py-4 bg-[#0A4D68]">
+        <div className="flex items-center gap-2 px-6 py-4 bg-[#0B3A8F]">
           <UserCog size={18} className="text-[#C9A227]" />
           <h2 className="text-white font-['Outfit'] font-semibold">Account</h2>
         </div>
@@ -80,7 +80,7 @@ export default function Profile() {
           </div>
 
           <div className="pt-2">
-            <Button type="submit" data-testid="save-profile-btn" disabled={submitting} className="gap-1.5 bg-[#0A4D68] hover:bg-[#083D53]">
+            <Button type="submit" data-testid="save-profile-btn" disabled={submitting} className="gap-1.5 bg-[#0B3A8F] hover:bg-[#082C73]">
               {submitting ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
               {submitting ? "Saving…" : "Save Changes"}
             </Button>

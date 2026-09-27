@@ -32,7 +32,8 @@ RECEIPTS_FOLDER = "Receipts"
 REPORTS_FOLDER = "Reports"
 JOB_SHEETS_FOLDER = "Job Sheets"
 PERMIT_DETAILS_FOLDER = "Permit Details"
-CLIENT_SUBFOLDERS = (FLOOR_PLANS_FOLDER, RECEIPTS_FOLDER, REPORTS_FOLDER, PERMIT_DETAILS_FOLDER, JOB_SHEETS_FOLDER)
+BIDS_FOLDER = "Bid Packages"
+CLIENT_SUBFOLDERS = (FLOOR_PLANS_FOLDER, RECEIPTS_FOLDER, REPORTS_FOLDER, PERMIT_DETAILS_FOLDER, JOB_SHEETS_FOLDER, BIDS_FOLDER)
 KIND_TO_SUBFOLDER = {
     "floor_plan": FLOOR_PLANS_FOLDER,
     "receipt": RECEIPTS_FOLDER,
@@ -48,6 +49,11 @@ KIND_TO_SUBFOLDER = {
     "photo_before": JOB_SHEETS_FOLDER,
     "photo_during": JOB_SHEETS_FOLDER,
     "photo_after": JOB_SHEETS_FOLDER,
+    "magicplan": FLOOR_PLANS_FOLDER,
+    "site_video": JOB_SHEETS_FOLDER,
+    "bid_pdf": BIDS_FOLDER,
+    "bid_asset": BIDS_FOLDER,
+    "deposit_receipt": RECEIPTS_FOLDER,
     "other": JOB_SHEETS_FOLDER,
 }
 EXPECTED_EMAIL_DEFAULT = "revivalhomeremodelingllc@gmail.com"
@@ -58,6 +64,7 @@ SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/calendar.readonly",
 ]
 _runtime_client_id = ""
 _runtime_client_secret = ""

@@ -1,72 +1,28 @@
-"""Shop-default installed prices for Revival Pro takeoffs (KY remodeler ballpark)."""
+"""Shop-default installed prices for Revival Pro takeoffs (KY remodeler ballpark).
+
+Source of truth: frontend/src/lib/floorPlan/shopPrices.json
+(Create React App can only import JSON from src/. Python loads that same file.)
+"""
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 from floor_plan import inches, round2
 
-FLOORING = {
-    "lvp": 5.25,
-    "tile": 9.50,
-    "carpet": 4.25,
-    "engineered_hardwood": 8.75,
-    "solid_hardwood": 11.50,
-}
-COUNTERTOPS = {
-    "quartz": 78.0,
-    "granite": 68.0,
-    "marble": 95.0,
-    "formica": 28.0,
-    "butcher": 42.0,
-    "solid": 55.0,
-    "soapstone": 88.0,
-}
-APPLIANCES = {
-    "range-30": 1299.0,
-    "range-36": 1899.0,
-    "fridge-36": 2199.0,
-    "dw-24": 649.0,
-    "micro-24": 329.0,
-    "washer": 799.0,
-    "dryer": 749.0,
-    "disposal": 189.0,
-    "sink-33": 425.0,
-}
-LIGHTING = {
-    "light-recessed": 85.0,
-    "light-flush": 72.0,
-    "light-layout": 85.0,
-    "light-pendant": 145.0,
-    "light-chandelier": 420.0,
-    "light-vanity": 165.0,
-    "light-sconce": 95.0,
-    "light-undercab": 48.0,
-    "fan-ceiling": 285.0,
-    "fan-light": 345.0,
-}
-WINDOW_MATERIALS = {
-    "vinyl": 425.0,
-    "vinyl-clad": 545.0,
-    "wood": 685.0,
-    "aluminum-clad": 625.0,
-}
-DOOR_STYLES = {
-    "six-panel": 285.0,
-    "flush": 195.0,
-    "french": 890.0,
-    "sliding": 780.0,
-    "bi-fold": 240.0,
-    "pocket": 410.0,
-}
-GROUP_DEFAULTS = {
-    "Flooring": 5.25,
-    "Cabinets": 420.0,
-    "Countertops": 78.0,
-    "Appliances": 899.0,
-    "Lighting / electrical": 85.0,
-    "Openings": 385.0,
-    "Bath": 1650.0,
-    "Structural": 28.0,
-    "General": 125.0,
-}
+_BACKEND = Path(__file__).resolve().parent
+_FRONTEND_BOOK = _BACKEND.parent / "frontend" / "src" / "lib" / "floorPlan" / "shopPrices.json"
+_LOCAL_BOOK = _BACKEND / "data" / "shop_prices.json"
+_BOOK_PATH = _FRONTEND_BOOK if _FRONTEND_BOOK.exists() else _LOCAL_BOOK
+_BOOK = json.loads(_BOOK_PATH.read_text())
+
+FLOORING = _BOOK["flooring"]
+COUNTERTOPS = _BOOK["countertops"]
+APPLIANCES = _BOOK["appliances"]
+LIGHTING = _BOOK["lighting"]
+WINDOW_MATERIALS = _BOOK["window_materials"]
+DOOR_STYLES = _BOOK["door_styles"]
+GROUP_DEFAULTS = _BOOK["group_defaults"]
 
 
 def _width(obj) -> float:

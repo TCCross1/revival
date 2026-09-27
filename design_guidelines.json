@@ -15,8 +15,8 @@
     }
   },
   "colors": {
-    "primary": "#0A4D68",
-    "primary_hover": "#083D53",
+    "primary": "#0B3A8F",
+    "primary_hover": "#082C73",
     "accent_gold": "#C9A227",
     "accent_gold_hover": "#B38F22",
     "background_base": "#F4F7F8",
@@ -33,9 +33,9 @@
     }
   },
   "visual_enhancers": {
-    "background_image_strategy": "CRITICAL: Set the provided silky teal fabric image as a fixed background on the body/main wrapper. To 'brighten' it per requirements, add a full-cover absolute inset overlay div with `bg-white/85` or `bg-white/90`. This ensures the premium texture faintly peeks through while providing a brilliant, high-contrast canvas for the app's data without looking overwhelming.",
+    "background_image_strategy": "App chrome uses the official Revival Home Remodeling banner in the header. Page canvases stay light (#F4F6FA) so data stays readable. Primary royal blue #0B3A8F, gold #C9A227, silver/white type.",
     "surfaces": "Use 'Solid + Crisp' surfaces. bg-white, rounded-lg (8px), border border-slate-200, shadow-sm. Avoid heavy glassmorphism for data-heavy dashboard sections to keep clarity maximum.",
-    "buttons": "Moderately rounded (rounded-md). Primary actions in Deep Teal (#0A4D68) with white text. High-visibility secondary/conversion actions (like Convert to Invoice) in Gold (#C9A227) with dark text."
+    "buttons": "Moderately rounded (rounded-md). Primary actions in Royal Blue (#0B3A8F) with white text. High-visibility secondary/conversion actions in Gold (#C9A227) with dark text."
   },
   "layouts": {
     "navigation": "Top navigation bar. MUST HAVE a solid bg-white background (NO transparency) with border-b. Logo fixed at top left. User/Google profile on top right.",
@@ -46,20 +46,20 @@
     "cards": "Do not overuse the Card component for nested content. For distinct data units (KPIs, open estimates list), use solid cards with clear borders and subtle shadows.",
     "tables": "Standard highly-legible data tables. Left-align text. Use generous padding (p-4) on cells. Add hover:bg-slate-50 to rows. Add actions (edit/view) at the end of rows.",
     "status_badges": "Use rounded-full px-2.5 py-0.5 text-xs font-medium. Draft: gray bg/text, Sent/Active: blue bg/text, Won/Paid: emerald bg/text, Overdue/Lost: red bg/text.",
-    "forms": "Use clean and large inputs. text-base. border-slate-300 focus:border-[#0A4D68] focus:ring-1 focus:ring-[#0A4D68]."
+    "forms": "Use clean and large inputs. text-base. border-slate-300 focus:border-[#0B3A8F] focus:ring-1 focus:ring-[#0B3A8F]."
   },
   "media": {
     "logo": {
-      "url": "https://customer-assets-lxgj4vgw.emergentagent.net/job_a0b60c79-694f-4789-8f44-c88f5bec0abf/artifacts/8y6jtssj_676A1DF1-2965-47D7-B3A5-70E8A72E6D04.png",
-      "placement": "Top left of the navigation bar. Maintain aspect ratio, max height around 40px."
+      "url": "/brand/revival-landing.jpg",
+      "placement": "Full lockup (emblem + REVIVAL HOME REMODELING + tagline) on the desktop landing/auth left panel. 1024px square JPEG."
     },
-    "background": {
-      "url": "https://customer-assets-lxgj4vgw.emergentagent.net/job_a0b60c79-694f-4789-8f44-c88f5bec0abf/artifacts/7b1gd1pi_29B98378-43E4-4E5E-9059-E73074B861FB.png",
-      "placement": "Global app background layer with z-index lowest, overlaid with 85% white background blend to brighten."
+    "banner": {
+      "url": "/brand/revival-header-banner.jpg",
+      "placement": "Full-width app header hero. Wide royal-blue lockup (~3:1). Prefer 3840×520 for retina full-bleed."
     }
   },
   "accessibility": {
-    "contrast": "Ensure text over gold (#C9A227) is Dark/Black (#061A23), not white. Text over Teal (#0A4D68) must be white.",
+    "contrast": "Ensure text over gold (#C9A227) is Dark/Black (#061A23), not white. Text over royal blue (#0B3A8F) must be white.",
     "focus": "All interactive elements must have visible focus rings.",
     "testing": "All interactive and key informational elements MUST include a data-testid attribute (e.g. data-testid='create-estimate-btn')."
   },

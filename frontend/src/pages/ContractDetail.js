@@ -16,7 +16,7 @@ const todayISO = () => new Date().toLocaleDateString("en-US", { year: "numeric",
 
 const SectionCard = ({ n, title, children, right }) => (
   <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-    <div className="flex items-center justify-between gap-3 px-6 py-4 bg-[#0A4D68]">
+    <div className="flex items-center justify-between gap-3 px-6 py-4 bg-[#0B3A8F]">
       <h2 className="text-white font-['Outfit'] font-semibold flex items-center gap-2">
         <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#C9A227] text-[#061A23] text-xs font-bold">{n}</span>
         {title}
@@ -159,14 +159,14 @@ export default function ContractDetail() {
   return (
     <div className="space-y-6 max-w-5xl mx-auto" data-testid="contract-detail-page">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <button onClick={() => navigate("/contracts")} className="flex items-center gap-1.5 text-sm font-medium text-[#0A4D68] hover:underline" data-testid="back-to-contracts-btn">
+        <button onClick={() => navigate("/contracts")} className="flex items-center gap-1.5 text-sm font-medium text-[#0B3A8F] hover:underline" data-testid="back-to-contracts-btn">
           <ArrowLeft size={16} /> Back to Contracts
         </button>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button data-testid="send-esign-btn" onClick={() => sendForSignature.mutate()} disabled={sendForSignature.isPending} variant="outline" className="gap-1.5 bg-white border-[#C9A227] text-[#8a6f17] hover:bg-[#C9A227]/10"><Mail size={16} /> {sendForSignature.isPending ? "Sending…" : "Send for e-signature"}</Button>
           <Button data-testid="send-countersign-btn" onClick={() => sendCountersign.mutate()} disabled={sendCountersign.isPending} variant="outline" className="gap-1.5 bg-white"><PenLine size={16} /> {sendCountersign.isPending ? "Sending…" : "Countersign"}</Button>
           <Button data-testid="contract-pdf-btn" onClick={downloadPdf} disabled={pdfBusy} variant="outline" className="gap-1.5 bg-white"><Download size={16} /> {pdfBusy ? "Preparing…" : "Download PDF"}</Button>
-          <Button data-testid="save-contract-btn" onClick={doSave} disabled={save.isPending} className="gap-1.5 bg-[#0A4D68] hover:bg-[#083D53]"><Save size={16} /> {save.isPending ? "Saving…" : "Save"}</Button>
+          <Button data-testid="save-contract-btn" onClick={doSave} disabled={save.isPending} className="gap-1.5 bg-[#0B3A8F] hover:bg-[#082C73]"><Save size={16} /> {save.isPending ? "Saving…" : "Save"}</Button>
         </div>
       </div>
 
@@ -186,14 +186,14 @@ export default function ContractDetail() {
       <SectionCard n="1" title="Parties">
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68]">Contractor</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F]">Contractor</div>
             <Field label="Company name" data-testid="contractor-name" value={form.contractor_name} onChange={(e) => set("contractor_name", e.target.value)} />
             <Field label="Address" data-testid="contractor-address" value={form.contractor_address} onChange={(e) => set("contractor_address", e.target.value)} />
             <Field label="Phone" data-testid="contractor-phone" value={form.contractor_phone} onChange={(e) => set("contractor_phone", e.target.value)} />
             <Field label="License info" data-testid="contractor-license" value={form.contractor_license} onChange={(e) => set("contractor_license", e.target.value)} />
           </div>
           <div className="space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68]">Client (Homeowner)</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F]">Client (Homeowner)</div>
             <Field label="Full name" data-testid="contract-client-name" value={form.client_name} onChange={(e) => set("client_name", e.target.value)} />
             <Field label="Address" value={form.client_address} onChange={(e) => set("client_address", e.target.value)} />
             <Field label="Phone" value={form.client_phone} onChange={(e) => set("client_phone", e.target.value)} />
@@ -241,13 +241,13 @@ export default function ContractDetail() {
 
       {/* 4. Price & Payment */}
       <SectionCard n="4" title="Contract Price and Payment Terms">
-        <div className="flex items-center justify-between rounded-lg bg-[#0A4D68]/5 px-4 py-3 mb-5">
+        <div className="flex items-center justify-between rounded-lg bg-[#0B3A8F]/5 px-4 py-3 mb-5">
           <span className="text-sm text-[#4B6370]">Total Contract Price</span>
-          <span className="text-2xl font-semibold font-['Outfit'] text-[#0A4D68]" data-testid="contract-total">{usdCents(form.total)}</span>
+          <span className="text-2xl font-semibold font-['Outfit'] text-[#0B3A8F]" data-testid="contract-total">{usdCents(form.total)}</span>
         </div>
         <div className="flex items-center justify-between mb-2">
           <Label className="text-sm font-medium">Payment Schedule</Label>
-          <button onClick={addMs} data-testid="add-milestone-btn" className="text-xs font-medium text-[#0A4D68] hover:underline flex items-center gap-1"><Plus size={13} /> Add milestone</button>
+          <button onClick={addMs} data-testid="add-milestone-btn" className="text-xs font-medium text-[#0B3A8F] hover:underline flex items-center gap-1"><Plus size={13} /> Add milestone</button>
         </div>
         <div className="space-y-2">
           {form.payment_schedule.map((m, i) => (
@@ -289,7 +289,7 @@ export default function ContractDetail() {
             </div>
           ))}
         </div>
-        <button onClick={addEx} data-testid="add-exclusion-btn" className="mt-3 text-xs font-medium text-[#0A4D68] hover:underline flex items-center gap-1"><Plus size={13} /> Add exclusion</button>
+        <button onClick={addEx} data-testid="add-exclusion-btn" className="mt-3 text-xs font-medium text-[#0B3A8F] hover:underline flex items-center gap-1"><Plus size={13} /> Add exclusion</button>
       </SectionCard>
 
       {/* 7. Change Orders */}
@@ -308,13 +308,13 @@ export default function ContractDetail() {
         <p className="text-sm text-[#4B6370] mb-4">Sign directly on the screen — works great on phones and tablets.</p>
         <div className="grid md:grid-cols-2 gap-8">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-2">Client — {form.client_name}</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-2">Client — {form.client_name}</div>
             <SignaturePad testid="client-signature-pad" value={form.client_signature}
               onChange={(v) => setForm({ ...form, client_signature: v, client_signed_date: v ? todayISO() : "" })} />
             <div className="mt-2 text-sm text-[#4B6370]">Date: <span className="text-[#061A23] font-medium">{form.client_signed_date || "—"}</span></div>
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-2">Contractor — {form.contractor_name}</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-2">Contractor — {form.contractor_name}</div>
             <SignaturePad testid="contractor-signature-pad" value={form.contractor_signature}
               onChange={(v) => setForm({ ...form, contractor_signature: v, contractor_signed_date: v ? todayISO() : "" })} />
             <div className="mt-2 text-sm text-[#4B6370]">Date: <span className="text-[#061A23] font-medium">{form.contractor_signed_date || "—"}</span></div>

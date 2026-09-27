@@ -31,6 +31,8 @@ def test_field_cannot_see_financials_by_default():
     assert can("field", "financials") is False
     assert can("field", "receipts") is True
     assert can("field", "time_clock") is True
+    assert can("field", "subcontractors") is False
+    assert can("manager", "subcontractors") is True
 
 
 def test_permission_override():

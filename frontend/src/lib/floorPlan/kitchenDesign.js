@@ -1,15 +1,21 @@
 /** Expert kitchen layout engine — NKBA guidelines plus professional design practice. */
 
 import {
-  HOUSE_STANDARD_DEFAULTS, applyWallCabinetDrawerRule, defaultCabinetConfig, defaultFuel, isCabinetObject,
-  isCountertopObject, isIslandObject, isWallCabinetObject, libraryById,
+  HOUSE_STANDARD_DEFAULTS, applyWallCabinetDrawerRule, defaultCabinetConfig, defaultFuel, isBaseRunObject,
+  isCabinetObject, isCountertopObject, isIslandObject, isWallCabinetObject, libraryById,
+  RANGE_MIN_WIDTH, RANGE_SIX_BURNER_MIN, RANGE_SIZE_OPTIONS,
 } from "./library";
-import { fitCabinetFillers, objectFootprint, placeFlush, snapCabinetToWall, wallInterior } from "./cabinetRun";
+import {
+  fitCabinetFillers, isFillerObject, objectFootprint, placeFlush, snapApplianceToWall, snapCabinetToWall, wallInterior,
+} from "./cabinetRun";
 import { fitCountertops } from "./countertops";
 import { evaluateProfessionalLayout, pantryBlocksSink } from "./professionalLayout";
 import { dist, formatFtIn, inches, round2, uid } from "./units";
 
-const BASE_WIDTHS = [36, 33, 30, 27, 24, 21, 18, 15, 12, 9];
+export const STANDARD_CABINET_WIDTHS = [12, 15, 18, 21, 24, 27, 30, 33, 36];
+export const AUTO_MAX_FILLER = 4;
+export const AUTO_MIN_FILLER = 0.5;
+export const STANDARD_WALL_HEIGHT = 30;
 const MIN_WALK_ONE = 42;
 const MIN_WALK_TWO = 48;
 const WALKWAY = 36;
@@ -47,7 +53,6 @@ export function emptyKitchenDesign() {
     cooks: 1,
     handedness: "right",
     dw_side: "left",
-    seed: 0,
     island_enabled: true,
     style: {
       door_style: "shaker",
@@ -85,11 +90,16 @@ function libOr(id, fallbackId) {
   return libraryById(id) || libraryById(fallbackId);
 }
 
+function designRangeWidth(design) {
+  const w = Number(design?.range_width);
+  return RANGE_SIZE_OPTIONS.some((row) => Number(row.id) === w) ? w : RANGE_MIN_WIDTH;
+}
+
 function rangeLib(design) {
-  const w = Number(design.range_width) === 36 ? 36 : 30;
-  if (design.fuel === "induction") return libOr(`range-induction-${w}`, "range-30");
+  const w = designRangeWidth(design);
+  if (design.fuel === "induction") return libOr(`range-induction-${w}`, libOr(`range-${w}`, "range-30"));
   if (design.fuel === "electric") return libOr(`range-${w}`, "range-30");
-  return libOr(`range-gas-${w}`, "range-30");
+  return libOr(`range-gas-${w}`, libOr(`range-${w}`, "range-30"));
 }
 
 function fridgeLib(design) {
@@ -140,34 +150,95 @@ function makeItem(lib, x, y, extra, standards) {
   };
 }
 
-function rotate(list, seed) {
-  const n = Math.abs(Number(seed) || 0) % Math.max(list.length, 1);
-  return [...list.slice(n), ...list.slice(0, n)];
+function packScore(pieces, filler, unfilled = 0) {
+  const leftover = Number(unfilled) || 0;
+  const n = pieces.length;
+  if (leftover > 0.05) return 1e6 + leftover * 800 + (n ? 0 : 5000);
+  if (!n) return filler <= AUTO_MAX_FILLER ? filler * 50 : 1e9;
+  const mean = pieces.reduce((sum, width) => sum + width, 0) / n;
+  let variance = 0;
+  pieces.forEach((width) => {
+    variance += (width - mean) * (width - mean);
+  });
+  let stock = 0;
+  pieces.forEach((width) => {
+    if (width === 24 || width === 30 || width === 36) stock += 0;
+    else if (width === 18 || width === 15 || width === 12) stock += 1.2;
+    else stock += 2.2;
+  });
+  const large = pieces.filter((width) => width >= 24).length;
+  return filler * 28 + n * 3 + variance * 0.1 + stock - large * 2.5;
 }
 
-function packWidths(gap, seed = 0, prefer = []) {
+function greedyPackWidths(gap) {
   const pieces = [];
-  let remain = round2(Math.max(gap, 0));
-  prefer.forEach((pref) => {
-    if (pref.width <= remain + 0.05) {
-      pieces.push(pref);
-      remain = round2(remain - pref.width);
+  let remain = round2(Math.max(0, Number(gap) || 0));
+  while (remain >= 12 - 0.001) {
+    const width = [...STANDARD_CABINET_WIDTHS].reverse().find((item) => item <= remain + 0.001);
+    if (!width) break;
+    pieces.push(width);
+    remain = round2(remain - width);
+  }
+  const filler = remain <= AUTO_MAX_FILLER + 0.001 && remain >= AUTO_MIN_FILLER ? remain : 0;
+  return { pieces, filler, unfilled: filler ? 0 : round2(remain) };
+}
+
+export function packCabinetWidths(gap) {
+  const g = round2(Math.max(0, Number(gap) || 0));
+  if (g < AUTO_MIN_FILLER) return { pieces: [], filler: 0, unfilled: 0 };
+  if (g <= AUTO_MAX_FILLER) return { pieces: [], filler: g, unfilled: 0 };
+  const memo = new Map();
+  const search = (remain) => {
+    const key = Math.round(remain * 10);
+    if (memo.has(key)) return memo.get(key);
+    if (remain < 12 - 0.001) {
+      const fitsFiller = remain <= AUTO_MAX_FILLER + 0.001;
+      const row = {
+        pieces: [],
+        filler: fitsFiller && remain >= AUTO_MIN_FILLER ? round2(remain) : 0,
+        unfilled: fitsFiller ? 0 : round2(remain),
+      };
+      memo.set(key, row);
+      return row;
     }
-  });
-  const order = rotate(BASE_WIDTHS, seed);
-  let guard = 0;
-  while (remain >= 9 && guard < 24) {
-    guard += 1;
-    const fit = order.find((w) => w <= remain);
-    if (!fit) break;
-    pieces.push({ kind: "base", width: fit, library_id: `cab-base-${fit}` });
-    remain = round2(remain - fit);
-  }
-  if (remain >= 9) {
-    pieces.push({ kind: "base", width: 9, library_id: "cab-base-9" });
-    remain = round2(remain - 9);
-  }
-  return { pieces, remainder: remain };
+    let best = { pieces: [], filler: 0, unfilled: round2(remain) };
+    let bestScore = packScore([], 0, remain);
+    for (let i = STANDARD_CABINET_WIDTHS.length - 1; i >= 0; i -= 1) {
+      const width = STANDARD_CABINET_WIDTHS[i];
+      if (width > remain + 0.001) continue;
+      const next = search(round2(remain - width));
+      const cand = {
+        pieces: [width, ...next.pieces],
+        filler: next.filler,
+        unfilled: next.unfilled,
+      };
+      const score = packScore(cand.pieces, cand.filler, cand.unfilled);
+      if (score < bestScore) {
+        best = cand;
+        bestScore = score;
+      }
+    }
+    memo.set(key, best);
+    return best;
+  };
+  const packed = search(g);
+  if (packed.pieces.length && packed.unfilled < 12) return packed;
+  const greedy = greedyPackWidths(g);
+  if ((greedy.pieces.length && greedy.unfilled < packed.unfilled) || !packed.pieces.length) return greedy;
+  return packed;
+}
+
+export function isFixedKitchenObject(obj) {
+  if (!obj || isCountertopObject(obj) || isIslandObject(obj)) return false;
+  if (obj.locked || obj.anchor) return true;
+  const id = String(obj.library_id || "");
+  const tags = obj.tags || [];
+  if (tags.includes("corner") || id.includes("corner") || obj.config === "lazy-susan") return true;
+  if (/^(range|fridge|cooktop|dw-|hood)/.test(id)) return true;
+  if (id.startsWith("cab-sink") || id.includes("sink")) return true;
+  if (isFillerObject(obj) && !obj.auto && !obj.auto_fill) return true;
+  if (!obj.auto_fill && !obj.auto) return true;
+  return false;
 }
 
 function wallRuns(level, room) {
@@ -177,6 +248,123 @@ function wallRuns(level, room) {
 
 function alongOf(interior, x, y) {
   return (x - interior.fx1) * interior.ux + (y - interior.fy1) * interior.uy;
+}
+
+function interiorForKitchenWall(wall, level) {
+  const kitchen = kitchenRoom(level);
+  const interior = wallInterior(wall, kitchen ? [kitchen] : (level?.rooms || []));
+  if (interior.horizontal || interior.vertical) return interior;
+  const horiz = Math.abs(interior.uy) <= Math.abs(interior.ux);
+  return { ...interior, horizontal: horiz, vertical: !horiz };
+}
+
+function runFront(interior) {
+  if (interior.horizontal) return interior.ny >= 0 ? "south" : "north";
+  if (interior.vertical) return interior.nx >= 0 ? "east" : "west";
+  if (Math.abs(interior.nx) >= Math.abs(interior.ny)) return interior.nx >= 0 ? "east" : "west";
+  return interior.ny >= 0 ? "south" : "north";
+}
+
+function isCornerLike(obj) {
+  const id = String(obj?.library_id || "");
+  return Boolean(obj) && ((obj.tags || []).includes("corner") || id.includes("corner") || obj.config === "lazy-susan");
+}
+
+function isHoodLike(obj) {
+  const id = String(obj?.library_id || "");
+  return Boolean(obj) && (id.startsWith("hood") || (obj.tags || []).includes("hood"));
+}
+
+function isApplianceLike(obj) {
+  const id = String(obj?.library_id || "");
+  if (!obj) return false;
+  if (obj.anchor) return true;
+  return /^(range|fridge|cooktop|dw-|washer|dryer)/.test(id) || id.startsWith("cab-sink") || id.includes("sink");
+}
+
+function flushToRun(obj, interior) {
+  const fp = objectFootprint(obj);
+  const cx = fp.x + fp.w / 2;
+  const cy = fp.y + fp.h / 2;
+  const into = (cx - interior.fx1) * interior.nx + (cy - interior.fy1) * interior.ny;
+  const along = alongOf(interior, cx, cy);
+  const slop = Math.max(8, inches(obj.depth) * 0.5 + 4);
+  return {
+    along,
+    into,
+    ok: along > -4 && along < interior.len + 4 && into > -2 && into < slop,
+  };
+}
+
+function occupiesBaseRun(obj, interior, wall) {
+  if (!obj || isCountertopObject(obj) || isIslandObject(obj) || isWallCabinetObject(obj) || isHoodLike(obj)) return false;
+  const id = String(obj.library_id || "");
+  const tall = (obj.tags || []).includes("tall") || id.includes("tall");
+  if (!isFillerObject(obj) && !isBaseRunObject(obj) && !isApplianceLike(obj) && !isCornerLike(obj) && !tall) return false;
+  const flush = flushToRun(obj, interior);
+  if (!flush.ok) return false;
+  if (obj.wall_id && obj.wall_id === wall.id) return true;
+  if (isCornerLike(obj)) return true;
+  return !obj.front || obj.front === runFront(interior);
+}
+
+function sitsOnRun(obj, run) {
+  if (!obj || !run) return false;
+  const flush = flushToRun(obj, run.interior);
+  if (!flush.ok) return false;
+  if (obj.wall_id && obj.wall_id === run.wall.id) return true;
+  if (isCornerLike(obj)) return true;
+  return !obj.front || obj.front === runFront(run.interior);
+}
+
+function mergeSpans(spans) {
+  const rows = [...(spans || [])].sort((a, b) => a.lo - b.lo);
+  const out = [];
+  rows.forEach((span) => {
+    const lo = Number(span.lo) || 0;
+    const hi = Number(span.hi) || 0;
+    if (hi - lo < 0.25) return;
+    const last = out[out.length - 1];
+    if (last && lo <= last.hi + 0.5) {
+      last.hi = Math.max(last.hi, hi);
+      return;
+    }
+    out.push({ ...span, lo, hi });
+  });
+  return out;
+}
+
+function boxesOverlap(a, b, pad = 0.35) {
+  if (!a || !b) return false;
+  const overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return overlapX > pad && overlapY > pad;
+}
+
+function cornerTouchesRun(obj, interior, wall) {
+  if (!isCornerLike(obj) || !interior) return false;
+  if (obj.wall_id && wall?.id && obj.wall_id === wall.id) return true;
+  const fp = objectFootprint(obj);
+  const pts = [[fp.x, fp.y], [fp.x + fp.w, fp.y], [fp.x, fp.y + fp.h], [fp.x + fp.w, fp.y + fp.h]];
+  return pts.some(([x, y]) => {
+    const into = (x - interior.fx1) * interior.nx + (y - interior.fy1) * interior.ny;
+    const along = alongOf(interior, x, y);
+    return into > -4 && into < 42 && along > -4 && along < interior.len + 4;
+  });
+}
+
+function footprintHitsCorner(obj, level) {
+  if (!obj) return false;
+  const a = objectFootprint(obj);
+  return (level?.objects || []).some((other) => {
+    if (!other || other.id === obj.id || !isCornerLike(other)) return false;
+    return boxesOverlap(a, objectFootprint(other), 0.5);
+  });
+}
+
+function userRightIsHigherAlong(interior) {
+  const leftAlong = (-interior.ny) * interior.ux + interior.nx * interior.uy;
+  return leftAlong < 0;
 }
 
 function spanOf(obj, interior) {
@@ -194,20 +382,16 @@ function occupiedSpans(level, interior, wall) {
     spans.push({ lo, hi: lo + inches(op.width), kind: "door" });
   });
   (level?.objects || []).forEach((obj) => {
-    if (!obj || isCountertopObject(obj)) return;
-    if (obj.auto && (obj.tags || []).includes("filler")) return;
-    if (obj.auto_fill && !obj.locked && !obj.anchor) return;
-    const fp = objectFootprint(obj);
-    const cx = fp.x + fp.w / 2;
-    const cy = fp.y + fp.h / 2;
-    const into = (cx - interior.fx1) * interior.nx + (cy - interior.fy1) * interior.ny;
-    if (into < -2 || into > inches(obj.depth) + 14) return;
-    const along = alongOf(interior, cx, cy);
-    if (along < -4 || along > interior.len + 4) return;
+    if (isCornerLike(obj) && cornerTouchesRun(obj, interior, wall)) {
+      const span = spanOf(obj, interior);
+      spans.push({ lo: span.lo, hi: span.hi, kind: "corner", obj });
+      return;
+    }
+    if (!occupiesBaseRun(obj, interior, wall)) return;
     const span = spanOf(obj, interior);
     spans.push({ lo: span.lo, hi: span.hi, kind: obj.anchor || obj.library_id || "object", obj });
   });
-  return spans.sort((a, b) => a.lo - b.lo);
+  return mergeSpans(spans.sort((a, b) => a.lo - b.lo));
 }
 
 function gapsFromSpans(len, spans) {
@@ -216,11 +400,20 @@ function gapsFromSpans(len, spans) {
   spans.forEach((span) => {
     const lo = Math.max(span.lo, 0);
     const hi = Math.min(span.hi, len);
-    if (lo - cursor >= 9) gaps.push({ lo: cursor, hi: lo });
+    if (lo - cursor >= AUTO_MIN_FILLER) gaps.push({ lo: cursor, hi: lo });
     cursor = Math.max(cursor, hi);
   });
-  if (len - cursor >= 9) gaps.push({ lo: cursor, hi: len });
+  if (len - cursor >= AUTO_MIN_FILLER) gaps.push({ lo: cursor, hi: len });
   return gaps;
+}
+
+export function measureOpenRuns(level, wall) {
+  const interior = interiorForKitchenWall(wall, level);
+  const occ = occupiedSpans(level, interior, wall);
+  return gapsFromSpans(interior.len, occ).map((gap) => ({
+    ...gap,
+    length: round2(gap.hi - gap.lo),
+  }));
 }
 
 function windowSpans(wall) {
@@ -242,15 +435,78 @@ function isOperableWindow(op) {
   return OPERABLE.has(String(op?.style || "double-hung"));
 }
 
+function objectOnWall(obj, wall, level) {
+  if (!obj || !wall) return false;
+  if (obj.wall_id && obj.wall_id === wall.id) return true;
+  const interior = wallInterior(wall, level?.rooms || []);
+  const fp = objectFootprint(obj);
+  const cx = fp.x + fp.w / 2;
+  const cy = fp.y + fp.h / 2;
+  const into = (cx - interior.fx1) * interior.nx + (cy - interior.fy1) * interior.ny;
+  const along = alongOf(interior, cx, cy);
+  return into > -2 && into < inches(obj.depth || 24) + 16 && along > -4 && along < interior.len + 4;
+}
+
+function objectOnSelectedWall(obj, wallIds, level) {
+  const ids = new Set(wallIds || []);
+  if (!ids.size) return false;
+  if (obj.wall_id && ids.has(obj.wall_id)) return true;
+  return (level?.walls || []).some((wall) => ids.has(wall.id) && objectOnWall(obj, wall, level));
+}
+
+function placeFillerOnRun(run, start, width, host, standards) {
+  const lib = libraryById("filler") || {
+    id: "filler", name: "Filler strip", width: 3, depth: 24, height: 34.5, tags: ["trim", "filler"], group: "Finishes",
+  };
+  return placeOnRun({ ...lib, width, depth: inches(host?.depth) || 24, height: inches(host?.height) || 34.5 }, run.interior, start, {
+    auto_fill: true,
+    auto: true,
+    locked: false,
+    width,
+    depth: inches(host?.depth) || 24,
+    height: inches(host?.height) || 34.5,
+    note: `Auto Generator filler ${formatFtIn(width)}`,
+    tags: ["trim", "filler"],
+  }, standards);
+}
+
+const DRAWER_DOOR_WIDTHS = [18, 21, 24, 30, 36, 42];
+
+function closestWidth(sizes, width) {
+  const w = Number(width) || 24;
+  return sizes.reduce((best, size) => (Math.abs(size - w) < Math.abs(best - w) ? size : best), sizes[0]);
+}
+
+function withWidth(lib, width, extra = {}) {
+  if (!lib) return null;
+  return { ...lib, width, ...extra };
+}
+
 function pickBaseLib(piece, hints) {
-  if (piece.library_id && libraryById(piece.library_id)) return libraryById(piece.library_id);
   const w = piece.width;
-  if (hints?.nearRange && (w === 12 || w === 15 || w === 18 || w === 21 || w === 24)) {
-    return libOr(`cab-utensil-${w}`, libOr(`cab-drawers-3-${w}`, `cab-base-${w}`));
+  const role = hints?.role || "";
+  if (role === "utensil") {
+    return withWidth(libOr(`cab-utensil-${w}`, libOr(`cab-drawers-3-${w}`, `cab-base-${w}`)), w, { config: "drawers-3" });
   }
-  if (hints?.pots && w >= 24) return libOr(`cab-drawers-3-${w}`, `cab-base-${w}`);
-  if (hints?.nearFridge && w >= 18) return libOr(`cab-tall-${Math.min(w, 24)}`, `cab-base-${w}`);
-  return libOr(`cab-base-${w}`, w < 24 ? "cab-base-18" : "cab-base-24");
+  if (role === "spice") {
+    const spiceW = w <= 21 ? w : 12;
+    return withWidth(libOr(`cab-utensil-${spiceW}`, libOr("cab-specialty", `cab-base-${spiceW}`)), w, { config: "drawers-3" });
+  }
+  if (role === "tray") {
+    return withWidth(libOr(`cab-drawers-3-${w}`, libOr("cab-drawers-3-24", `cab-base-${w}`)), w, { config: "drawers-3" });
+  }
+  if (role === "pots") {
+    return withWidth(libOr(`cab-drawers-3-${w}`, `cab-base-${w}`), w, { config: "drawers-3" });
+  }
+  if (DRAWER_DOOR_WIDTHS.includes(w) && libraryById(`cab-drawer-doors-${w}`)) {
+    return withWidth(libraryById(`cab-drawer-doors-${w}`), w, { config: "drawer-doors" });
+  }
+  if (w >= 18) {
+    const stock = closestWidth(DRAWER_DOOR_WIDTHS, w);
+    const lib = libOr(`cab-drawer-doors-${stock}`, libOr(`cab-base-${w}`, "cab-base-custom"));
+    return withWidth(lib, w, { config: "drawer-doors" });
+  }
+  return withWidth(libOr(`cab-base-${w}`, "cab-base-18"), w, { config: "single" });
 }
 
 function placeOnRun(lib, interior, start, extra, standards) {
@@ -439,8 +695,9 @@ export function placeKitchenAnchor(level, kind, world, design, standards) {
     if (kind === "range") {
       lib = rangeLib(cfg);
       extra.fuel = cfg.fuel === "induction" ? "induction" : cfg.fuel === "electric" ? "electric" : "gas";
-      extra.width = Number(cfg.range_width) === 36 ? 36 : 30;
+      extra.width = designRangeWidth(cfg);
       extra.depth = 24;
+      if (extra.width >= RANGE_SIX_BURNER_MIN && Number(cfg.range_burners) === 4) extra.burners = 4;
     } else if (kind === "fridge") {
       lib = fridgeLib(cfg);
       extra.width = Number(cfg.fridge_width) || 36;
@@ -475,7 +732,22 @@ export function placeKitchenAnchor(level, kind, world, design, standards) {
         draft.wall_id = sink.wall_id || "";
       }
     }
-    const snapped = snapCabinetToWall(draft, { ...level, objects: others }, 1).object;
+    let snapped;
+    if (kind === "sink") {
+      snapped = snapCabinetToWall(draft, { ...level, objects: others }, 1).object;
+    } else {
+      // Range, refrigerator and dishwasher only sit on an interior or exterior wall.
+      const hosted = snapApplianceToWall(draft, { ...level, objects: others }, 1);
+      if (!hosted.onWall) {
+        return {
+          ...level,
+          _kitchenError: kind === "dishwasher" && others.some((obj) => obj.anchor === "sink")
+            ? "The dishwasher goes beside the sink on a wall run. Move the sink to a wall first."
+            : hosted.reason,
+        };
+      }
+      snapped = hosted.object;
+    }
     let objects = [...others, snapped];
     if (kind === "sink") {
       const dwLib = libOr("dw-24", "dw-24");
@@ -496,14 +768,10 @@ export function ensureRangeHood(level, standards) {
   try {
     const { range } = kitchenObjects(level);
     if (!range) return level;
-    const covered = (level.objects || []).some((obj) => {
-      const id = String(obj.library_id || "");
-      if (!id.startsWith("hood") && !(obj.tags || []).includes("hood")) return false;
-      return dist(centerOf(obj).x, centerOf(obj).y, centerOf(range).x, centerOf(range).y) < inches(range.width) / 2 + 20;
-    });
-    if (covered) return level;
-    const w = inches(range.width) >= 36 ? 36 : 30;
-    const lib = libOr(`hood-wall-${w}`, libOr("hood-under-30", "hood-wall-30"));
+    if (hoodNearCooking(level, range)) return level;
+    const w = Math.max(RANGE_MIN_WIDTH, Math.round(inches(range.width)) || RANGE_MIN_WIDTH);
+    const libW = w >= 36 ? 36 : 30;
+    const lib = libOr(`hood-under-${libW}`, libOr(`hood-wall-${libW}`, "hood-under-30"));
     if (!lib) return level;
     const hood = makeItem(lib, range.x, range.y, {
       auto_fill: true,
@@ -511,7 +779,9 @@ export function ensureRangeHood(level, standards) {
       front: range.front,
       wall_id: range.wall_id || "",
       width: w,
-      depth: lib.depth || 20,
+      depth: Math.min(inches(lib.depth) || 18, inches(range.depth) || 24),
+      height: lib.height || 8,
+      note: "Range hood",
     }, standards);
     return { ...level, objects: [...(level.objects || []), hood] };
   } catch (err) {
@@ -541,29 +811,123 @@ function addUtensilHint(gap, interior, level) {
   };
 }
 
-function fillBaseGap(level, run, gap, design, standards, seed) {
+function roleNote(role) {
+  if (role === "utensil") return "Utensil drawers at range";
+  if (role === "spice") return "Spice pull-out at range";
+  if (role === "tray") return "Tray / baking pans at range";
+  if (role === "pots") return "Pots and pans at range";
+  return "Auto Generator";
+}
+
+function fillBaseGap(level, run, gap, design, standards, hints = null) {
   const placed = [];
-  const hints = addUtensilHint(gap, run.interior, level);
-  const prefer = [];
-  if (hints.nearRange) prefer.push({ kind: "base", width: 18, library_id: "cab-utensil-18" });
-  if (hints.pots && gap.hi - gap.lo >= 36) prefer.push({ kind: "base", width: 36, library_id: "cab-drawers-3-36" });
-  if (hints.nearFridge && gap.hi - gap.lo >= 21) prefer.push({ kind: "base", width: 18, library_id: "cab-tall-18" });
-  const packed = packWidths(gap.hi - gap.lo, seed, prefer);
+  const span = round2(gap.hi - gap.lo);
+  if (span < AUTO_MIN_FILLER) return placed;
+  const localHints = hints || addUtensilHint(gap, run.interior, level);
+  if (span <= AUTO_MAX_FILLER) {
+    const filler = placeFillerOnRun(run, gap.lo, span, { depth: 24, height: 34.5 }, standards);
+    if (!footprintHitsCorner(filler, { ...level, objects: [...(level.objects || []), ...placed] })) placed.push(filler);
+    return placed;
+  }
+  if (span < 12) return placed;
+  const packed = packCabinetWidths(span);
+  if (!packed.pieces.length) {
+    console.warn("Kitchen Auto Generator left a fillable opening", { span, wall: run.wall.id });
+    return placed;
+  }
+  const fillerAtStart = gap.lo <= 0.5;
   let cursor = gap.lo;
-  packed.pieces.forEach((piece) => {
-    const lib = pickBaseLib(piece, hints);
-    if (!lib) return;
+  if (packed.filler > 0 && fillerAtStart) {
+    const filler = placeFillerOnRun(run, cursor, packed.filler, { depth: 24, height: 34.5 }, standards);
+    if (!footprintHitsCorner(filler, level)) placed.push(filler);
+    cursor = round2(cursor + packed.filler);
+  }
+  packed.pieces.forEach((width, idx) => {
+    const role = localHints?.roles?.[idx] || "";
+    const lib = pickBaseLib({ width }, { ...localHints, role });
+    if (!lib) {
+      console.warn("Kitchen Auto Generator missing catalog item for", width);
+      return;
+    }
     const obj = placeOnRun(lib, run.interior, cursor, {
       auto_fill: true,
       locked: false,
-      width: piece.width,
+      width,
       depth: 24,
-      config: defaultCabinetConfig(lib),
+      config: lib.config || defaultCabinetConfig(lib),
+      note: roleNote(role),
     }, standards);
+    const live = { ...level, objects: [...(level.objects || []), ...placed] };
+    if (footprintHitsCorner(obj, live)) {
+      console.warn("Kitchen Auto Generator blocked a cabinet that would overlap a corner", { width, wall: run.wall.id });
+      return;
+    }
     placed.push(obj);
-    cursor += piece.width;
+    cursor = round2(cursor + width);
   });
+  if (packed.filler > 0 && !fillerAtStart) {
+    const filler = placeFillerOnRun(run, cursor, packed.filler, placed[placed.length - 1] || { depth: 24, height: 34.5 }, standards);
+    if (!footprintHitsCorner(filler, { ...level, objects: [...(level.objects || []), ...placed] })) placed.push(filler);
+  }
   return placed;
+}
+
+function placePieceOnRun(level, run, start, width, role, standards) {
+  const lib = pickBaseLib({ width }, { role });
+  if (!lib) return null;
+  const obj = placeOnRun(lib, run.interior, start, {
+    auto_fill: true,
+    locked: false,
+    width,
+    depth: 24,
+    config: lib.config || defaultCabinetConfig(lib),
+    note: roleNote(role),
+  }, standards);
+  if (footprintHitsCorner(obj, level)) return null;
+  return obj;
+}
+
+function placeRangeAccessories(level, runs, design, standards) {
+  const { range } = kitchenObjects(level);
+  if (!range) return level;
+  const run = (runs || []).find((row) => sitsOnRun(range, row) || range.wall_id === row.wall.id);
+  if (!run) return level;
+  const span = spanOf(range, run.interior);
+  const occ = occupiedSpans(level, run.interior, run.wall);
+  const gaps = gapsFromSpans(run.interior.len, occ);
+  const rightGap = gaps.find((gap) => Math.abs(gap.lo - span.hi) < 2.5);
+  const leftGap = gaps.find((gap) => Math.abs(gap.hi - span.lo) < 2.5);
+  const preferRight = userRightIsHigherAlong(run.interior);
+  const primary = preferRight ? rightGap : leftGap;
+  const secondary = preferRight ? leftGap : rightGap;
+  const chosen = (primary && round2(primary.hi - primary.lo) >= 12) ? primary : ((secondary && round2(secondary.hi - secondary.lo) >= 12) ? secondary : null);
+  if (!chosen) return level;
+  const fromRight = Math.abs(chosen.lo - span.hi) < 2.5;
+  const opening = round2(chosen.hi - chosen.lo);
+  const placed = [];
+  let cursor = fromRight ? chosen.lo : chosen.hi;
+  const remaining = () => round2(fromRight ? chosen.hi - cursor : cursor - chosen.lo);
+  const tryPlace = (width, role) => {
+    if (remaining() < width - 0.05) return false;
+    const start = fromRight ? cursor : round2(cursor - width);
+    const obj = placePieceOnRun({ ...level, objects: [...(level.objects || []), ...placed] }, run, start, width, role, standards);
+    if (!obj) return false;
+    placed.push(obj);
+    cursor = fromRight ? round2(cursor + width) : start;
+    return true;
+  };
+  const utensilW = [18, 15, 21, 12, 24].find((width) => remaining() >= width);
+  if (utensilW) tryPlace(utensilW, "utensil");
+  if (opening >= 54 && remaining() >= 24) {
+    const trayW = [24, 21, 18].find((width) => remaining() >= width + 12 || remaining() === width);
+    if (trayW && remaining() - trayW >= -0.05) tryPlace(trayW, "tray");
+  }
+  if (opening >= 72 && remaining() >= 12) {
+    const spiceW = [12, 15].find((width) => remaining() >= width);
+    if (spiceW) tryPlace(spiceW, "spice");
+  }
+  if (!placed.length) return level;
+  return { ...level, objects: [...(level.objects || []), ...placed] };
 }
 
 function placeCorners(level, runs, standards) {
@@ -601,105 +965,263 @@ function placeCorners(level, runs, standards) {
 }
 
 function wallSkipZones(run, level) {
-  const { sink, range, fridge } = kitchenObjects(level);
+  const { range, fridge } = kitchenObjects(level);
   const windows = windowSpans(run.wall).map((w) => ({ lo: w.lo - WINDOW_TRIM, hi: w.hi + WINDOW_TRIM, kind: "window" }));
-  const skip = [...windows];
-  if (range && range.wall_id === run.wall.id) skip.push({ ...spanOf(range, run.interior), kind: "range" });
-  if (fridge && fridge.wall_id === run.wall.id) skip.push({ ...spanOf(fridge, run.interior), kind: "fridge" });
-  if (sink && sink.wall_id === run.wall.id) {
-    const ss = spanOf(sink, run.interior);
-    const overWindow = windowSpans(run.wall).some((w) => overlapsSpan(ss, w));
-    if (overWindow) skip.push({ lo: ss.lo - WINDOW_TRIM, hi: ss.hi + WINDOW_TRIM, kind: "sink-window" });
+  const doors = (run.wall.openings || [])
+    .filter((op) => op && (op.type === "door" || op.type === "cased"))
+    .map((op) => ({ lo: inches(op.offset), hi: inches(op.offset) + inches(op.width), kind: "door" }));
+  const skip = [...windows, ...doors];
+  if (range && (sitsOnRun(range, run) || range.wall_id === run.wall.id)) skip.push({ ...spanOf(range, run.interior), kind: "range" });
+  if (fridge && (sitsOnRun(fridge, run) || fridge.wall_id === run.wall.id)) skip.push({ ...spanOf(fridge, run.interior), kind: "fridge" });
+  (level?.objects || []).forEach((obj) => {
+    if (isHoodLike(obj) && (sitsOnRun(obj, run) || obj.wall_id === run.wall.id)) {
+      skip.push({ ...spanOf(obj, run.interior), kind: "hood" });
+    }
+    if (isCornerLike(obj) && cornerTouchesRun(obj, run.interior, run.wall)) {
+      skip.push({ ...spanOf(obj, run.interior), kind: "corner" });
+    }
+    if (isWallCabinetObject(obj) && !obj.auto_fill && !obj.auto && sitsOnRun(obj, run)) {
+      skip.push({ ...spanOf(obj, run.interior), kind: "wall-existing" });
+    }
+  });
+  return mergeSpans(skip);
+}
+
+function pickWallLib(width) {
+  const w = Number(width) || 30;
+  if (libraryById(`cab-wall-${w}`)) return { ...libraryById(`cab-wall-${w}`), width: w };
+  const closest = STANDARD_CABINET_WIDTHS.reduce((best, size) => (
+    Math.abs(size - w) < Math.abs(best - w) ? size : best
+  ), 30);
+  const lib = libOr(`cab-wall-${closest}`, closest >= 24 ? "cab-wall-30" : "cab-wall-18");
+  return lib ? { ...lib, width: STANDARD_CABINET_WIDTHS.includes(w) ? w : closest } : null;
+}
+
+function wallHeightFor(design) {
+  const ceil = Number(design?.ceiling_height) || 96;
+  if (Number(design?.soffit_in) > 0) return Math.max(18, ceil - 54 - Number(design.soffit_in));
+  return ceil >= 108 ? 42 : STANDARD_WALL_HEIGHT;
+}
+
+function wallLayerItems(level, run) {
+  return (level?.objects || []).filter((obj) => {
+    if (!obj) return false;
+    if (isHoodLike(obj) || isCornerLike(obj) || isWallCabinetObject(obj)) {
+      return sitsOnRun(obj, run) || obj.wall_id === run.wall.id || cornerTouchesRun(obj, run.interior, run.wall);
+    }
+    return false;
+  });
+}
+
+function alongTaken(level, run, lo, hi, extra = []) {
+  const items = [...wallLayerItems(level, run), ...extra];
+  return items.some((obj) => {
+    const span = spanOf(obj, run.interior);
+    return Math.min(span.hi, hi) - Math.max(span.lo, lo) > 2;
+  });
+}
+
+function placeWallAt(level, run, start, width, design, standards, extra = {}) {
+  const lib = pickWallLib(width);
+  if (!lib) return null;
+  const height = extra.height || wallHeightFor(design);
+  if (alongTaken(level, run, start, start + width)) return null;
+  const obj = placeOnRun({ ...lib, width, depth: 12, height }, run.interior, start, {
+    auto_fill: true, locked: false, width, depth: 12, height, config: extra.config || "doors", note: extra.note || "Auto Generator",
+  }, standards);
+  if (footprintHitsCorner(obj, level)) return null;
+  if (alongTaken(level, run, start, start + width, [])) {
+    const others = wallLayerItems(level, run);
+    if (others.some((other) => other.id !== obj.id && overlapsSpan(spanOf(other, run.interior), { lo: start, hi: start + width }))) return null;
   }
-  return skip;
+  return obj;
 }
 
 function placeWallCabinets(level, run, design, standards) {
   const placed = [];
   const skip = wallSkipZones(run, level);
-  const { range, fridge, sink } = kitchenObjects(level);
-  const bases = (level.objects || []).filter((obj) => obj.wall_id === run.wall.id && !isIslandObject(obj) && !isWallCabinetObject(obj) && !isCountertopObject(obj));
-  bases.forEach((base) => {
-    const span = spanOf(base, run.interior);
-    if (skip.some((s) => overlapsSpan(span, s))) return;
-    if (String(base.library_id || "").includes("tall") || String(base.library_id || "").includes("corner")) return;
-    const w = inches(base.width);
-    const lib = libOr(`cab-wall-${w >= 36 ? (w > 42 ? 48 : w > 36 ? 42 : 36) : w}`, w >= 24 ? "cab-wall-30" : "cab-wall-18");
-    if (!lib) return;
-    const height = design.soffit_in > 0 ? Math.max(18, (design.ceiling_height || 96) - 54 - design.soffit_in) : lib.height;
-    placed.push(placeOnRun({ ...lib, width: w, depth: 12, height }, run.interior, span.lo, {
-      auto_fill: true, locked: false, width: w, depth: 12, height, config: "doors",
-    }, standards));
+  const { fridge, sink } = kitchenObjects(level);
+  const hosts = (level.objects || []).filter((obj) => {
+    if (!sitsOnRun(obj, run) && obj.wall_id !== run.wall.id) return false;
+    if (isWallCabinetObject(obj) || isCountertopObject(obj) || isIslandObject(obj) || isFillerObject(obj)) return false;
+    const id = String(obj.library_id || "");
+    if (isHoodLike(obj) || isCornerLike(obj) || id.includes("tall")) return false;
+    if (/^(range|fridge|cooktop)/.test(id)) return false;
+    return isBaseRunObject(obj) || isApplianceLike(obj);
   });
-  if (sink && sink.wall_id === run.wall.id) {
+
+  hosts.forEach((host) => {
+    const span = spanOf(host, run.interior);
+    if (skip.some((zone) => overlapsSpan(span, zone))) return;
+    const lo = span.lo;
+    const hi = span.hi;
+    const w = round2(hi - lo);
+    if (w < 12) return;
+    if (alongTaken({ ...level, objects: [...(level.objects || []), ...placed] }, run, lo, hi)) return;
+    const live = { ...level, objects: [...(level.objects || []), ...placed] };
+    if (STANDARD_CABINET_WIDTHS.includes(w)) {
+      const obj = placeWallAt(live, run, lo, w, design, standards);
+      if (obj) placed.push(obj);
+      return;
+    }
+    const packed = packCabinetWidths(w);
+    let at = lo;
+    packed.pieces.forEach((width) => {
+      const obj = placeWallAt({ ...level, objects: [...(level.objects || []), ...placed] }, run, at, width, design, standards);
+      if (obj) placed.push(obj);
+      at = round2(at + width);
+    });
+  });
+
+  if (sink && (sitsOnRun(sink, run) || sink.wall_id === run.wall.id)) {
     const ss = spanOf(sink, run.interior);
     const win = windowSpans(run.wall).find((w) => overlapsSpan(ss, w));
     if (win) {
       const shelf = libOr("cab-shelf-36", "cab-shelf-30");
-      if (shelf && win.height <= 30) {
-        placed.push(placeOnRun(shelf, run.interior, ss.lo, {
+      if (shelf && win.height <= 30 && !alongTaken({ ...level, objects: [...(level.objects || []), ...placed] }, run, ss.lo, ss.hi)) {
+        const obj = placeOnRun(shelf, run.interior, ss.lo, {
           auto_fill: true, locked: false, width: Math.min(inches(sink.width), 36), depth: 12, height: 12, config: "shelf",
           note: "Bridge shelf only — window over sink, no full-height wall cabinet",
-        }, standards));
+        }, standards);
+        if (obj && !footprintHitsCorner(obj, { ...level, objects: [...(level.objects || []), ...placed] })) placed.push(obj);
       }
     }
   }
-  if (range && range.wall_id === run.wall.id) {
-    const w = inches(range.width) >= 36 ? 36 : 30;
-    const hood = libOr(`hood-under-${w}`, libOr("hood-under-30", "hood-wall-30"));
-    const span = spanOf(range, run.interior);
-    placed.push(placeOnRun(hood, run.interior, span.lo, {
-      auto_fill: true, locked: false, width: w, depth: hood.depth, height: hood.height,
-    }, standards));
-  }
-  if (fridge && fridge.wall_id === run.wall.id) {
+  if (fridge && (sitsOnRun(fridge, run) || fridge.wall_id === run.wall.id)) {
     const w = inches(fridge.width) >= 36 ? 36 : 30;
     const over = libOr(`cab-wall-fridge-${w}`, "cab-wall-fridge-36");
     const span = spanOf(fridge, run.interior);
-    placed.push(placeOnRun(over, run.interior, span.lo, {
-      auto_fill: true, locked: false, width: w, depth: 12, height: 18, config: "fridge-wall",
-    }, standards));
+    if (over && !alongTaken({ ...level, objects: [...(level.objects || []), ...placed] }, run, span.lo, span.hi)) {
+      const obj = placeOnRun(over, run.interior, span.lo, {
+        auto_fill: true, locked: false, width: w, depth: 12, height: 18, config: "fridge-wall", note: "Over refrigerator",
+      }, standards);
+      if (obj && !footprintHitsCorner(obj, { ...level, objects: [...(level.objects || []), ...placed] })) placed.push(obj);
+    }
   }
   return placed;
 }
 
-export function autoFillKitchen(level, design, standards) {
-  try {
-    const cfg = kitchenDesignOf({ kitchen_design: design });
-    const room = kitchenRoom(level);
-    if (!room) return { level, warnings: [{ severity: "error", code: "room", text: "Draw the kitchen room first, then mark the four utility locations." }], island: null };
-    const kept = (level.objects || []).filter((obj) => obj.locked || obj.anchor || !obj.auto_fill);
-    let next = { ...level, objects: kept };
-    const runs = wallRuns(next, room);
-    if (!runs.length) return { level: next, warnings: [{ severity: "error", code: "walls", text: "This kitchen has no walls to fill." }], island: null };
-
-    const corners = placeCorners(next, runs, standards);
-    next = { ...next, objects: [...next.objects, ...corners] };
-
-    runs.forEach((run, i) => {
-      const occ = occupiedSpans(next, run.interior, run.wall);
-      gapsFromSpans(run.interior.len, occ).forEach((gap) => {
-        const filled = fillBaseGap(next, run, gap, cfg, standards, cfg.seed + i);
-        next = { ...next, objects: [...next.objects, ...filled] };
+function dedupeWallLayer(level, runs) {
+  let objects = [...(level.objects || [])];
+  (runs || []).forEach((run) => {
+    const layer = objects.filter((obj) => (
+      obj.auto_fill && (isWallCabinetObject(obj) || isHoodLike(obj)) && (sitsOnRun(obj, run) || obj.wall_id === run.wall.id)
+    )).map((obj) => ({ obj, ...spanOf(obj, run.interior) }))
+      .sort((a, b) => (b.hi - b.lo) - (a.hi - a.lo));
+    const drop = new Set();
+    layer.forEach((row, idx) => {
+      if (drop.has(row.obj.id)) return;
+      layer.slice(idx + 1).forEach((other) => {
+        if (drop.has(other.obj.id)) return;
+        if (Math.min(row.hi, other.hi) - Math.max(row.lo, other.lo) <= 2) return;
+        if (isHoodLike(row.obj) && isWallCabinetObject(other.obj)) drop.add(other.obj.id);
+        else if (isHoodLike(other.obj) && isWallCabinetObject(row.obj)) drop.add(row.obj.id);
+        else drop.add(other.obj.id);
       });
     });
+    if (drop.size) objects = objects.filter((obj) => !drop.has(obj.id));
+  });
+  return { ...level, objects };
+}
 
+export function autoGenerateCabinets(level, design, standards, wallIds = []) {
+  try {
+    const cfg = kitchenDesignOf({ kitchen_design: design });
+    const selectedIds = [...new Set((wallIds || []).filter(Boolean))];
+    if (!selectedIds.length) {
+      return {
+        level,
+        warnings: [{ severity: "error", code: "walls", text: "Select the walls that need cabinets, then tap Done." }],
+        island: null,
+        runs: [],
+      };
+    }
+    const selectedWalls = (level?.walls || []).filter((wall) => selectedIds.includes(wall.id));
+    if (!selectedWalls.length) {
+      return {
+        level,
+        warnings: [{ severity: "error", code: "walls", text: "Those walls are no longer on the plan. Select walls again." }],
+        island: null,
+        runs: [],
+      };
+    }
+    const kept = (level.objects || []).filter((obj) => {
+      if (isFixedKitchenObject(obj)) return true;
+      if (isIslandObject(obj) || isCountertopObject(obj)) return true;
+      if ((obj.auto_fill || obj.auto) && objectOnSelectedWall(obj, selectedIds, level)) return false;
+      return true;
+    });
+    let next = { ...level, objects: kept };
+    const runs = selectedWalls
+      .map((wall) => ({ wall, interior: interiorForKitchenWall(wall, next) }))
+      .filter((row) => row.interior.len >= 12);
+    next = placeRangeAccessories(next, runs, cfg, standards);
+    const warnings = [];
+    let guard = 0;
+    while (guard < 6) {
+      guard += 1;
+      let added = 0;
+      runs.forEach((run) => {
+        const occ = occupiedSpans(next, run.interior, run.wall);
+        gapsFromSpans(run.interior.len, occ).forEach((gap) => {
+          const span = round2(gap.hi - gap.lo);
+          if (span > AUTO_MAX_FILLER && span < 12) {
+            if (guard === 1) {
+              warnings.push({
+                severity: "warn",
+                code: "gap",
+                text: `${formatFtIn(span)} open on a selected wall is too small for a standard cabinet and too large for a 4" filler. Leave it and adjust by hand.`,
+              });
+            }
+            return;
+          }
+          const filled = fillBaseGap(next, run, gap, cfg, standards);
+          if (filled.length) {
+            next = { ...next, objects: [...next.objects, ...filled] };
+            added += filled.length;
+          }
+        });
+      });
+      if (!added) break;
+    }
     const walls = [];
     runs.forEach((run) => {
       walls.push(...placeWallCabinets(next, run, cfg, standards));
     });
     next = { ...next, objects: [...next.objects, ...walls] };
-
-    const island = cfg.island_enabled ? suggestIsland(next, cfg, standards) : null;
-    if (island?.object) next = { ...next, objects: [...next.objects, island.object] };
-
+    next = dedupeWallLayer(next, runs);
     next = finishKitchenLevel(next, standards);
-    const warnings = evaluateKitchen(next, cfg);
-    return { level: next, warnings, island };
+    warnings.push(...evaluateKitchen(next, cfg));
+    try {
+      const openings = runs.map((run) => ({
+        wall_id: run.wall.id,
+        gaps: measureOpenRuns(next, run.wall).filter((gap) => gap.length >= 12),
+      }));
+      console.info("Kitchen Auto Generator filled selected walls", {
+        walls: selectedIds.length,
+        placed: (next.objects || []).length - kept.length,
+        leftover: openings,
+      });
+    } catch (logErr) {
+      console.warn("Kitchen Auto Generator could not log run summary", logErr);
+    }
+    return { level: next, warnings, island: null, runs: measureSelectedRuns(next, runs) };
   } catch (err) {
-    console.error("Kitchen auto-fill failed", err);
-    return { level, warnings: [{ severity: "error", code: "autofill", text: "Auto-fill failed. Check the room walls and try again." }], island: null };
+    console.error("Kitchen Auto Generator failed", err);
+    return { level, warnings: [{ severity: "error", code: "autofill", text: "Auto Generator failed. Check the selected walls and try again." }], island: null, runs: [] };
   }
+}
+
+function measureSelectedRuns(level, runs) {
+  return (runs || []).map((run) => ({
+    wall_id: run.wall.id,
+    length: round2(run.interior.len),
+    openings: measureOpenRuns(level, run.wall),
+  }));
+}
+
+export function autoFillKitchen(level, design, standards, wallIds = []) {
+  return autoGenerateCabinets(level, design, standards, wallIds);
 }
 
 export function suggestIsland(level, design, standards) {

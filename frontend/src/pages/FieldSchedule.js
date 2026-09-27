@@ -49,7 +49,7 @@ export default function FieldSchedule() {
       </div>
       {!field ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
-          <div className="text-xs font-semibold uppercase text-[#0A4D68]">Add a shift</div>
+          <div className="text-xs font-semibold uppercase text-[#0B3A8F]">Add a shift</div>
           <select className="h-11 w-full rounded-md border px-2" value={form.job_id} onChange={(e) => setForm({ ...form, job_id: e.target.value })}>
             <option value="">Job</option>
             {jobs.map((j) => <option key={j.id} value={j.id}>{j.job_number} · {j.name}</option>)}
@@ -63,7 +63,7 @@ export default function FieldSchedule() {
             <Input type="time" className="h-11" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} />
             <Input type="time" className="h-11" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} />
           </div>
-          <Button type="button" className="w-full h-11 bg-[#0A4D68]" disabled={add.isPending || !form.job_id || !form.user_id} onClick={() => add.mutate()}>
+          <Button type="button" className="w-full h-11 bg-[#0B3A8F]" disabled={add.isPending || !form.job_id || !form.user_id} onClick={() => add.mutate()}>
             Add shift
           </Button>
         </div>

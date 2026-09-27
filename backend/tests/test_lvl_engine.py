@@ -29,6 +29,22 @@ def test_typical_interior_header_is_conservative_single_or_double():
     assert rec["loads"]["w_plf"] > 0
     assert "Preliminary" in rec["disclaimer"]
     assert rec["engineer_required"] is False
+    assert rec["header_kind"] in ("dimensional", "lvl")
+
+
+def test_short_opening_prefers_twin_dimensional():
+    rec = recommend_lvl({
+        "span_in": 36,
+        "tributary_in": 72,
+        "wall_kind": "interior",
+        "above": "empty",
+        "stories_above": 0,
+    })
+    assert rec["header_kind"] == "dimensional"
+    assert rec["product"] in ("2x6", "2x8", "2x10", "2x12")
+    assert rec["plies"] >= 2
+    assert rec["engineer_required"] is False
+    assert "2x" in rec["label"]
 
 
 def test_long_heavy_span_steps_up_plies_or_flags_engineer():
@@ -41,7 +57,11 @@ def test_long_heavy_span_steps_up_plies_or_flags_engineer():
     })
     assert rec["plies"] >= 2
     assert rec["jack_studs"] >= 3
-    assert rec["width_in"] == rec["plies"] * 1.75
+    assert rec["header_kind"] in ("lvl", "engineer")
+    if rec["header_kind"] == "lvl":
+        assert rec["width_in"] == rec["plies"] * 1.75
+    else:
+        assert rec["engineer_required"] is True
 
 
 def test_jack_studs_scale_with_span():
@@ -53,6 +73,7 @@ def test_jack_studs_scale_with_span():
 if __name__ == "__main__":
     test_cased_opening_triggers_beam()
     test_typical_interior_header_is_conservative_single_or_double()
+    test_short_opening_prefers_twin_dimensional()
     test_long_heavy_span_steps_up_plies_or_flags_engineer()
     test_jack_studs_scale_with_span()
     print("LVL_ENGINE_OK")

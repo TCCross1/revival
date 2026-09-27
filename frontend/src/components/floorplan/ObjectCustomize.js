@@ -10,9 +10,12 @@ import {
   applyWallCabinetDrawerRule, cabinetConfigOptions, isApplianceFinishObject, isBaseRunObject, isCabinetObject, isCountertopObject, isFaucetObject,
   isHoodObject, isMirrorObject, isShowerObject, isSinkObject, isToiletObject, isTubObject, isWallCabinetObject,
   resolvedCabinetConfig, wallCabinetAllowsDrawer,
+  RANGE_MAX_WIDTH, RANGE_MIN_WIDTH, RANGE_SIX_BURNER_MIN, RANGE_SIZE_OPTIONS,
+  burnerOptionsFor, isRangeObject, libraryById, rangeBurnerCount, rangeLibraryIdFor,
 } from "@/lib/floorPlan/library";
 import { WORK_KINDS, workOf } from "@/lib/floorPlan/scope";
 import { formatFtIn, parseFtIn } from "@/lib/floorPlan/units";
+import { markVerified, needsScanVerify } from "@/lib/floorPlan/roomplan";
 
 function Select({ value, onChange, options, testid }) {
   return (
@@ -43,6 +46,26 @@ export default function ObjectCustomize({
   const configOptions = cabinetConfigOptions(obj, level);
   const configValue = resolvedCabinetConfig(obj, level);
   const wallAllowsDrawer = wallCabinetAllowsDrawer(obj, level);
+  const rangeObj = isRangeObject(obj);
+  const rangeSizeValue = String(Math.round(Number(obj.width) || RANGE_MIN_WIDTH));
+  const rangeSizeOptions = RANGE_SIZE_OPTIONS.some((row) => row.id === rangeSizeValue)
+    ? RANGE_SIZE_OPTIONS
+    : [...RANGE_SIZE_OPTIONS, { id: rangeSizeValue, name: `${formatFtIn(obj.width)} · custom` }];
+
+  const setRangeWidth = (value) => {
+    try {
+      const width = Math.min(RANGE_MAX_WIDTH, Math.max(RANGE_MIN_WIDTH, Number(value) || RANGE_MIN_WIDTH));
+      const nextId = rangeLibraryIdFor(obj.library_id, width);
+      const lib = nextId !== obj.library_id ? libraryById(nextId) : null;
+      onPatch({
+        width,
+        burners: width >= RANGE_SIX_BURNER_MIN ? 6 : undefined,
+        ...(lib ? { library_id: lib.id, name: lib.name } : {}),
+      });
+    } catch (err) {
+      console.error("[RangeSize] could not resize the range", { error: err?.message || err, id: obj?.id, value });
+    }
+  };
 
   const dim = (label, key) => (
     <div key={key}>
@@ -66,7 +89,16 @@ export default function ObjectCustomize({
         <LibraryThumb item={preview} />
       </div>
       <div className="font-medium leading-tight">{obj.name}</div>
+      {needsScanVerify(obj) ? (
+        <div className="rounded-md border border-[#C9A227]/55 bg-[#C9A227]/10 p-2 space-y-1" data-testid="scan-verify-object">
+          <div className="text-[11px] text-[#8A7018] font-medium">From scan – verify measurements</div>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] border-[#C9A227] text-[#8A7018]" onClick={() => onPatch(markVerified(obj))}>
+            Mark verified
+          </Button>
+        </div>
+      ) : null}
       <div className="text-xs text-[#4B6370]">{formatFtIn(obj.width)} × {formatFtIn(obj.depth)} × {formatFtIn(obj.height)}</div>
+      <div className="text-[10px] text-[#4B6370]">Drag the cabinet body to move it. Resize only from the gold corner, or type W / D here.</div>
       <div className="flex gap-1">
         <button type="button" className="text-[11px] rounded px-2 py-1.5 text-white" style={{ background: work?.color }} onClick={() => {
           const order = ["existing", "demo", "new"];
@@ -98,8 +130,19 @@ export default function ObjectCustomize({
           <Select
             value={configValue}
             onChange={(config) => {
-              const next = applyWallCabinetDrawerRule({ ...obj, config }, level);
-              onPatch({ config: next.config, over_toilet: next.over_toilet });
+              try {
+                const next = applyWallCabinetDrawerRule({ ...obj, config }, level);
+                onPatch({
+                  config: next.config,
+                  library_id: next.library_id,
+                  name: next.name,
+                  tags: next.tags,
+                  over_toilet: next.over_toilet,
+                });
+              } catch (err) {
+                console.error("Could not apply that cabinet front", err);
+                onPatch({ config });
+              }
             }}
             options={configOptions}
           />
@@ -141,6 +184,26 @@ export default function ObjectCustomize({
           <Select value={obj.appliance_finish || "stainless"} onChange={(appliance_finish) => onPatch({ appliance_finish, finish: appliance_finish })} options={APPLIANCE_FINISHES} />
           {/range|cooktop/.test(String(obj.library_id || "")) ? (
             <Select value={obj.fuel || "electric"} onChange={(fuel) => onPatch({ fuel })} options={APPLIANCE_FUELS} />
+          ) : null}
+          {rangeObj ? (
+            <div className="space-y-1.5" data-testid="range-size-options">
+              <div className="grid grid-cols-2 gap-1">
+                <div>
+                  <Label className="text-[10px]">Range size</Label>
+                  <Select value={rangeSizeValue} onChange={setRangeWidth} options={rangeSizeOptions} testid="range-size" />
+                </div>
+                <div>
+                  <Label className="text-[10px]">Burners</Label>
+                  <Select
+                    value={String(rangeBurnerCount(obj))}
+                    onChange={(value) => onPatch({ burners: Number(value) })}
+                    options={burnerOptionsFor(obj.width)}
+                    testid="range-burners"
+                  />
+                </div>
+              </div>
+              <div className="text-[10px] text-[#4B6370]">Standard ranges are 30&quot; or 33&quot; with 4 burners. Widen to 35&quot;–40&quot; for a 6-burner option.</div>
+            </div>
           ) : null}
         </div>
       ) : isCountertopObject(obj) ? (
@@ -191,7 +254,7 @@ export default function ObjectCustomize({
       ) : null}
 
       {isBaseRunObject(obj) ? (
-        <Button type="button" size="sm" className="h-9 w-full text-xs bg-[#0A4D68] hover:bg-[#083D53]" onClick={onSnapCounters}>Snap countertops to bases</Button>
+        <Button type="button" size="sm" className="h-9 w-full text-xs bg-[#0B3A8F] hover:bg-[#082C73]" onClick={onSnapCounters}>Snap countertops to bases</Button>
       ) : null}
 
       {cabinet || isApplianceFinishObject(obj) || sinky ? (

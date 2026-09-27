@@ -8,7 +8,7 @@ const Row = ({ label, value, hint, strong, gold, testid }) => (
     </div>
     <div
       data-testid={testid}
-      className={`text-sm tabular-nums shrink-0 ${strong ? "font-semibold font-['Outfit'] text-[#0A4D68] text-base" : gold ? "font-medium text-[#8A7018]" : "text-[#061A23]"}`}
+      className={`text-sm tabular-nums shrink-0 ${strong ? "font-semibold font-['Outfit'] text-[#0B3A8F] text-base" : gold ? "font-medium text-[#8A7018]" : "text-[#061A23]"}`}
     >
       {usdCents(value)}
     </div>
@@ -26,7 +26,7 @@ export default function PricingBreakdown({ pricing, emptyHint }) {
   }
   return (
     <div className="rounded-xl border border-slate-200 bg-[#F4F7F8] p-4" data-testid="pricing-breakdown">
-      <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-2">How this price is built</div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-2">How this price is built</div>
       <Row label="Materials + labor + subs + other" value={pricing.direct_costs} hint="What this job costs us directly" testid="price-direct" />
       <Row
         label="This job’s share of monthly overhead"

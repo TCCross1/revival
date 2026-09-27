@@ -33,8 +33,8 @@ EMAIL_KEY = os.environ["EMERGENT_EMAIL_KEY"]
 EMAIL_FROM_NAME = os.environ["EMAIL_FROM_NAME"]
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
 
-TEAL = colors.HexColor("#0A4D68")
-TEAL_DEEP = colors.HexColor("#083D53")
+TEAL = colors.HexColor("#0B3A8F")
+TEAL_DEEP = colors.HexColor("#082C73")
 GOLD = colors.HexColor("#C9A227")
 DARK = colors.HexColor("#061A23")
 GREY = colors.HexColor("#4B6370")
@@ -980,7 +980,7 @@ def build_contract_pdf(c: dict, company: dict | None = None) -> bytes:
         _section_bar(styles, "3. Scope of Work"), Spacer(1, 8),
         _line_table(styles, c.get("line_items") or [], c.get("total")), Spacer(1, 12),
         _section_bar(styles, "4. Contract Price and Payment Terms"), Spacer(1, 8),
-        Paragraph(f"<b>Total Contract Price:</b> <font color='#0A4D68'><b>{money(c.get('total',0))}</b></font>", styles["body"]),
+        Paragraph(f"<b>Total Contract Price:</b> <font color='#0B3A8F'><b>{money(c.get('total',0))}</b></font>", styles["body"]),
         Spacer(1, 8),
         Paragraph("PAYMENT SCHEDULE", styles["gold_label"]), Spacer(1, 4),
     ]
@@ -1238,3 +1238,67 @@ def build_job_receipts_pdf(job: dict, client: dict | None = None, company: dict 
         _thanks_block(styles, "Keep every receipt with the job", "This file updates whenever costs are added or changed on the job sheet.", "Store vendor quotes and photo receipts in the same client Drive folder."),
     ]
     return _render(elems, company, f"Receipts {number}".strip())
+
+
+def build_deposit_receipt_pdf(deposit: dict, job: dict, client: dict | None = None, company: dict | None = None) -> bytes:
+    styles = _styles()
+    job = job or {}
+    deposit = deposit or {}
+    client = _client_from(client, job.get("client_name"))
+    number = job.get("job_number") or "JOB"
+    method = (deposit.get("payment_method") or "card").replace("_", " ").title()
+    status = (deposit.get("status") or "received").title()
+    elems = [
+        _masthead(styles, "DEPOSIT RECEIPT", number, client, "CLIENT", [
+            ("calendar", "DATE", _fmt_date(deposit.get("received_at") or deposit.get("created_at")), None),
+            ("check", "STATUS", status, _status_color(status)),
+            ("dollar", "AMOUNT", money(deposit.get("amount") or 0), None),
+        ]),
+        Spacer(1, 16),
+        _section_bar(styles, "Payment details"),
+        Spacer(1, 8),
+    ]
+    rows = [[
+        _th(styles, "ITEM", "list"),
+        _th(styles, "DETAIL", "tag"),
+    ]]
+    details = [
+        ("Job", job.get("name") or "—"),
+        ("Job number", number),
+        ("Payment method", method),
+        ("Gross amount", money(deposit.get("amount") or 0)),
+        ("Net amount", money(deposit.get("net_amount") or deposit.get("amount") or 0)),
+        ("Square payment", deposit.get("square_payment_id") or "—"),
+        ("Notes", deposit.get("notes") or "Thank you for your deposit."),
+    ]
+    for label, value in details:
+        rows.append([
+            Paragraph(_xml(label), styles["td"]),
+            Paragraph(_xml(str(value)), styles["td_right"]),
+        ])
+    tbl = Table(rows, colWidths=[2.4 * inch, 4.94 * inch], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), TEAL),
+        ("BACKGROUND", (0, 1), (-1, -1), WHITE),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("LINEBELOW", (0, 0), (-1, 0), 1.8, GOLD),
+        ("LINEBELOW", (0, 1), (-1, -1), 0.4, LINE),
+    ]))
+    elems += [
+        tbl,
+        Spacer(1, 12),
+        _totals_box(styles, [["Deposit received", money(deposit.get("amount") or 0), "balance"]]),
+        Spacer(1, 16),
+        _thanks_block(
+            styles,
+            "Thank you for your deposit",
+            "This payment is recorded on your Revival Home Remodeling job. Funds are parked in the job’s Square Savings folder when banking is available.",
+            "Keep this receipt with your contract.",
+        ),
+    ]
+    return _render(elems, company, f"Deposit {number}".strip())
+

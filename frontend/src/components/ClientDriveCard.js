@@ -70,7 +70,7 @@ export default function ClientDriveCard({
     return (
       <div className={`rounded-xl border border-slate-200 bg-white ${compact ? "p-3" : "p-5"}`} data-testid="client-drive-card">
         <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0A4D68]/10 text-[#0A4D68] shrink-0">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0B3A8F]/10 text-[#0B3A8F] shrink-0">
             <FolderOpen size={18} />
           </span>
           <div className="min-w-0">
@@ -89,12 +89,12 @@ export default function ClientDriveCard({
     return (
       <div className={`rounded-xl border border-slate-200 bg-white ${compact ? "p-3" : "p-5"}`} data-testid="client-drive-card">
         <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0A4D68]/10 text-[#0A4D68] shrink-0">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0B3A8F]/10 text-[#0B3A8F] shrink-0">
             <FolderOpen size={18} />
           </span>
           <div className="min-w-0">
             <div className="font-['Outfit'] font-semibold text-[#061A23]">Google Drive folder</div>
-            <p className="text-sm text-[#4B6370] mt-1">Connect <span className="font-medium text-[#0A4D68]">{drive?.expected_email || "revivalhomeremodelingllc@gmail.com"}</span> in Company Profile. Files then save under Revival Pro → Clients → this client → Floor Plans, Receipts, Reports, or Job Sheets.</p>
+            <p className="text-sm text-[#4B6370] mt-1">Connect <span className="font-medium text-[#0B3A8F]">{drive?.expected_email || "revivalhomeremodelingllc@gmail.com"}</span> in Company Profile. Files then save under Revival Pro → Clients → this client → Floor Plans, Receipts, Reports, or Job Sheets.</p>
             <Button type="button" variant="outline" className="mt-3" onClick={() => navigate("/settings")} data-testid="client-drive-settings-btn">
               Connect Google Drive
             </Button>
@@ -122,13 +122,13 @@ export default function ClientDriveCard({
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
           {hasFolder ? (
-            <Button type="button" asChild className="bg-[#0A4D68] hover:bg-[#083D53] gap-2" data-testid="client-drive-open-btn">
+            <Button type="button" asChild className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2" data-testid="client-drive-open-btn">
               <a href={drive.folder_url} target="_blank" rel="noopener noreferrer">
                 <ExternalLink size={16} /> Open folder
               </a>
             </Button>
           ) : (
-            <Button type="button" onClick={onCreate} disabled={creating} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2" data-testid="client-drive-create-btn">
+            <Button type="button" onClick={onCreate} disabled={creating} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2" data-testid="client-drive-create-btn">
               <FolderPlus size={16} /> {creating ? "Creating…" : "Create folder"}
             </Button>
           )}
@@ -145,14 +145,14 @@ export default function ClientDriveCard({
             {files.slice(0, 12).map((file) => (
               <li key={file.id || file.google_drive_file_id || file.filename} className="py-2 flex items-center justify-between gap-3 min-w-0">
                 <div className="flex items-start gap-2 min-w-0">
-                  <FileText size={14} className="mt-0.5 text-[#0A4D68] shrink-0" />
+                  <FileText size={14} className="mt-0.5 text-[#0B3A8F] shrink-0" />
                   <div className="min-w-0">
                     <div className="text-sm text-[#061A23] truncate">{file.filename || "Document"}</div>
                     <div className="text-xs text-[#4B6370]">{file.kind_label || file.kind}{formatWhen(file.uploaded_at) ? ` · ${formatWhen(file.uploaded_at)}` : ""}</div>
                   </div>
                 </div>
                 {file.web_view_link ? (
-                  <a href={file.web_view_link} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-[#0A4D68] hover:underline shrink-0">
+                  <a href={file.web_view_link} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-[#0B3A8F] hover:underline shrink-0">
                     Open
                   </a>
                 ) : null}
@@ -176,11 +176,11 @@ export default function ClientDriveCard({
               <option key={option.id} value={option.id}>{option.label}</option>
             ))}
           </select>
-          <input ref={fileRef} type="file" className="hidden" onChange={onPickFile} data-testid="client-drive-file-input" />
+          <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.heic,.heif,.mov,.mp4" className="hidden" onChange={onPickFile} data-testid="client-drive-file-input" />
           <Button
             type="button"
             variant="outline"
-            className="gap-2 border-[#0A4D68]/25 text-[#0A4D68]"
+            className="gap-2 border-[#0B3A8F]/25 text-[#0B3A8F]"
             disabled={uploading}
             onClick={() => fileRef.current?.click()}
             data-testid="client-drive-upload-btn"

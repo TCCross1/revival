@@ -82,7 +82,7 @@ export default function Team() {
         <Button type="button" variant="outline" onClick={() => navigate("/permissions")}>Roles & permissions</Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="invite-teammate-btn" onClick={() => setForm(EMPTY)} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2"><UserPlus size={18} /> Invite Teammate</Button>
+            <Button data-testid="invite-teammate-btn" onClick={() => setForm(EMPTY)} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2"><UserPlus size={18} /> Invite Teammate</Button>
           </DialogTrigger>
           <DialogContent className="bg-white max-w-md">
             <DialogHeader><DialogTitle className="font-['Outfit'] text-2xl">Invite Teammate</DialogTitle></DialogHeader>
@@ -107,7 +107,7 @@ export default function Team() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button type="submit" data-testid="save-teammate-btn" disabled={create.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">{create.isPending ? "Inviting…" : "Send Invite"}</Button>
+                <Button type="submit" data-testid="save-teammate-btn" disabled={create.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">{create.isPending ? "Inviting…" : "Send Invite"}</Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -129,7 +129,7 @@ export default function Team() {
               {isLoading && <tr><td colSpan={6} className="p-6 text-[#4B6370]">Loading…</td></tr>}
               {members.map((m) => (
                 <tr key={m.user_id} data-testid={`team-row-${m.user_id}`} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="p-4 font-medium flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0A4D68]/10 text-[#0A4D68]"><UserIcon size={15} /></span>{m.name}</td>
+                  <td className="p-4 font-medium flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0B3A8F]/10 text-[#0B3A8F]"><UserIcon size={15} /></span>{m.name}</td>
                   <td className="p-4 text-[#4B6370]">{m.email}</td>
                   <td className="p-4">
                     <select
@@ -156,7 +156,7 @@ export default function Team() {
                   <td className="p-4 text-[#4B6370]">{fmtDate(m.created_at)}</td>
                   <td className="p-4">
                     <div className="flex items-center justify-end gap-1">
-                      <button data-testid={`reset-pw-${m.user_id}`} onClick={() => { setPwTarget(m); setNewPw(""); setPwOpen(true); }} title="Set password" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]"><KeyRound size={16} /></button>
+                      <button data-testid={`reset-pw-${m.user_id}`} onClick={() => { setPwTarget(m); setNewPw(""); setPwOpen(true); }} title="Set password" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><KeyRound size={16} /></button>
                       {m.user_id !== user.user_id && (
                         <button data-testid={`delete-member-${m.user_id}`} onClick={() => { if (window.confirm(`Remove ${m.name}?`)) remove.mutate(m.user_id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
                       )}
@@ -176,7 +176,7 @@ export default function Team() {
             <div><Label>New password</Label><Input data-testid="member-new-password" type="text" className="mt-1" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="At least 6 characters" /></div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setPwOpen(false)}>Cancel</Button>
-              <Button data-testid="save-member-password-btn" onClick={() => { if (newPw.length < 6) return toast.error("At least 6 characters"); setPw.mutate({ id: pwTarget.user_id, password: newPw }); }} className="bg-[#0A4D68] hover:bg-[#083D53]">Set Password</Button>
+              <Button data-testid="save-member-password-btn" onClick={() => { if (newPw.length < 6) return toast.error("At least 6 characters"); setPw.mutate({ id: pwTarget.user_id, password: newPw }); }} className="bg-[#0B3A8F] hover:bg-[#082C73]">Set Password</Button>
             </DialogFooter>
           </div>
         </DialogContent>

@@ -17,7 +17,7 @@ def test_catalog_has_new_kitchen_and_window_items():
         "island-white-marble", "island-navy", "island-oak", "range-black-ss", "fridge-panel",
         "vanity-walnut-double", "vanity-oak-float", "sink-farm-33", "sink-vessel-white",
         "shower-black-frame", "tub-japanese", "faucet-gold", "bench-corner",
-        "cab-utensil-18", "cab-drawers-3-24", "cab-drawer-doors-36", "cab-wall-fridge-36",
+        "cab-utensil-18", "cab-drawers-3-24", "cab-drawers-3-30", "cab-drawers-4-30", "cab-drawer-doors-36", "cab-wall-fridge-36",
         "cab-wall-hood-30", "cab-shelf-36", "cab-blind-42", "cab-tall-36",
         "cab-base-9", "island-seat-84", "island-sink-72", "range-gas-36", "range-induction-30",
         "shower-neo-42", "shower-corner-36", "tub-jetted-60", "vanity-double-72", "faucet-pulldown",

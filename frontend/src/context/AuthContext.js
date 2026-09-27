@@ -7,6 +7,15 @@ const DEV_BYPASS_AUTH =
   process.env.NODE_ENV === "development" &&
   String(process.env.REACT_APP_DEV_BYPASS_AUTH || "").trim() === "1";
 
+const LOCAL_DESIGN_USER = {
+  user_id: "local-design",
+  email: "tccross1179@gmail.com",
+  name: "Anthony",
+  role: "admin",
+  picture: "",
+  dev_bypass: true,
+};
+
 async function loadFieldExtras() {
   try {
     return (await api.get("/field/me")).data || {};
@@ -20,6 +29,29 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const checkAuth = useCallback(async () => {
+    if (DEV_BYPASS_AUTH) {
+      try {
+        const bypass = await api.post("/auth/dev-bypass");
+        if (bypass.data?.session_token) {
+          localStorage.setItem("session_token", bypass.data.session_token);
+        }
+        const extra = await loadFieldExtras();
+        setUser({
+          ...LOCAL_DESIGN_USER,
+          ...bypass.data,
+          ...extra,
+          role: extra.role || bypass.data?.role || "admin",
+          dev_bypass: true,
+        });
+      } catch (bypassErr) {
+        console.warn("API is offline; staying in local design mode", bypassErr?.message || bypassErr);
+        setUser(LOCAL_DESIGN_USER);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     const timeout = new Promise((_, reject) => {
       setTimeout(() => reject(new Error("Auth check timed out")), 8000);
     });
@@ -28,24 +60,6 @@ export const AuthProvider = ({ children }) => {
       const extra = await loadFieldExtras();
       setUser({ ...res.data, ...extra, role: extra.role || res.data.role });
     } catch (err) {
-      if (DEV_BYPASS_AUTH) {
-        try {
-          const bypass = await Promise.race([api.post("/auth/dev-bypass"), timeout]);
-          if (bypass.data?.session_token) {
-            localStorage.setItem("session_token", bypass.data.session_token);
-          }
-          const extra = await loadFieldExtras();
-          setUser({
-            ...bypass.data,
-            ...extra,
-            role: extra.role || bypass.data?.role || "admin",
-            dev_bypass: true,
-          });
-          return;
-        } catch (bypassErr) {
-          console.error("Dev auth bypass failed", bypassErr);
-        }
-      }
       console.error("Auth check failed", err);
       setUser(null);
     } finally {
@@ -77,6 +91,11 @@ export const AuthProvider = ({ children }) => {
       await api.post("/auth/logout");
     } catch {}
     localStorage.removeItem("session_token");
+    if (DEV_BYPASS_AUTH) {
+      setUser(LOCAL_DESIGN_USER);
+      window.location.href = "/";
+      return;
+    }
     setUser(null);
     window.location.href = "/login";
   };

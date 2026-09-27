@@ -1,92 +1,17 @@
 import { inches, round2 } from "./units";
+import rawShopPrices from "./shopPrices.json";
 
-export const FLOORING_PRICES = {
-  lvp: 5.25,
-  tile: 9.5,
-  carpet: 4.25,
-  engineered_hardwood: 8.75,
-  solid_hardwood: 11.5,
-};
-export const COUNTER_PRICES = {
-  quartz: 78,
-  granite: 68,
-  marble: 95,
-  carrara: 95,
-  calacatta: 110,
-  formica: 28,
-  butcher: 42,
-  solid: 55,
-  soapstone: 88,
-  concrete: 62,
-};
-export const APPLIANCE_PRICES = {
-  "range-30": 1299,
-  "range-36": 1899,
-  "range-black-ss": 2099,
-  "range-white": 1199,
-  "range-gas-30": 1499,
-  "range-gas-36": 2199,
-  "range-induction-30": 1899,
-  "range-induction-36": 2499,
-  "fridge-36": 2199,
-  "fridge-30": 1799,
-  "fridge-42": 3299,
-  "fridge-french-36": 2699,
-  "fridge-bottom-36": 1999,
-  "fridge-panel": 2499,
-  "dw-18": 749,
-  "dw-24": 649,
-  "dw-panel": 799,
-  "micro-24": 329,
-  "micro-drawer": 689,
-  "micro-over-30": 429,
-  cooktop: 1499,
-  "cooktop-30": 1199,
-  "cooktop-36": 1499,
-  "cooktop-gas-30": 1299,
-  "cooktop-gas-36": 1699,
-  "oven-wall": 1699,
-  "oven-wall-double": 2899,
-  "wine-fridge": 1299,
-  "wine-fridge-15": 899,
-  "ice-maker": 899,
-  washer: 799,
-  dryer: 749,
-  disposal: 189,
-  "sink-33": 425,
-  "sink-farm-33": 685,
-  "sink-double-33": 495,
-  "sink-composite-33": 545,
-  "sink-copper-33": 795,
-  "sink-work-36": 890,
-};
-export const LIGHT_PRICES = {
-  "light-recessed": 85,
-  "light-flush": 72,
-  "light-layout": 85,
-  "light-pendant": 145,
-  "light-chandelier": 420,
-  "light-vanity": 165,
-  "light-sconce": 95,
-  "light-undercab": 48,
-  "fan-ceiling": 285,
-  "fan-light": 345,
-};
-export const WINDOW_MATERIAL_PRICES = {
-  vinyl: 425,
-  "vinyl-clad": 545,
-  wood: 685,
-  "aluminum-clad": 625,
-};
-export const DOOR_STYLE_PRICES = {
-  "six-panel": 285,
-  flush: 195,
-  french: 890,
-  sliding: 780,
-  "bi-fold": 240,
-  pocket: 410,
-};
-export const GROUP_DEFAULTS = {
+const shopPrices = rawShopPrices?.flooring
+  ? rawShopPrices
+  : (rawShopPrices?.default || {});
+
+export const FLOORING_PRICES = shopPrices.flooring || {};
+export const COUNTER_PRICES = shopPrices.countertops || {};
+export const APPLIANCE_PRICES = shopPrices.appliances || {};
+export const LIGHT_PRICES = shopPrices.lighting || {};
+export const WINDOW_MATERIAL_PRICES = shopPrices.window_materials || {};
+export const DOOR_STYLE_PRICES = shopPrices.door_styles || {};
+export const GROUP_DEFAULTS = shopPrices.group_defaults || {
   Flooring: 5.25,
   Cabinets: 420,
   Countertops: 78,

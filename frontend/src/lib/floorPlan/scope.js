@@ -8,7 +8,7 @@ import {
 } from "./priceBook";
 
 export const WORK_KINDS = [
-  { id: "existing", name: "Existing", color: "#0A4D68" },
+  { id: "existing", name: "Existing", color: "#0B3A8F" },
   { id: "demo", name: "Demolition", color: "#C62828" },
   { id: "new", name: "New work", color: "#2E7D32" },
 ];
@@ -62,8 +62,8 @@ function addQty(map, key, row) {
   map.set(key, { ...row });
 }
 
-export function buildScope(document) {
-  const takeoffs = computeTakeoffs(document);
+export function buildScope(document, projectType = "") {
+  const takeoffs = computeTakeoffs(document, projectType);
   const items = new Map();
   const cabinets = [];
   const appliances = [];

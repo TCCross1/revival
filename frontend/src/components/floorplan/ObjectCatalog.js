@@ -71,7 +71,7 @@ export default function ObjectCatalog({ placing, onPlace, houseFavorites = [], o
 
   return (
     <div className="space-y-2" data-testid="object-library">
-      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#0A4D68]">Object catalogue</div>
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#0B3A8F]">Object catalogue</div>
       <input
         className="h-10 w-full rounded-full border border-slate-200 bg-[#FBF8F2] px-3 text-xs"
         placeholder="Search cabinets, appliances, showers…"
@@ -84,7 +84,7 @@ export default function ObjectCatalog({ placing, onPlace, houseFavorites = [], o
             key={g.name}
             type="button"
             onClick={() => { setGroup(g.name); setSubgroup("All"); }}
-            className={`shrink-0 rounded-full px-2.5 py-1.5 text-[11px] ${group === g.name ? "bg-[#0A4D68] text-white" : "bg-slate-100 text-[#4B6370]"}`}
+            className={`shrink-0 rounded-full px-2.5 py-1.5 text-[11px] ${group === g.name ? "bg-[#0B3A8F] text-white" : "bg-slate-100 text-[#4B6370]"}`}
           >
             {g.name}
           </button>
@@ -110,7 +110,7 @@ export default function ObjectCatalog({ placing, onPlace, houseFavorites = [], o
             key={row.id}
             type="button"
             onClick={() => setSize(row.id)}
-            className={`shrink-0 rounded-full px-2 py-1 text-[10px] ${size === row.id ? "bg-[#0A4D68] text-white" : "bg-slate-100 text-[#4B6370]"}`}
+            className={`shrink-0 rounded-full px-2 py-1 text-[10px] ${size === row.id ? "bg-[#0B3A8F] text-white" : "bg-slate-100 text-[#4B6370]"}`}
           >
             {row.name}
           </button>
