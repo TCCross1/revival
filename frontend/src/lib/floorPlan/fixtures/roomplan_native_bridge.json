@@ -1,0 +1,78 @@
+{
+  "units": "m",
+  "meters": true,
+  "walls": [
+    {
+      "category": "wall",
+      "dimensions": [3.6576, 2.44, 0.15],
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1.8288, 1.2, 0.0, 1]
+    },
+    {
+      "category": "wall",
+      "dimensions": [4.2672, 2.44, 0.15],
+      "transform": [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 3.6576, 1.2, 2.1336, 1]
+    },
+    {
+      "category": "wall",
+      "dimensions": [3.6576, 2.44, 0.15],
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1.8288, 1.2, 4.2672, 1]
+    },
+    {
+      "category": "wall",
+      "dimensions": [4.2672, 2.44, 0.15],
+      "transform": [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0.0, 1.2, 2.1336, 1]
+    }
+  ],
+  "doors": [
+    {
+      "category": "door",
+      "dimensions": [0.81, 2.03, 0.1],
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.8, 1.0, 0.0, 1]
+    }
+  ],
+  "windows": [
+    {
+      "category": "window",
+      "dimensions": [1.22, 1.22, 0.1],
+      "transform": [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 3.6576, 1.2, 2.0, 1]
+    }
+  ],
+  "openings": [],
+  "objects": [
+    {
+      "category": "refrigerator",
+      "dimensions": [0.91, 1.78, 0.7],
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.45, 0.9, 1.1, 1]
+    },
+    {
+      "category": "stove",
+      "dimensions": [0.76, 0.91, 0.63],
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.4, 0.45, 0.35, 1]
+    },
+    {
+      "category": "dishwasher",
+      "dimensions": [0.61, 0.86, 0.61],
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.9, 0.45, 0.35, 1]
+    },
+    {
+      "category": "sink",
+      "dimensions": [0.91, 0.9, 0.55],
+      "transform": [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 3.2, 0.45, 1.6, 1]
+    },
+    {
+      "category": "storage",
+      "dimensions": [0.61, 0.88, 0.6],
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1.2, 0.45, 0.3, 1]
+    },
+    {
+      "category": "storage",
+      "dimensions": [0.76, 0.76, 0.3],
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1.8, 1.6, 0.3, 1]
+    },
+    {
+      "category": "table",
+      "dimensions": [2.44, 0.91, 1.07],
+      "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1.8, 0.45, 2.2, 1]
+    }
+  ]
+}

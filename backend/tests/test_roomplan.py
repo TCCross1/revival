@@ -105,3 +105,28 @@ def test_last_write_wins_skips_dirty_local():
     assert should_apply_remote(1, 2, local_dirty=True) is False
     assert next_revision({"revision": 4}) == 5
     assert next_revision({}) == 1
+
+
+def test_native_bridge_json_places_kitchen_and_marks_verify():
+    """JSON shape emitted by native/ios/RevivalRoomPlanBridge.swift encode()."""
+    import json
+
+    payload = json.loads((Path(__file__).parent / "fixtures" / "roomplan_native_bridge.json").read_text())
+    assert payload["units"] == "m"
+    assert payload["meters"] is True
+    level = import_roomplan(payload)
+    assert len(level["walls"]) == 4
+    assert all(wall.get("from_scan") and wall.get("scan_verify") for wall in level["walls"])
+    opening_types = {o["type"] for wall in level["walls"] for o in (wall.get("openings") or [])}
+    assert "door" in opening_types
+    assert "window" in opening_types
+    ids = {obj["library_id"] for obj in level["objects"]}
+    assert any(i.startswith("fridge-") for i in ids)
+    assert any(i.startswith("range-") for i in ids)
+    assert any(i.startswith("dw-") for i in ids)
+    assert any(i.startswith("cab-sink-") for i in ids)
+    assert any(i.startswith("cab-base-") for i in ids)
+    assert any(i.startswith("cab-wall-") for i in ids)
+    assert any(i.startswith("island") for i in ids)
+    assert all(obj.get("from_scan") and SCAN_VERIFY_NOTE in (obj.get("note") or "") for obj in level["objects"])
+    assert level["rooms"], "native scan should produce a kitchen room outline"

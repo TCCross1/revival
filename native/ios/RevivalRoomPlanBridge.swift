@@ -1,5 +1,6 @@
 import Foundation
 import RoomPlan
+import UIKit
 import WebKit
 
 /// WKWebView bridge for Revival Pro Floor Plan Studio.
@@ -13,16 +14,26 @@ import WebKit
 
 final class RevivalRoomPlanBridge: NSObject, WKScriptMessageHandler, RoomCaptureViewControllerDelegate {
     private weak var webView: WKWebView?
+    private weak var presenter: UIViewController?
     private var capture: RoomCaptureViewController?
 
-    init(webView: WKWebView) {
+    init(webView: WKWebView, presenter: UIViewController) {
         self.webView = webView
+        self.presenter = presenter
         super.init()
         webView.configuration.userContentController.add(self, name: "roomPlan")
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "roomPlan" else { return }
+        var action = "scan"
+        if let body = message.body as? [String: Any], let raw = body["action"] as? String, !raw.isEmpty {
+            action = raw
+        }
+        guard action == "scan" else {
+            NSLog("Revival RoomPlan ignored action=%@", action)
+            return
+        }
         presentScanner()
     }
 
@@ -31,21 +42,32 @@ final class RevivalRoomPlanBridge: NSObject, WKScriptMessageHandler, RoomCapture
             deliverError("This iPhone does not support RoomPlan. Import a scan JSON instead.")
             return
         }
+        guard let presenter else {
+            deliverError("Could not open the kitchen scanner from this screen.")
+            return
+        }
         let controller = RoomCaptureViewController()
         controller.delegate = self
         capture = controller
-        webView?.window?.rootViewController?.present(controller, animated: true)
+        presenter.present(controller, animated: true)
     }
 
-    func captureView(_ controller: RoomCaptureViewController, didPresent capturedRoom: CapturedRoom, error: Error?) {
-        controller.dismiss(animated: true)
+    func captureView(shouldPresent room: CapturedRoom, error: Error?) -> Bool {
+        if let error {
+            NSLog("Revival RoomPlan capture warning: %@", error.localizedDescription)
+        }
+        return true
+    }
+
+    func captureView(didPresent room: CapturedRoom, error: Error?) {
+        capture?.dismiss(animated: true)
         capture = nil
         if let error {
             deliverError(error.localizedDescription)
             return
         }
         do {
-            let payload = encode(capturedRoom)
+            let payload = encode(room)
             let data = try JSONSerialization.data(withJSONObject: payload, options: [])
             guard let json = String(data: data, encoding: .utf8) else {
                 deliverError("Could not encode that scan.")
@@ -63,7 +85,10 @@ final class RevivalRoomPlanBridge: NSObject, WKScriptMessageHandler, RoomCapture
     }
 
     private func deliverError(_ message: String) {
-        let escaped = message.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let escaped = message
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
         webView?.evaluateJavaScript("window.revivalReceiveScan && window.revivalReceiveScan(null, \"\(escaped)\")")
     }
 

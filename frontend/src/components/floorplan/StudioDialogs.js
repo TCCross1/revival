@@ -78,8 +78,8 @@ export default function StudioDialogs({
             {hasNativeRoomPlan()
               ? "Walk the kitchen with this iPhone. RoomPlan captures walls, openings, the island, sink, and appliances, then drops a rough layout on this plan. Measurements are approximate — verify them before you order."
               : isIPhone()
-                ? "LiDAR scanning uses Apple RoomPlan in Revival Pro’s iPhone app (LiPhone). You can still import a RoomPlan JSON export here. After the scan, this plan stays in sync with Mac."
-                : "On an iPhone 16 Pro, Scan Kitchen runs Apple RoomPlan. Here you can import that scan JSON, or load a sample kitchen to practice cleanup. Edits sync to the phone automatically."}
+                ? "LiDAR scanning uses Apple RoomPlan in Revival Pro’s iPhone app. You can still import a RoomPlan JSON export here. After the scan, this plan stays in sync with Mac."
+                : "On an iPhone 16 Pro, Scan Kitchen runs Apple RoomPlan inside the Revival iPhone app. Here you can import that scan JSON, or load a sample kitchen to practice cleanup. Edits sync to the phone automatically."}
           </p>
           {hasNativeRoomPlan() ? (
             <Button
