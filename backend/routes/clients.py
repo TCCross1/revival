@@ -40,6 +40,7 @@ def attach_client_routes(api_router: APIRouter):
         ClientCreate,
         DriveCredentialsIn,
         DriveCryptoError,
+        Contract,
         Estimate,
         Invoice,
         Job,
@@ -131,6 +132,7 @@ def attach_client_routes(api_router: APIRouter):
         estimates = await db.estimates.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
         jobs = await docs_for_client(db.jobs, client_id, client.get("name", ""))
         invoices = await docs_for_client(db.invoices, client_id, client.get("name", ""))
+        contracts = await db.contracts.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
 
         est_open = [e for e in estimates if e.get("status") in {"Draft", "Sent", "Follow-up"}]
         won_value = round(sum(e.get("total", 0) for e in estimates if e.get("status") == "Won"), 2)
@@ -143,6 +145,7 @@ def attach_client_routes(api_router: APIRouter):
             "estimates": [Estimate(**e).model_dump() for e in estimates],
             "jobs": [Job(**j).model_dump() for j in jobs],
             "invoices": [Invoice(**i).model_dump() for i in invoices],
+            "contracts": [Contract(**c).model_dump() for c in contracts],
             "summary": {
                 "estimates_count": len(estimates),
                 "open_pipeline": round(sum(e.get("total", 0) for e in est_open), 2),

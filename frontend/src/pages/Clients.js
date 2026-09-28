@@ -14,7 +14,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Pencil, Trash2, Phone, Mail, MapPin, Eye } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Phone, Mail, MapPin, Eye, FileUp } from "lucide-react";
 import { toast } from "sonner";
 
 const SOURCES = ["Thumbtack", "Angi", "Referral", "Website", "Google", "Facebook", "Walk-in", "Other"];
@@ -28,6 +28,10 @@ export default function Clients() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [search, setSearch] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importName, setImportName] = useState("");
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ["clients"],
@@ -64,6 +68,32 @@ export default function Clients() {
     save.mutate(form);
   };
 
+  const importProposal = async (e) => {
+    e.preventDefault();
+    if (!importFile) return toast.error("Choose the Word proposal first.");
+    if (!importFile.name.toLowerCase().endsWith(".docx")) return toast.error("Upload a .docx Word file.");
+    setImporting(true);
+    try {
+      const body = new FormData();
+      body.append("file", importFile);
+      if (importName.trim()) body.append("client_name", importName.trim());
+      const { data } = await api.post("/proposals/ingest", body, { timeout: 60000 });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["financials-overview"] });
+      toast.success(`Imported ${data.client.name}`);
+      setImportOpen(false);
+      setImportFile(null);
+      setImportName("");
+      navigate(`/clients/${data.client.id}`);
+    } catch (err) {
+      toast.error(await formatApiError(err, "Could not import that proposal. Please try again."));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const filtered = clients.filter((c) =>
     [c.name, c.email, c.phone, formatPhone(c.phone), c.source].join(" ").toLowerCase().includes(search.toLowerCase())
   );
@@ -75,7 +105,11 @@ export default function Clients() {
           <h1 className="text-3xl sm:text-4xl font-semibold font-['Outfit'] tracking-tight">Clients</h1>
           <p className="text-[#4B6370] mt-1">Your simple contact book for leads and customers.</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" data-testid="import-proposal-btn" variant="outline" className="border-[#0B3A8F]/30 text-[#0B3A8F] gap-2" onClick={() => setImportOpen(true)}>
+            <FileUp size={18} /> Import proposal
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button data-testid="add-client-btn" onClick={openNew} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2">
               <Plus size={18} /> Add Client
@@ -137,7 +171,33 @@ export default function Clients() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="bg-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-['Outfit'] text-2xl">Import a proposal</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={importProposal} className="space-y-4">
+            <p className="text-sm text-[#4B6370]">Upload a Revival estimate or contract. Revival creates the client master file, the job sheet, the contract, and the invoice so the sale shows on the client, the job, and Financials.</p>
+            <div>
+              <Label htmlFor="proposal-file">Word proposal (.docx)</Label>
+              <Input id="proposal-file" data-testid="proposal-file-input" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="mt-1" onChange={(e) => setImportFile(e.target.files?.[0] || null)} />
+            </div>
+            <div>
+              <Label htmlFor="proposal-client-name">Client name</Label>
+              <Input id="proposal-client-name" data-testid="proposal-client-name" value={importName} onChange={(e) => setImportName(e.target.value)} placeholder="Leave blank to use the name in the proposal" className="mt-1" />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
+              <Button data-testid="proposal-import-submit" type="submit" disabled={importing} className="bg-[#0B3A8F] hover:bg-[#082C73]">
+                {importing ? "Importing…" : "Import"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />

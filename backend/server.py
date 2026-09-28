@@ -191,6 +191,7 @@ class Client(BaseModel):
     google_drive_folder_name: str = ""
     google_drive_folder_url: str = ""
     google_drive_synced_at: str = ""
+    master_file: dict = Field(default_factory=dict)
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -2469,6 +2470,7 @@ from routes.subcontractors import attach_subcontractor_routes
 from routes.job_funds import attach_job_fund_routes
 from routes.calendar import attach_calendar_routes
 from routes.lead_speed_dial import attach_lead_speed_dial_routes
+from routes.proposals import attach_proposal_routes
 
 attach_auth_routes(api_router)
 attach_client_routes(api_router)
@@ -2481,6 +2483,7 @@ attach_financial_routes(api_router)
 attach_subcontractor_routes(api_router)
 attach_job_fund_routes(api_router)
 attach_calendar_routes(api_router)
+attach_proposal_routes(api_router)
 
 
 app.include_router(api_router)
