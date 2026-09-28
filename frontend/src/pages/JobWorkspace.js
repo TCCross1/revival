@@ -79,7 +79,7 @@ export default function JobWorkspace() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" className="h-10 bg-[#C9A227] hover:bg-[#B8911F] text-[#061A23]" onClick={() => navigate(scanKitchenPath(id, plans))} data-testid="workspace-scan-kitchen">
-            <ScanLine size={16} className="mr-1" /> Scan Kitchen
+            <ScanLine size={16} className="mr-1" /> Scan room
           </Button>
           <Button type="button" variant="outline" className="h-10 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={() => navigate(`/floor-plans/new?job=${id}`)} data-testid="workspace-new-plan">
             <PenTool size={16} className="mr-1" /> New plan
@@ -174,7 +174,7 @@ function DesignRoom({ plans, jobId, navigate }) {
   return (
     <div className="space-y-3" data-testid="workspace-design">
       <Button type="button" className="h-11 w-full sm:w-auto bg-[#C9A227] hover:bg-[#B8911F] text-[#061A23]" onClick={() => navigate(scanKitchenPath(jobId, plans))} data-testid="design-scan-kitchen">
-        <ScanLine size={16} className="mr-1" /> Scan Kitchen
+        <ScanLine size={16} className="mr-1" /> Scan room
       </Button>
       {plans.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[#0B3A8F]/30 bg-white p-8 text-center">

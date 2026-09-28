@@ -130,3 +130,60 @@ def test_native_bridge_json_places_kitchen_and_marks_verify():
     assert any(i.startswith("island") for i in ids)
     assert all(obj.get("from_scan") and SCAN_VERIFY_NOTE in (obj.get("note") or "") for obj in level["objects"])
     assert level["rooms"], "native scan should produce a kitchen room outline"
+
+
+def test_bathroom_scan_maps_toilet_tub_vanity_and_over_toilet():
+    level = import_roomplan({
+        "units": "inches",
+        "rooms": [{"name": "Bathroom", "origin": {"x": 24, "y": 24}, "width_in": 96, "depth_in": 84}],
+        "walls": [
+            {"start": {"x": 24, "y": 24}, "end": {"x": 120, "y": 24}},
+            {"start": {"x": 120, "y": 24}, "end": {"x": 120, "y": 108}},
+            {"start": {"x": 120, "y": 108}, "end": {"x": 24, "y": 108}},
+            {"start": {"x": 24, "y": 108}, "end": {"x": 24, "y": 24}},
+        ],
+        "objects": [
+            {"category": "toilet", "origin": {"x": 36, "y": 36}, "dimensions": {"width": 18, "height": 30, "depth": 28}},
+            {"category": "bathtub", "origin": {"x": 72, "y": 30}, "dimensions": {"width": 60, "height": 18, "depth": 32}},
+            {"category": "sink", "origin": {"x": 42, "y": 78}, "dimensions": {"width": 36, "height": 34, "depth": 21}},
+            {"category": "storage", "origin": {"x": 36, "y": 70}, "dimensions": {"width": 24, "height": 30, "depth": 12}},
+        ],
+    })
+    ids = {obj["library_id"] for obj in level["objects"]}
+    assert "toilet" in ids or any(i.startswith("toilet") for i in ids)
+    assert any(i.startswith("tub-") for i in ids)
+    assert any(i.startswith("vanity-") for i in ids)
+    assert any(i.startswith("cab-wall-toilet-") for i in ids)
+    assert all(obj.get("from_scan") and SCAN_VERIFY_NOTE in (obj.get("note") or "") for obj in level["objects"])
+    assert any("bath" in (room.get("name") or "").lower() for room in level["rooms"])
+
+
+def test_square_bathtub_maps_to_shower_stall():
+    mapped = map_scan_object({
+        "category": "bathtub",
+        "x": 10,
+        "y": 10,
+        "cx": 28,
+        "cy": 28,
+        "width": 36,
+        "depth": 36,
+        "height": 80,
+        "front": "south",
+    }, [], bathroom=True)
+    assert mapped["library_id"].startswith("shower-walk-")
+    assert mapped["scan_verify"] is True
+
+
+def test_kitchen_sink_still_maps_to_sink_base_without_bath_signals():
+    mapped = map_scan_object({
+        "category": "sink",
+        "x": 10,
+        "y": 10,
+        "cx": 28,
+        "cy": 22,
+        "width": 36,
+        "depth": 24,
+        "height": 36,
+        "front": "south",
+    }, [], bathroom=False)
+    assert mapped["library_id"].startswith("cab-sink-")

@@ -24,14 +24,16 @@ The phone never talks to the cloud agent’s practice copy. If Revival is only r
 2. In Xcode, pick your iPhone as the run destination (not a simulator — RoomPlan needs the real LiDAR).
 3. Press Run. The first time, open Settings → General → VPN & Device Management on the phone and trust your developer certificate.
 4. Sign into Revival inside the app with your normal account.
-5. Open a job → **Scan kitchen**. Walk the room slowly. When the scan finishes, Plans receives walls, doors, windows, cabinets, and appliances marked **from scan – verify**. Fix any measurement before you order.
+5. Open a job → **Scan room**. Walk the kitchen or bathroom slowly. When the scan finishes, Plans receives walls, doors, windows, and fixtures marked **from scan – verify**. Fix any measurement before you order.
+
+Kitchen scans place cabinets and appliances. Bathroom scans place toilets, tubs or showers, vanities, and over-toilet wall cabinets when RoomPlan reports those objects.
 
 ## How the pieces connect
 
 ```
 iPhone app (WKWebView)
   └─ loads RevivalWebURL
-       └─ Plans → Scan kitchen
+       └─ Plans → Scan room
             └─ window.webkit.messageHandlers.roomPlan.postMessage({ action: "scan" })
                  └─ RevivalRoomPlanBridge → Apple RoomPlan
                       └─ window.revivalReceiveScan(json)
@@ -39,7 +41,7 @@ iPhone app (WKWebView)
                                 └─ editable plan in Floor Plan Studio
 ```
 
-Storage boxes from RoomPlan become base cabinets, wall cabinets, or a tall pantry from their height and depth. Fridge, range, dishwasher, sink, doors, windows, and walls are placed the same way. Every scanned piece stays editable in Plans.
+Storage boxes from RoomPlan become base cabinets, wall cabinets, or a tall pantry in a kitchen. In a bathroom they become vanities, linen cabinets, or over-toilet wall cabinets. Fridge, range, dishwasher, sink, toilet, tub/shower, doors, windows, and walls are placed the same way. Every scanned piece stays editable in Plans.
 
 ## Files
 
