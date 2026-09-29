@@ -15,7 +15,7 @@ const POS_KEY = "dolly-widget-pos";
 const FAB_SIZE = 64;
 const PANEL_W = 320;
 const PANEL_H = 420;
-const DRAG_THRESHOLD = 6;
+const DRAG_THRESHOLD = 8;
 
 function defaultPos() {
   if (typeof window === "undefined") return { x: 24, y: 24 };
@@ -23,18 +23,6 @@ function defaultPos() {
     x: Math.max(16, window.innerWidth - FAB_SIZE - 20),
     y: Math.max(16, window.innerHeight - FAB_SIZE - 20),
   };
-}
-
-function loadPos() {
-  try {
-    const raw = localStorage.getItem(POS_KEY);
-    if (!raw) return defaultPos();
-    const parsed = JSON.parse(raw);
-    if (typeof parsed?.x !== "number" || typeof parsed?.y !== "number") return defaultPos();
-    return clampPos(parsed.x, parsed.y);
-  } catch {
-    return defaultPos();
-  }
 }
 
 function clampPos(x, y, open = false) {
@@ -49,10 +37,23 @@ function clampPos(x, y, open = false) {
   };
 }
 
+function loadPos() {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (!raw) return defaultPos();
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.x !== "number" || typeof parsed?.y !== "number") return defaultPos();
+    return clampPos(parsed.x, parsed.y, false);
+  } catch (err) {
+    console.error("[dolly] failed to load widget position", err);
+    return defaultPos();
+  }
+}
+
 export default function DollyAssistant() {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(() => loadPos());
-  const [greeting, setGreeting] = useState(
+  const [greeting] = useState(
     "Hey honey — I'm Dolly. Ask me anything about Revival Pro.",
   );
   const [input, setInput] = useState("");
@@ -60,20 +61,12 @@ export default function DollyAssistant() {
   const [messages, setMessages] = useState([]);
   const bottomRef = useRef(null);
   const sessionId = useRef(`dolly-${Math.random().toString(36).slice(2, 10)}`);
-  const dragRef = useRef({
-    active: false,
-    moved: false,
-    startX: 0,
-    startY: 0,
-    originX: 0,
-    originY: 0,
-    lastX: 0,
-    lastY: 0,
-    pointerId: null,
-  });
-  const rootRef = useRef(null);
   const openRef = useRef(open);
   openRef.current = open;
+  const posRef = useRef(pos);
+  posRef.current = pos;
+  const drag = useRef(null);
+  const suppressClick = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -82,15 +75,14 @@ export default function DollyAssistant() {
         const { data } = await api.get("/public/dolly");
         if (!alive) return;
         const text = data?.greeting || greeting;
-        if (data?.greeting) setGreeting(data.greeting);
         setMessages([{ role: "dolly", text }]);
-      } catch {
+      } catch (err) {
+        console.error("[dolly] greeting load failed", err);
         if (alive) setMessages([{ role: "dolly", text: greeting }]);
       }
     })();
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [greeting]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -98,46 +90,39 @@ export default function DollyAssistant() {
 
   useEffect(() => {
     const onResize = () => {
-      setPos((p) => {
-        const next = clampPos(p.x, p.y, open);
+      const next = clampPos(posRef.current.x, posRef.current.y, openRef.current);
+      posRef.current = next;
+      setPos(next);
+      try {
         localStorage.setItem(POS_KEY, JSON.stringify(next));
-        return next;
-      });
+      } catch (err) {
+        console.error("[dolly] failed to persist position", err);
+      }
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [open]);
-
-  const persistPos = useCallback((next) => {
-    localStorage.setItem(POS_KEY, JSON.stringify(next));
-    setPos(next);
   }, []);
 
-  const onPointerDown = (e) => {
-    if (e.button != null && e.button !== 0) return;
-    const target = e.target;
-    if (target?.closest?.("[data-dolly-no-drag]")) return;
-    dragRef.current = {
-      active: true,
-      moved: false,
-      startX: e.clientX,
-      startY: e.clientY,
-      originX: pos.x,
-      originY: pos.y,
-      lastX: pos.x,
-      lastY: pos.y,
-      pointerId: e.pointerId,
-    };
+  const persistPos = useCallback((next) => {
+    posRef.current = next;
+    setPos(next);
     try {
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-    } catch {
-      /* ignore */
+      localStorage.setItem(POS_KEY, JSON.stringify(next));
+    } catch (err) {
+      console.error("[dolly] failed to persist position", err);
     }
-  };
+  }, []);
 
-  const onPointerMove = (e) => {
-    const d = dragRef.current;
-    if (!d.active) return;
+  const endDragListeners = useCallback(() => {
+    window.removeEventListener("pointermove", onWindowPointerMove);
+    window.removeEventListener("pointerup", onWindowPointerUp);
+    window.removeEventListener("pointercancel", onWindowPointerUp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onWindowPointerMove = useCallback((e) => {
+    const d = drag.current;
+    if (!d) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
@@ -146,27 +131,53 @@ export default function DollyAssistant() {
     d.lastX = next.x;
     d.lastY = next.y;
     setPos(next);
+  }, []);
+
+  const onWindowPointerUp = useCallback(() => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    window.removeEventListener("pointermove", onWindowPointerMove);
+    window.removeEventListener("pointerup", onWindowPointerUp);
+    window.removeEventListener("pointercancel", onWindowPointerUp);
+    if (d.moved) {
+      suppressClick.current = true;
+      persistPos(clampPos(d.lastX, d.lastY, openRef.current));
+      window.setTimeout(() => { suppressClick.current = false; }, 0);
+    }
+  }, [onWindowPointerMove, persistPos]);
+
+  const startDrag = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    drag.current = {
+      moved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: posRef.current.x,
+      originY: posRef.current.y,
+      lastX: posRef.current.x,
+      lastY: posRef.current.y,
+    };
+    window.addEventListener("pointermove", onWindowPointerMove);
+    window.addEventListener("pointerup", onWindowPointerUp);
+    window.addEventListener("pointercancel", onWindowPointerUp);
   };
 
-  const onPointerUp = (e) => {
-    const d = dragRef.current;
-    if (!d.active) return;
-    d.active = false;
-    try {
-      e.currentTarget.releasePointerCapture?.(d.pointerId);
-    } catch {
-      /* ignore */
-    }
-    if (d.moved) {
-      persistPos(clampPos(d.lastX, d.lastY, openRef.current));
-      return;
-    }
-    // Treat as click — open the small chat window
-    if (!openRef.current) {
-      const next = clampPos(d.originX, d.originY, true);
-      persistPos(next);
-      setOpen(true);
-    }
+  useEffect(() => () => endDragListeners(), [endDragListeners]);
+
+  const openChat = () => {
+    if (suppressClick.current || drag.current?.moved) return;
+    const next = clampPos(posRef.current.x, posRef.current.y, true);
+    persistPos(next);
+    setOpen(true);
+  };
+
+  const closeChat = (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    setOpen(false);
+    persistPos(clampPos(posRef.current.x, posRef.current.y, false));
   };
 
   const ask = async (text) => {
@@ -195,29 +206,26 @@ export default function DollyAssistant() {
     }
   };
 
-  const closePanel = (e) => {
-    e?.stopPropagation?.();
-    setOpen(false);
-    persistPos(clampPos(pos.x, pos.y, false));
-  };
-
   return (
     <div
-      ref={rootRef}
       data-testid="dolly-widget"
-      className="fixed z-[100] select-none touch-none"
+      className="fixed z-[100]"
       style={{ left: pos.x, top: pos.y }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
     >
       {!open ? (
         <button
           type="button"
           data-testid="dolly-open-btn"
           aria-label="Open Dolly assistant"
-          className="h-16 w-16 rounded-full overflow-hidden border-[3px] border-[#C9A227] shadow-[0_8px_28px_rgba(11,58,143,0.45)] bg-[#0B3A8F] ring-2 ring-white/80 hover:scale-105 transition-transform cursor-grab active:cursor-grabbing"
+          onPointerDown={startDrag}
+          onClick={(e) => {
+            if (suppressClick.current || drag.current?.moved) {
+              e.preventDefault();
+              return;
+            }
+            openChat();
+          }}
+          className="h-16 w-16 rounded-full overflow-hidden border-[3px] border-[#C9A227] shadow-[0_8px_28px_rgba(11,58,143,0.45)] bg-[#0B3A8F] ring-2 ring-white/80 hover:scale-105 transition-transform cursor-grab active:cursor-grabbing touch-none"
         >
           <img
             src="/brand/dolly.png"
@@ -229,16 +237,20 @@ export default function DollyAssistant() {
       ) : (
         <section
           data-testid="dolly-assistant"
-          className="w-[min(100vw-1rem,20rem)] overflow-hidden rounded-2xl border border-[#C9A227]/55 bg-white shadow-2xl cursor-grab active:cursor-grabbing"
+          className="w-[min(100vw-1rem,20rem)] overflow-hidden rounded-2xl border border-[#C9A227]/55 bg-white shadow-2xl"
         >
-          <header className="flex items-center gap-2.5 bg-[#0B3A8F] px-2.5 py-2.5 text-white">
+          <header
+            data-testid="dolly-drag-handle"
+            onPointerDown={startDrag}
+            className="flex items-center gap-2.5 bg-[#0B3A8F] px-2.5 py-2.5 text-white cursor-grab active:cursor-grabbing touch-none"
+          >
             <img
               src="/brand/dolly.png"
               alt="Dolly"
               draggable={false}
               className="h-11 w-11 rounded-full object-cover object-top border-2 border-[#C9A227] bg-[#082C73] pointer-events-none"
             />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 pointer-events-none">
               <div className="font-semibold font-['Outfit'] text-base leading-tight flex items-center gap-1.5">
                 Dolly <Sparkles size={13} className="text-[#C9A227]" />
               </div>
@@ -248,20 +260,15 @@ export default function DollyAssistant() {
               type="button"
               aria-label="Close Dolly"
               data-testid="dolly-close-btn"
-              data-dolly-no-drag
-              onClick={closePanel}
               onPointerDown={(e) => e.stopPropagation()}
-              className="rounded-md p-1.5 hover:bg-white/10"
+              onClick={closeChat}
+              className="rounded-md p-1.5 hover:bg-white/10 cursor-pointer touch-auto"
             >
               <X size={16} />
             </button>
           </header>
 
-          <div
-            data-dolly-no-drag
-            className="max-h-48 space-y-2 overflow-y-auto bg-[#F8FAFC] px-2.5 py-2.5 cursor-auto"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
+          <div className="max-h-48 space-y-2 overflow-y-auto bg-[#F8FAFC] px-2.5 py-2.5">
             {messages.map((m, i) => (
               <div
                 key={`${m.role}-${i}`}
@@ -282,15 +289,12 @@ export default function DollyAssistant() {
             <div ref={bottomRef} />
           </div>
 
-          <div
-            data-dolly-no-drag
-            className="flex flex-wrap gap-1 border-t border-slate-100 bg-white px-2.5 py-1.5 cursor-auto"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
+          <div className="flex flex-wrap gap-1 border-t border-slate-100 bg-white px-2.5 py-1.5">
             {QUICK.map((q) => (
               <button
                 key={q}
                 type="button"
+                data-testid="dolly-quick-chip"
                 disabled={busy}
                 onClick={() => ask(q)}
                 className="rounded-full border border-[#0B3A8F]/20 bg-[#F4F6FA] px-2 py-0.5 text-[10px] font-medium text-[#0B3A8F] hover:bg-[#0B3A8F]/10"
@@ -301,9 +305,7 @@ export default function DollyAssistant() {
           </div>
 
           <form
-            data-dolly-no-drag
-            className="flex gap-1.5 border-t border-slate-100 bg-white p-2.5 cursor-auto"
-            onPointerDown={(e) => e.stopPropagation()}
+            className="flex gap-1.5 border-t border-slate-100 bg-white p-2.5"
             onSubmit={(e) => {
               e.preventDefault();
               ask(input);
