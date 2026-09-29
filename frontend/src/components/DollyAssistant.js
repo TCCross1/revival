@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +11,47 @@ const QUICK = [
   "Who can sign in?",
 ];
 
-export default function DollyAssistant({ openByDefault = true }) {
-  const [open, setOpen] = useState(openByDefault);
+const POS_KEY = "dolly-widget-pos";
+const FAB_SIZE = 64;
+const PANEL_W = 320;
+const PANEL_H = 420;
+const DRAG_THRESHOLD = 6;
+
+function defaultPos() {
+  if (typeof window === "undefined") return { x: 24, y: 24 };
+  return {
+    x: Math.max(16, window.innerWidth - FAB_SIZE - 20),
+    y: Math.max(16, window.innerHeight - FAB_SIZE - 20),
+  };
+}
+
+function loadPos() {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (!raw) return defaultPos();
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.x !== "number" || typeof parsed?.y !== "number") return defaultPos();
+    return clampPos(parsed.x, parsed.y);
+  } catch {
+    return defaultPos();
+  }
+}
+
+function clampPos(x, y, open = false) {
+  if (typeof window === "undefined") return { x, y };
+  const w = open ? PANEL_W : FAB_SIZE;
+  const h = open ? PANEL_H : FAB_SIZE;
+  const maxX = Math.max(8, window.innerWidth - w - 8);
+  const maxY = Math.max(8, window.innerHeight - h - 8);
+  return {
+    x: Math.min(Math.max(8, x), maxX),
+    y: Math.min(Math.max(8, y), maxY),
+  };
+}
+
+export default function DollyAssistant() {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(() => loadPos());
   const [greeting, setGreeting] = useState(
     "Hey honey — I'm Dolly. Ask me anything about Revival Pro.",
   );
@@ -21,6 +60,20 @@ export default function DollyAssistant({ openByDefault = true }) {
   const [messages, setMessages] = useState([]);
   const bottomRef = useRef(null);
   const sessionId = useRef(`dolly-${Math.random().toString(36).slice(2, 10)}`);
+  const dragRef = useRef({
+    active: false,
+    moved: false,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+    lastX: 0,
+    lastY: 0,
+    pointerId: null,
+  });
+  const rootRef = useRef(null);
+  const openRef = useRef(open);
+  openRef.current = open;
 
   useEffect(() => {
     let alive = true;
@@ -28,18 +81,90 @@ export default function DollyAssistant({ openByDefault = true }) {
       try {
         const { data } = await api.get("/public/dolly");
         if (!alive) return;
+        const text = data?.greeting || greeting;
         if (data?.greeting) setGreeting(data.greeting);
-        setMessages([{ role: "dolly", text: data?.greeting || greeting }]);
+        setMessages([{ role: "dolly", text }]);
       } catch {
         if (alive) setMessages([{ role: "dolly", text: greeting }]);
       }
     })();
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, open]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setPos((p) => {
+        const next = clampPos(p.x, p.y, open);
+        localStorage.setItem(POS_KEY, JSON.stringify(next));
+        return next;
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
+
+  const persistPos = useCallback((next) => {
+    localStorage.setItem(POS_KEY, JSON.stringify(next));
+    setPos(next);
+  }, []);
+
+  const onPointerDown = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    const target = e.target;
+    if (target?.closest?.("[data-dolly-no-drag]")) return;
+    dragRef.current = {
+      active: true,
+      moved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: pos.x,
+      originY: pos.y,
+      pointerId: e.pointerId,
+    };
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    d.moved = true;
+    const next = clampPos(d.originX + dx, d.originY + dy, open);
+    setPos(next);
+  };
+
+  const onPointerUp = (e) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    d.active = false;
+    try {
+      e.currentTarget.releasePointerCapture?.(d.pointerId);
+    } catch {
+      /* ignore */
+    }
+    if (d.moved) {
+      const next = clampPos(pos.x, pos.y, open);
+      persistPos(next);
+      return;
+    }
+    // Treat as click — toggle chat
+    if (!open) {
+      const next = clampPos(pos.x, pos.y, true);
+      persistPos(next);
+      setOpen(true);
+    }
+  };
 
   const ask = async (text) => {
     const message = (text || "").trim();
@@ -52,99 +177,153 @@ export default function DollyAssistant({ openByDefault = true }) {
         message,
         session_id: sessionId.current,
       });
-      setMessages((prev) => [...prev, { role: "dolly", text: data?.reply || "I'm right here — try asking another way." }]);
-    } catch {
-      setMessages((prev) => [...prev, { role: "dolly", text: "I hit a snag, sugar. Try that question one more time." }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "dolly", text: data?.reply || "I'm right here — try asking another way." },
+      ]);
+    } catch (err) {
+      console.error("[dolly] chat failed", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "dolly", text: "I hit a snag, sugar. Try that question one more time." },
+      ]);
     } finally {
       setBusy(false);
     }
   };
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        data-testid="dolly-open-btn"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-50 flex items-center gap-3 rounded-full bg-[#0B3A8F] text-white pl-2 pr-4 py-2 shadow-lg border border-[#C9A227]/60 hover:bg-[#082C73]"
-      >
-        <img src="/brand/dolly.png" alt="" className="h-12 w-12 rounded-full object-cover border-2 border-[#C9A227]" />
-        <span className="text-sm font-semibold font-['Outfit']">Ask Dolly</span>
-      </button>
-    );
-  }
+  const closePanel = (e) => {
+    e?.stopPropagation?.();
+    setOpen(false);
+    persistPos(clampPos(pos.x, pos.y, false));
+  };
 
   return (
-    <section
-      data-testid="dolly-assistant"
-      className="fixed bottom-4 right-4 z-50 w-[min(100vw-1.5rem,22rem)] overflow-hidden rounded-2xl border border-[#C9A227]/50 bg-white shadow-2xl"
+    <div
+      ref={rootRef}
+      data-testid="dolly-widget"
+      className="fixed z-[100] select-none touch-none"
+      style={{ left: pos.x, top: pos.y }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
     >
-      <header className="flex items-center gap-3 bg-[#0B3A8F] px-3 py-3 text-white">
-        <img src="/brand/dolly.png" alt="Dolly" className="h-14 w-14 rounded-full object-cover border-2 border-[#C9A227] bg-[#082C73]" />
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold font-['Outfit'] text-lg leading-tight flex items-center gap-1.5">
-            Dolly <Sparkles size={14} className="text-[#C9A227]" />
-          </div>
-          <div className="text-xs text-white/80">Your Revival Pro guide</div>
-        </div>
-        <button type="button" aria-label="Close Dolly" data-testid="dolly-close-btn" onClick={() => setOpen(false)} className="rounded-md p-1.5 hover:bg-white/10">
-          <X size={18} />
+      {!open ? (
+        <button
+          type="button"
+          data-testid="dolly-open-btn"
+          aria-label="Open Dolly assistant"
+          className="h-16 w-16 rounded-full overflow-hidden border-[3px] border-[#C9A227] shadow-[0_8px_28px_rgba(11,58,143,0.45)] bg-[#0B3A8F] ring-2 ring-white/80 hover:scale-105 transition-transform cursor-grab active:cursor-grabbing"
+        >
+          <img
+            src="/brand/dolly.png"
+            alt="Dolly"
+            draggable={false}
+            className="h-full w-full object-cover object-top pointer-events-none"
+          />
         </button>
-      </header>
+      ) : (
+        <section
+          data-testid="dolly-assistant"
+          className="w-[min(100vw-1rem,20rem)] overflow-hidden rounded-2xl border border-[#C9A227]/55 bg-white shadow-2xl cursor-grab active:cursor-grabbing"
+        >
+          <header className="flex items-center gap-2.5 bg-[#0B3A8F] px-2.5 py-2.5 text-white">
+            <img
+              src="/brand/dolly.png"
+              alt="Dolly"
+              draggable={false}
+              className="h-11 w-11 rounded-full object-cover object-top border-2 border-[#C9A227] bg-[#082C73] pointer-events-none"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold font-['Outfit'] text-base leading-tight flex items-center gap-1.5">
+                Dolly <Sparkles size={13} className="text-[#C9A227]" />
+              </div>
+              <div className="text-[11px] text-white/80">Drag me anywhere · Your guide</div>
+            </div>
+            <button
+              type="button"
+              aria-label="Close Dolly"
+              data-testid="dolly-close-btn"
+              data-dolly-no-drag
+              onClick={closePanel}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="rounded-md p-1.5 hover:bg-white/10"
+            >
+              <X size={16} />
+            </button>
+          </header>
 
-      <div className="max-h-72 space-y-2 overflow-y-auto bg-[#F8FAFC] px-3 py-3">
-        {messages.map((m, i) => (
           <div
-            key={`${m.role}-${i}`}
-            className={`rounded-xl px-3 py-2 text-sm leading-relaxed ${
-              m.role === "you"
-                ? "ml-8 bg-[#0B3A8F] text-white"
-                : "mr-4 bg-white border border-slate-200 text-[#061A23]"
-            }`}
+            data-dolly-no-drag
+            className="max-h-48 space-y-2 overflow-y-auto bg-[#F8FAFC] px-2.5 py-2.5 cursor-auto"
+            onPointerDown={(e) => e.stopPropagation()}
           >
-            {m.text}
+            {messages.map((m, i) => (
+              <div
+                key={`${m.role}-${i}`}
+                className={`rounded-xl px-2.5 py-1.5 text-[13px] leading-relaxed ${
+                  m.role === "you"
+                    ? "ml-6 bg-[#0B3A8F] text-white"
+                    : "mr-3 bg-white border border-slate-200 text-[#061A23]"
+                }`}
+              >
+                {m.text}
+              </div>
+            ))}
+            {busy ? (
+              <div className="mr-3 flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-2.5 py-1.5 text-[13px] text-[#4B6370]">
+                <Loader2 size={13} className="animate-spin" /> Dolly is thinking…
+              </div>
+            ) : null}
+            <div ref={bottomRef} />
           </div>
-        ))}
-        {busy ? (
-          <div className="mr-4 flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm text-[#4B6370]">
-            <Loader2 size={14} className="animate-spin" /> Dolly is thinking…
-          </div>
-        ) : null}
-        <div ref={bottomRef} />
-      </div>
 
-      <div className="flex flex-wrap gap-1.5 border-t border-slate-100 bg-white px-3 py-2">
-        {QUICK.map((q) => (
-          <button
-            key={q}
-            type="button"
-            disabled={busy}
-            onClick={() => ask(q)}
-            className="rounded-full border border-[#0B3A8F]/20 bg-[#F4F6FA] px-2.5 py-1 text-[11px] font-medium text-[#0B3A8F] hover:bg-[#0B3A8F]/10"
+          <div
+            data-dolly-no-drag
+            className="flex flex-wrap gap-1 border-t border-slate-100 bg-white px-2.5 py-1.5 cursor-auto"
+            onPointerDown={(e) => e.stopPropagation()}
           >
-            {q}
-          </button>
-        ))}
-      </div>
+            {QUICK.map((q) => (
+              <button
+                key={q}
+                type="button"
+                disabled={busy}
+                onClick={() => ask(q)}
+                className="rounded-full border border-[#0B3A8F]/20 bg-[#F4F6FA] px-2 py-0.5 text-[10px] font-medium text-[#0B3A8F] hover:bg-[#0B3A8F]/10"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
 
-      <form
-        className="flex gap-2 border-t border-slate-100 bg-white p-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          ask(input);
-        }}
-      >
-        <Input
-          data-testid="dolly-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask Dolly about the app…"
-          className="h-10"
-        />
-        <Button type="submit" data-testid="dolly-send-btn" disabled={busy || !input.trim()} className="h-10 bg-[#C9A227] hover:bg-[#B8911F] text-[#061A23]">
-          <Send size={16} />
-        </Button>
-      </form>
-    </section>
+          <form
+            data-dolly-no-drag
+            className="flex gap-1.5 border-t border-slate-100 bg-white p-2.5 cursor-auto"
+            onPointerDown={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              ask(input);
+            }}
+          >
+            <Input
+              data-testid="dolly-input"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask Dolly…"
+              className="h-9 text-sm"
+            />
+            <Button
+              type="submit"
+              data-testid="dolly-send-btn"
+              disabled={busy || !input.trim()}
+              className="h-9 w-9 shrink-0 p-0 bg-[#C9A227] hover:bg-[#B8911F] text-[#061A23]"
+            >
+              <Send size={14} />
+            </Button>
+          </form>
+        </section>
+      )}
+    </div>
   );
 }

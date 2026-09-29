@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Navigate, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import AuthSplitLayout from "@/components/brand/AuthSplitLayout";
-import DollyAssistant from "@/components/DollyAssistant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -112,7 +111,6 @@ export default function Login() {
           <p className="text-xs text-[#4B6370] text-center mt-6">Secure sign-in for Tim and Christy only. Dolly is here if you need a hand.</p>
         </div>
       </AuthSplitLayout>
-      <DollyAssistant openByDefault />
     </>
   );
 }

@@ -36,6 +36,7 @@ import FieldSchedule from "@/pages/FieldSchedule";
 import Permissions from "@/pages/Permissions";
 import OfficeCalendar from "@/pages/OfficeCalendar";
 import { Toaster } from "@/components/ui/sonner";
+import DollyAssistant from "@/components/DollyAssistant";
 import { BRAND } from "@/lib/format";
 import { can, isFieldOnly } from "@/lib/permissions";
 
@@ -131,6 +132,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <AppRouter />
+        <DollyAssistant />
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>
