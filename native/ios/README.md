@@ -51,8 +51,11 @@ Storage boxes from RoomPlan become base cabinets, wall cabinets, or a tall pantr
 | `Revival/RevivalApp.swift` | App entry |
 | `Revival/WebShellViewController.swift` | Full-screen web view + load errors |
 | `Revival/Info.plist` | Camera text + `RevivalWebURL` |
+| `Revival/Assets.xcassets/AppIcon.appiconset` | Home-screen icon from the Revival emblem |
 | `RevivalRoomPlanBridge.swift` | LiDAR / RoomPlan bridge |
 | `RevivalSquareReaderBridge.swift` | Placeholder for on-site Square Reader later |
+
+The website uses the same emblem for Add to Dock / Add to Home Screen (`frontend/public/manifest.json` and `frontend/public/icons/`).
 
 ## Limits
 
