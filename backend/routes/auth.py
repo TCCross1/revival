@@ -58,8 +58,13 @@ def attach_auth_routes(api_router: APIRouter):
 
     @api_router.post("/auth/login")
     async def login(body: LoginBody, response: Response):
+        from access_control import login_allowed
+
         email = body.email.strip().lower()
         try:
+            if not login_allowed(email):
+                logger.warning("Login blocked for non-owner email=%s", email)
+                raise HTTPException(status_code=403, detail="Only Tim and Christy’s owner accounts can sign in.")
             user = await db.users.find_one({"email": email}, {"_id": 0})
             if not user or not user.get("password_hash") or not verify_password(body.password, user["password_hash"]):
                 logger.warning("Login failed for %s", email)
@@ -74,6 +79,45 @@ def attach_auth_routes(api_router: APIRouter):
         except Exception:
             logger.exception("Login error for %s", email)
             raise HTTPException(status_code=503, detail="Sign-in is temporarily unavailable. Please try again.")
+
+
+    class BypassCodeBody(BaseModel):
+        code: str = ""
+
+
+    @api_router.post("/auth/bypass-code")
+    async def login_bypass_code(body: BypassCodeBody, response: Response):
+        """Owner shortcut: correct LOGIN_BYPASS_CODE signs in as the primary admin."""
+        from access_control import admin_seed_accounts, bypass_code_matches
+
+        try:
+            if not bypass_code_matches(body.code):
+                logger.warning("Login bypass rejected")
+                raise HTTPException(status_code=401, detail="That code is not correct.")
+            accounts = admin_seed_accounts()
+            email = accounts[0][0] if accounts else (os.environ.get("ADMIN_EMAIL") or "").strip().lower()
+            user = await db.users.find_one({"email": email}, {"_id": 0}) if email else None
+            if not user:
+                user = await db.users.find_one({"role": "admin"}, {"_id": 0})
+            if not user:
+                raise HTTPException(status_code=503, detail="No owner account is ready yet. Restart the API after seeding.")
+            token = create_access_token(user["user_id"], user["email"])
+            response.set_cookie(
+                "access_token",
+                token,
+                httponly=True,
+                secure=True,
+                samesite="none",
+                path="/",
+                max_age=7 * 24 * 60 * 60,
+            )
+            logger.info("Login bypass succeeded for %s", user.get("email"))
+            return {**User(**user).model_dump(), "session_token": token, "bypass": True}
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Login bypass failed")
+            raise HTTPException(status_code=503, detail="Could not use that code. Please try again.")
 
 
     @api_router.post("/auth/change-password")
@@ -103,11 +147,15 @@ def attach_auth_routes(api_router: APIRouter):
 
     @api_router.post("/team")
     async def create_team_member(body: TeamCreate, admin: User = Depends(require_admin)):
+        from access_control import login_allowed
+
         email = body.email.strip().lower()
         if not email or not body.password:
             raise HTTPException(status_code=400, detail="Email and password are required.")
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
             raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+        if not login_allowed(email):
+            raise HTTPException(status_code=403, detail="This shop only allows Tim and Christy’s owner logins.")
         if len(body.password) < 6:
             raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
         if await db.users.find_one({"email": email}):
@@ -229,6 +277,8 @@ def attach_auth_routes(api_router: APIRouter):
 
     @api_router.post("/auth/session")
     async def process_session(request: Request, response: Response):
+        from access_control import login_allowed
+
         body = await request.json()
         session_id = body.get("session_id")
         if not session_id:
@@ -243,13 +293,20 @@ def attach_auth_routes(api_router: APIRouter):
             raise HTTPException(status_code=401, detail="Invalid session_id")
         data = resp.json()
 
-        email = data["email"]
+        email = (data.get("email") or "").strip().lower()
+        if not login_allowed(email):
+            logger.warning("Google session blocked for non-owner email=%s", email)
+            raise HTTPException(status_code=403, detail="Only Tim and Christy’s owner accounts can sign in.")
         existing = await db.users.find_one({"email": email}, {"_id": 0})
         if existing:
             user_id = existing["user_id"]
             await db.users.update_one(
                 {"user_id": user_id},
-                {"$set": {"name": data.get("name", existing.get("name", "")), "picture": data.get("picture", "")}},
+                {"$set": {
+                    "name": data.get("name", existing.get("name", "")),
+                    "picture": data.get("picture", ""),
+                    "role": "admin",
+                }},
             )
         else:
             user_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -258,6 +315,7 @@ def attach_auth_routes(api_router: APIRouter):
                 "email": email,
                 "name": data.get("name", ""),
                 "picture": data.get("picture", ""),
+                "role": "admin",
                 "created_at": now_iso(),
             })
 
