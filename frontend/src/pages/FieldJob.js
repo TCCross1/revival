@@ -73,7 +73,7 @@ export default function FieldJob() {
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" className="h-12 col-span-2 bg-[#C9A227] hover:bg-[#B8911F] text-[#061A23]" onClick={() => navigate(scanKitchenPath(id))} data-testid="field-scan-kitchen">
-          <ScanLine size={16} className="mr-1" /> Scan Kitchen
+          <ScanLine size={16} className="mr-1" /> Scan room
         </Button>
         <Button type="button" className="h-12 bg-[#0B3A8F]" onClick={() => navigate("/field/receipt")}>Receipt</Button>
         <Button type="button" variant="outline" className="h-12" onClick={() => navigate("/field/time")}>Time clock</Button>

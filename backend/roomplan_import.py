@@ -28,8 +28,8 @@ from floor_plan import (
 METERS_TO_INCHES = 39.3701
 SCAN_VERIFY_NOTE = "from scan – verify"
 SKIP_OBJECT_CATEGORIES = {
-    "bed", "sofa", "chair", "television", "tv", "toilet", "bathtub", "tub",
-    "stairs", "fireplace", "fireplace", "washerdryer", "washer", "dryer",
+    "bed", "sofa", "chair", "television", "tv",
+    "stairs", "fireplace", "washerdryer", "washer", "dryer",
 }
 
 OBJECT_CATEGORY_BY_INT = {
@@ -64,6 +64,10 @@ WALL_WIDTHS = (12, 15, 18, 21, 24, 27, 30, 33, 36, 42, 48)
 SINK_WIDTHS = (24, 30, 33, 36, 42)
 TALL_WIDTHS = (12, 15, 18, 24, 30, 36)
 ISLAND_WIDTHS = (72, 84, 96, 108)
+VANITY_WIDTHS = (24, 30, 36, 42, 48)
+VANITY_FLOAT_WIDTHS = (36, 48, 60)
+SHOWER_SIZES = (36, 48, 60)
+BATH_SIGNAL_CATEGORIES = {"toilet", "bathtub", "tub"}
 
 _CATALOG_INDEX = None
 
@@ -378,7 +382,59 @@ def scanned_placeholder(library_id: str, x: float, y: float, width=None, depth=N
     return obj
 
 
-def map_scan_object(pose: dict, walls: list) -> dict | None:
+def _normalize_object_category(raw) -> str:
+    return str(_category_name(raw, OBJECT_CATEGORY_BY_INT) or "").replace(" ", "").replace("_", "").lower()
+
+
+def bathroom_context(object_rows: list, room_names: list | None = None) -> bool:
+    """True when the scan looks like a bath (toilet/tub present or room named bath/powder)."""
+    for raw in object_rows or []:
+        if not isinstance(raw, dict):
+            continue
+        if _normalize_object_category(raw) in BATH_SIGNAL_CATEGORIES:
+            return True
+    text = " ".join(str(name or "") for name in (room_names or [])).lower()
+    return "bath" in text or "powder" in text
+
+
+def _map_vanity(width: float, height: float, x: float, y: float, front: str) -> dict:
+    if width >= 66:
+        return scanned_placeholder("vanity-double-72", x, y, 72, 22, front, "Double vanity 72 (scan)")
+    if width >= 54:
+        return scanned_placeholder("vanity-double-60", x, y, 60, 21, front, "Double vanity 60 (scan)")
+    if height and 14 <= height <= 24:
+        w = nearest_choice(width, VANITY_FLOAT_WIDTHS)
+        return scanned_placeholder(f"vanity-float-{w}", x, y, w, 18, front, f"Floating vanity {w} (scan)")
+    w = nearest_choice(max(width, 24), VANITY_WIDTHS)
+    return scanned_placeholder(f"vanity-single-{w}", x, y, w, 21, front, f"Single vanity {w} (scan)")
+
+
+def _map_bathtub(width: float, depth: float, x: float, y: float, front: str, far_from_walls: bool) -> dict:
+    short, long = sorted((width, depth))
+    # Square-ish stalls read as showers; long alcoves / free-standing read as tubs.
+    if short >= 34 and long <= 52 and abs(width - depth) < 14:
+        side = nearest_choice(max(short, long), SHOWER_SIZES)
+        if side >= 54:
+            return scanned_placeholder("shower-walk-60", x, y, 60, 36, front, "Walk-in shower 60 (scan)")
+        if side >= 42:
+            return scanned_placeholder("shower-walk-48", x, y, 48, 36, front, "Walk-in shower 48 (scan)")
+        return scanned_placeholder("shower-walk-36", x, y, 36, 36, front, "Walk-in shower 36 (scan)")
+    if far_from_walls and long >= 54:
+        return scanned_placeholder("tub-free", x, y, 66, 32, front, "Freestanding tub (scan)")
+    return scanned_placeholder("tub-60", x, y, 60, 32, front, "Alcove tub 60 (scan)")
+
+
+def _map_toilet(width: float, depth: float, x: float, y: float, front: str) -> dict:
+    if depth <= 22 and width <= 16:
+        return scanned_placeholder("toilet-wall", x, y, 15, 22, front, "Wall-hung toilet (scan)")
+    if width <= 16:
+        return scanned_placeholder("toilet-compact", x, y, 16, 26, front, "Compact toilet (scan)")
+    if depth >= 29:
+        return scanned_placeholder("toilet-elongated", x, y, 18, 30, front, "Elongated toilet (scan)")
+    return scanned_placeholder("toilet", x, y, 18, 28, front, "Toilet (scan)")
+
+
+def map_scan_object(pose: dict, walls: list, bathroom: bool = False) -> dict | None:
     category = str(pose.get("category") or "").replace(" ", "").replace("_", "").lower()
     if category in SKIP_OBJECT_CATEGORIES or category in {"washerdryer", "fireplace"}:
         return None
@@ -391,6 +447,10 @@ def map_scan_object(pose: dict, walls: list) -> dict | None:
     near = nearest_wall(walls, inches(pose.get("cx")), inches(pose.get("cy")), 42.0)
     far_from_walls = not near or inches(near.get("dist")) > 30
 
+    if category in {"toilet"}:
+        return _map_toilet(width, depth, x, y, front)
+    if category in {"bathtub", "tub", "shower"}:
+        return _map_bathtub(width, depth, x, y, front, far_from_walls)
     if category in {"refrigerator", "fridge"}:
         w = nearest_choice(width, (30, 36, 42))
         return scanned_placeholder(f"fridge-{w}", x, y, w, 24, front, f"Refrigerator {w} (scan)")
@@ -400,14 +460,24 @@ def map_scan_object(pose: dict, walls: list) -> dict | None:
     if category in {"dishwasher", "dw"}:
         return scanned_placeholder("dw-24", x, y, 24, 24, front, "Dishwasher (scan)")
     if category in {"sink"}:
+        if bathroom:
+            return _map_vanity(width, height, x, y, front)
         w = nearest_choice(max(width, 30), SINK_WIDTHS)
         return scanned_placeholder(f"cab-sink-{w}", x, y, w, 24, front, f"Sink base {w} (scan)")
-    if category in {"table", "island"} or (far_from_walls and width >= 48 and depth >= 24):
+    if category in {"table", "island"} or (far_from_walls and width >= 48 and depth >= 24 and not bathroom):
         w = nearest_choice(max(width, 72), ISLAND_WIDTHS)
         island_id = "island-96" if w >= 90 else "island-72" if w < 80 else "island-oak"
         d = 42 if depth >= 38 or w >= 84 else 36
         return scanned_placeholder(island_id, x, y, w, d, front, f"Island {int(w)} (scan)")
-    if category in {"storage", "cabinet", "shelf"} or not category:
+    if category in {"storage", "cabinet", "shelf", "vanity"} or not category:
+        if bathroom:
+            if height >= 70 or (height >= 60 and depth >= 18):
+                w = nearest_choice(width, TALL_WIDTHS)
+                return scanned_placeholder(f"cab-tall-{w}", x, y, w, 24, front, f"Linen / tall cabinet {w} (scan)")
+            if depth <= 16 or (height >= 48 and depth <= 18):
+                w = 30 if width >= 27 else 24
+                return scanned_placeholder(f"cab-wall-toilet-{w}", x, y, w, 12, front, f"Over-toilet wall {w} (scan)")
+            return _map_vanity(width, height, x, y, front)
         if height >= 70 or (height >= 60 and depth >= 18):
             w = nearest_choice(width, TALL_WIDTHS)
             return scanned_placeholder(f"cab-tall-{w}", x, y, w, 24, front, f"Tall pantry {w} (scan)")
@@ -484,7 +554,7 @@ def import_roomplan(payload: dict, level: dict | None = None) -> dict:
     named_rooms = []
 
     for room in rooms_in:
-        room_name = room.get("name") or room.get("label") or "Scanned kitchen"
+        room_name = room.get("name") or room.get("label") or ""
         origin = room.get("origin") or room
         explicit_w = room.get("width_in") or room.get("width") or (room.get("dimensions") or {}).get("width")
         explicit_d = room.get("depth_in") or room.get("depth") or room.get("length") or (room.get("dimensions") or {}).get("depth")
@@ -495,7 +565,7 @@ def import_roomplan(payload: dict, level: dict | None = None) -> dict:
             if not room.get("width_in") and inches(explicit_w or 0) < 40:
                 w = inches(explicit_w) * scale
                 d = inches(explicit_d or 0) * scale
-            named_rooms.append(mark_from_scan(empty_room(room_name, x, y, max(36, w), max(36, d))))
+            named_rooms.append(mark_from_scan(empty_room(room_name or "Scanned room", x, y, max(36, w), max(36, d))))
 
         for raw in _surfaces(room, "walls"):
             category = _category_name(raw.get("category"), SURFACE_CATEGORY_BY_INT).lower()
@@ -522,8 +592,15 @@ def import_roomplan(payload: dict, level: dict | None = None) -> dict:
             object_rows.append(raw)
 
     target["walls"].extend(imported_walls)
+    room_names = [room.get("name") or room.get("label") or "" for room in named_rooms]
+    room_names.extend([room.get("name") or room.get("label") or "" for room in rooms_in])
+    is_bath = bathroom_context(object_rows, room_names)
+    default_room_name = "Scanned bathroom" if is_bath else "Scanned kitchen"
 
     if named_rooms:
+        for room in named_rooms:
+            if not (room.get("name") or "").strip() or room.get("name") == "Scanned room":
+                room["name"] = default_room_name
         target["rooms"].extend(named_rooms)
         if not imported_walls:
             for room in named_rooms:
@@ -534,7 +611,7 @@ def import_roomplan(payload: dict, level: dict | None = None) -> dict:
         bounds = _room_bounds_from_walls(target["walls"])
         if bounds:
             x, y, w, d = bounds
-            target["rooms"].append(mark_from_scan(empty_room("Scanned kitchen", x, y, max(36, w), max(36, d))))
+            target["rooms"].append(mark_from_scan(empty_room(default_room_name, x, y, max(36, w), max(36, d))))
 
     for kind, raw in opening_rows:
         _add_opening(target["walls"], kind, raw, scale)
@@ -542,7 +619,7 @@ def import_roomplan(payload: dict, level: dict | None = None) -> dict:
     for raw in object_rows:
         try:
             pose = _object_pose(raw, scale)
-            mapped = map_scan_object(pose, target["walls"])
+            mapped = map_scan_object(pose, target["walls"], bathroom=is_bath)
             if mapped:
                 target["objects"].append(mapped)
         except Exception:

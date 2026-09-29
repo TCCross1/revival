@@ -2293,39 +2293,42 @@ async def seed_data():
 
 
 async def seed_admin():
-    email = (os.environ.get("ADMIN_EMAIL") or "").strip().lower()
-    password = os.environ.get("ADMIN_PASSWORD") or ""
-    if not email:
-        logger.warning("ADMIN_EMAIL is not set; skipping owner seed.")
-        return
-    if not password:
-        logger.warning("ADMIN_PASSWORD is not set; cannot seed or reset owner account.")
+    from access_control import admin_seed_accounts, allowed_login_emails
+
+    accounts = admin_seed_accounts()
+    if not accounts:
+        logger.warning("No admin seed accounts configured; skipping owner seed.")
         return
     try:
-        existing = await db.users.find_one({"email": email})
-        if not existing:
-            await db.users.insert_one({
-                "user_id": f"user_{uuid.uuid4().hex[:12]}",
-                "email": email,
-                "name": "Owner",
-                "picture": "",
-                "role": "admin",
-                "password_hash": hash_password(password),
-                "created_at": now_iso(),
-            })
-            logger.info("Seeded owner account for %s.", email)
-            return
-        updates = {}
-        stored_hash = existing.get("password_hash") or ""
-        if not stored_hash or not verify_password(password, stored_hash):
-            updates["password_hash"] = hash_password(password)
-        if existing.get("role") != "admin":
-            updates["role"] = "admin"
-        if updates:
-            await db.users.update_one({"email": email}, {"$set": updates})
-            logger.info("Reset owner account for %s (fields=%s).", email, sorted(updates.keys()))
-        else:
-            logger.info("Owner account already matches env credentials for %s.", email)
+        for email, password, display_name in accounts:
+            existing = await db.users.find_one({"email": email})
+            if not existing:
+                await db.users.insert_one({
+                    "user_id": f"user_{uuid.uuid4().hex[:12]}",
+                    "email": email,
+                    "name": display_name or "Owner",
+                    "picture": "",
+                    "role": "admin",
+                    "password_hash": hash_password(password),
+                    "created_at": now_iso(),
+                })
+                logger.info("Seeded owner account for %s.", email)
+                continue
+            updates = {}
+            stored_hash = existing.get("password_hash") or ""
+            if not stored_hash or not verify_password(password, stored_hash):
+                updates["password_hash"] = hash_password(password)
+            if existing.get("role") != "admin":
+                updates["role"] = "admin"
+            if display_name and not (existing.get("name") or "").strip():
+                updates["name"] = display_name
+            if updates:
+                await db.users.update_one({"email": email}, {"$set": updates})
+                logger.info("Reset owner account for %s (fields=%s).", email, sorted(updates.keys()))
+            else:
+                logger.info("Owner account already matches env credentials for %s.", email)
+        allowed = allowed_login_emails()
+        logger.info("Login allow-list active for %s account(s).", len(allowed))
     except Exception:
         logger.exception("Failed to seed or reset owner account.")
         raise
@@ -2471,6 +2474,7 @@ from routes.job_funds import attach_job_fund_routes
 from routes.calendar import attach_calendar_routes
 from routes.lead_speed_dial import attach_lead_speed_dial_routes
 from routes.proposals import attach_proposal_routes
+from routes.dolly import attach_dolly_routes
 
 attach_auth_routes(api_router)
 attach_client_routes(api_router)
@@ -2484,6 +2488,7 @@ attach_subcontractor_routes(api_router)
 attach_job_fund_routes(api_router)
 attach_calendar_routes(api_router)
 attach_proposal_routes(api_router)
+attach_dolly_routes(api_router)
 
 
 app.include_router(api_router)
