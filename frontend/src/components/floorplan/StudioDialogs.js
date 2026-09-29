@@ -22,6 +22,7 @@ export default function StudioDialogs({
   applyLidar,
   applyScanPayload,
   loadSampleScan,
+  loadSampleBathScan,
   patchLevel,
   reportOpen,
   setReportOpen,
@@ -73,13 +74,13 @@ export default function StudioDialogs({
 
       <Dialog open={lidarOpen} onOpenChange={setLidarOpen}>
         <DialogContent className="bg-white max-w-md">
-          <DialogHeader><DialogTitle className="font-['Outfit']">Scan kitchen</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="font-['Outfit']">Scan room</DialogTitle></DialogHeader>
           <p className="text-sm text-[#4B6370]">
             {hasNativeRoomPlan()
-              ? "Walk the kitchen with this iPhone. RoomPlan captures walls, openings, the island, sink, and appliances, then drops a rough layout on this plan. Measurements are approximate — verify them before you order."
+              ? "Walk the kitchen or bathroom with this iPhone. RoomPlan captures walls, doors, windows, and room fixtures, then drops a rough layout on this plan. Measurements are approximate — verify them before you order."
               : isIPhone()
-                ? "LiDAR scanning uses Apple RoomPlan in Revival Pro’s iPhone app (LiPhone). You can still import a RoomPlan JSON export here. After the scan, this plan stays in sync with Mac."
-                : "On an iPhone 16 Pro, Scan Kitchen runs Apple RoomPlan. Here you can import that scan JSON, or load a sample kitchen to practice cleanup. Edits sync to the phone automatically."}
+                ? "LiDAR scanning uses Apple RoomPlan in Revival Pro’s iPhone app. You can still import a RoomPlan JSON export here. After the scan, this plan stays in sync with Mac."
+                : "On an iPhone 16 Pro, Scan room runs Apple RoomPlan inside the Revival iPhone app. Here you can import that scan JSON, or load a sample kitchen or bathroom to practice cleanup. Edits sync to the phone automatically."}
           </p>
           {hasNativeRoomPlan() ? (
             <Button
@@ -88,7 +89,7 @@ export default function StudioDialogs({
               data-testid="start-roomplan-scan"
               onClick={() => {
                 requestNativeScan();
-                toast.message("Starting RoomPlan… walk the kitchen slowly.");
+                toast.message("Starting RoomPlan… walk the room slowly.");
               }}
             >
               <ScanLine size={14} /> Start LiDAR scan
@@ -118,7 +119,8 @@ export default function StudioDialogs({
           </label>
           <textarea className="w-full h-28 rounded-md border border-slate-200 p-2 text-xs font-mono" placeholder="Paste RoomPlan JSON" value={lidarText} onChange={(e) => setLidarText(e.target.value)} data-testid="lidar-json" />
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button type="button" variant="outline" onClick={() => { loadSampleScan?.(); toast.message("Sample kitchen loaded — Place scan to drop it."); }}>Load sample kitchen</Button>
+            <Button type="button" variant="outline" data-testid="load-sample-kitchen" onClick={() => { loadSampleScan?.(); toast.message("Sample kitchen loaded — Place scan to drop it."); }}>Load sample kitchen</Button>
+            <Button type="button" variant="outline" data-testid="load-sample-bathroom" onClick={() => { loadSampleBathScan?.(); toast.message("Sample bathroom loaded — Place scan to drop it."); }}>Load sample bathroom</Button>
             <Button type="button" variant="outline" onClick={() => setLidarOpen(false)}>Close</Button>
             <Button type="button" className="bg-[#0B3A8F] hover:bg-[#082C73] gap-1" onClick={applyLidar}><Upload size={14} /> Place scan</Button>
           </DialogFooter>

@@ -47,7 +47,7 @@ import {
   resizeRoom, setRoomWallThickness, snapPoint, updateLevel, wallsFromRoom, wallLength,
   applyInteriorDoorDefaults,
 } from "@/lib/floorPlan/model";
-import { importRoomPlan, installRoomPlanListener, hasNativeRoomPlan, requestNativeScan, SAMPLE_KITCHEN_SCAN, needsScanVerify } from "@/lib/floorPlan/roomplan";
+import { importRoomPlan, installRoomPlanListener, hasNativeRoomPlan, requestNativeScan, SAMPLE_KITCHEN_SCAN, SAMPLE_BATHROOM_SCAN, needsScanVerify } from "@/lib/floorPlan/roomplan";
 import { createSyncOrigin, usePlanSync } from "@/lib/floorPlan/planSync";
 import { formatFtIn, inches, parseFtIn, round2, snapTo, uid } from "@/lib/floorPlan/units";
 import {
@@ -288,7 +288,7 @@ export default function FloorPlanStudio() {
       setLidarOpen(true);
       if (hasNativeRoomPlan()) {
         requestNativeScan();
-        toast.message("Starting RoomPlan… walk the kitchen slowly.");
+        toast.message("Starting RoomPlan… walk the room slowly.");
       }
     }
     if (params.get("present") === "1") {
@@ -3002,6 +3002,7 @@ export default function FloorPlanStudio() {
         applyLidar={applyLidar}
         applyScanPayload={applyScanPayload}
         loadSampleScan={() => setLidarText(JSON.stringify(SAMPLE_KITCHEN_SCAN, null, 2))}
+        loadSampleBathScan={() => setLidarText(JSON.stringify(SAMPLE_BATHROOM_SCAN, null, 2))}
         patchLevel={patchLevel}
         reportOpen={reportOpen}
         setReportOpen={setReportOpen}
