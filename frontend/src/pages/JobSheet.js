@@ -244,7 +244,7 @@ export default function JobSheet({ embedded = false }) {
           {embedded ? null : (
             <>
           <Button type="button" className="gap-2 bg-[#C9A227] hover:bg-[#B8911F] text-[#061A23]" onClick={() => navigate(scanKitchenPath(id, jobPlans))} data-testid="job-sheet-scan-kitchen">
-            <ScanLine size={16} /> Scan Kitchen
+            <ScanLine size={16} /> Scan room
           </Button>
           <Button type="button" variant="outline" className="gap-2 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={() => navigate(`/floor-plans/new?job=${id}`)} data-testid="job-sheet-floorplan-btn">
             <PenTool size={16} /> Floor plan

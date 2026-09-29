@@ -77,7 +77,7 @@ const EDIT_GROUPS = [
     tools: [
       { id: "counters", label: "Snap counters", hint: "Rebuild countertops on the base run", icon: Ruler },
       { id: "electrical", label: "Electrical design", hint: "Place required devices, size circuits, build the panel schedule", icon: Zap },
-      { id: "lidar", label: "Scan kitchen", hint: "LiDAR / RoomPlan rough layout", icon: ScanLine },
+      { id: "lidar", label: "Scan room", hint: "LiDAR / RoomPlan kitchen or bath", icon: ScanLine },
       { id: "3d", label: "3D view", hint: "Open the 3D walkthrough", icon: Box },
     ],
   },
