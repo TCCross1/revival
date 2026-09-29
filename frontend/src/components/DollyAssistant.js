@@ -126,14 +126,18 @@ export default function DollyAssistant() {
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-    d.moved = true;
+    if (!d.moved) {
+      d.moved = true;
+      // Only cancel default once a real drag starts so a tap can still open.
+      try { e.preventDefault(); } catch { /* ignore */ }
+    }
     const next = clampPos(d.originX + dx, d.originY + dy, openRef.current);
     d.lastX = next.x;
     d.lastY = next.y;
     setPos(next);
   }, []);
 
-  const onWindowPointerUp = useCallback(() => {
+  const onWindowPointerUp = useCallback((e) => {
     const d = drag.current;
     if (!d) return;
     drag.current = null;
@@ -143,15 +147,23 @@ export default function DollyAssistant() {
     if (d.moved) {
       suppressClick.current = true;
       persistPos(clampPos(d.lastX, d.lastY, openRef.current));
-      window.setTimeout(() => { suppressClick.current = false; }, 0);
+      window.setTimeout(() => { suppressClick.current = false; }, 50);
+      return;
+    }
+    // Open on pointerup when the FAB was pressed without dragging.
+    // Do not rely on click — preventDefault during drag would cancel it.
+    if (d.fromFab && !openRef.current && !suppressClick.current) {
+      const next = clampPos(posRef.current.x, posRef.current.y, true);
+      persistPos(next);
+      setOpen(true);
     }
   }, [onWindowPointerMove, persistPos]);
 
-  const startDrag = (e) => {
+  const startDrag = (e, { fromFab = false } = {}) => {
     if (e.button != null && e.button !== 0) return;
-    e.preventDefault();
     drag.current = {
       moved: false,
+      fromFab,
       startX: e.clientX,
       startY: e.clientY,
       originX: posRef.current.x,
@@ -217,7 +229,7 @@ export default function DollyAssistant() {
           type="button"
           data-testid="dolly-open-btn"
           aria-label="Open Dolly assistant"
-          onPointerDown={startDrag}
+          onPointerDown={(e) => startDrag(e, { fromFab: true })}
           onClick={(e) => {
             if (suppressClick.current || drag.current?.moved) {
               e.preventDefault();
@@ -225,7 +237,7 @@ export default function DollyAssistant() {
             }
             openChat();
           }}
-          className="h-16 w-16 rounded-full overflow-hidden border-[3px] border-[#C9A227] shadow-[0_8px_28px_rgba(11,58,143,0.45)] bg-[#0B3A8F] ring-2 ring-white/80 hover:scale-105 transition-transform cursor-grab active:cursor-grabbing touch-none"
+          className="h-16 w-16 rounded-full overflow-hidden border-[3px] border-[#C9A227] shadow-[0_8px_28px_rgba(11,58,143,0.45)] bg-[#0B3A8F] ring-2 ring-white/80 hover:scale-105 transition-transform cursor-grab active:cursor-grabbing"
         >
           <img
             src="/brand/dolly.png"
@@ -241,8 +253,8 @@ export default function DollyAssistant() {
         >
           <header
             data-testid="dolly-drag-handle"
-            onPointerDown={startDrag}
-            className="flex items-center gap-2.5 bg-[#0B3A8F] px-2.5 py-2.5 text-white cursor-grab active:cursor-grabbing touch-none"
+            onPointerDown={(e) => startDrag(e, { fromFab: false })}
+            className="flex items-center gap-2.5 bg-[#0B3A8F] px-2.5 py-2.5 text-white cursor-grab active:cursor-grabbing"
           >
             <img
               src="/brand/dolly.png"
