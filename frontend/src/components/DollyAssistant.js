@@ -124,6 +124,8 @@ export default function DollyAssistant() {
       startY: e.clientY,
       originX: pos.x,
       originY: pos.y,
+      lastX: pos.x,
+      lastY: pos.y,
       pointerId: e.pointerId,
     };
     try {
@@ -140,7 +142,9 @@ export default function DollyAssistant() {
     const dy = e.clientY - d.startY;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
     d.moved = true;
-    const next = clampPos(d.originX + dx, d.originY + dy, open);
+    const next = clampPos(d.originX + dx, d.originY + dy, openRef.current);
+    d.lastX = next.x;
+    d.lastY = next.y;
     setPos(next);
   };
 
@@ -154,13 +158,12 @@ export default function DollyAssistant() {
       /* ignore */
     }
     if (d.moved) {
-      const next = clampPos(pos.x, pos.y, open);
-      persistPos(next);
+      persistPos(clampPos(d.lastX, d.lastY, openRef.current));
       return;
     }
-    // Treat as click — toggle chat
-    if (!open) {
-      const next = clampPos(pos.x, pos.y, true);
+    // Treat as click — open the small chat window
+    if (!openRef.current) {
+      const next = clampPos(d.originX, d.originY, true);
       persistPos(next);
       setOpen(true);
     }
