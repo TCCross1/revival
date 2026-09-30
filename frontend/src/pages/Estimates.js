@@ -553,7 +553,52 @@ export default function Estimates() {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Phone cards */}
+      <div className="md:hidden space-y-3" data-testid="estimates-phone-list">
+        {isLoading && <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#4B6370]">Loading…</div>}
+        {!isLoading && filtered.length === 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#4B6370]">No estimates here. Create your first estimate.</div>
+        )}
+        {filtered.map((e) => (
+          <article key={e.id} data-testid={`estimate-card-${e.id}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-semibold text-[#0B3A8F] font-['Outfit'] flex items-center gap-2"><FileText size={15} /><span className="truncate">{e.estimate_number}</span></div>
+                <div className="text-sm text-[#061A23] mt-1 truncate">{e.client_name}</div>
+                <div className="text-xs text-[#4B6370] mt-0.5">{e.category} · {fmtDate(e.created_at)}</div>
+              </div>
+              <div className="text-right shrink-0 space-y-1">
+                <StatusBadge status={e.status} />
+                <div className="font-semibold font-['Outfit'] text-[#0B3A8F]">{usd(e.total)}</div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+              {e.status === "Won" && (
+                <>
+                  <button data-testid={`convert-estimate-card-${e.id}`} onClick={() => convert.mutate(e.id)} disabled={convert.isPending || generate.isPending}
+                    className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-[#0B3A8F] text-white text-xs font-semibold disabled:opacity-50">
+                    <Receipt size={14} /> Invoice
+                  </button>
+                  <button data-testid={`generate-estimate-card-${e.id}`} onClick={() => generate.mutate(e.id)} disabled={generate.isPending || convert.isPending}
+                    className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-[#C9A227] text-[#061A23] text-xs font-semibold disabled:opacity-50">
+                    <FileSignature size={14} /> Contract
+                  </button>
+                </>
+              )}
+              <button data-testid={`request-bid-card-${e.id}`} onClick={() => openRequestBid(e)}
+                className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-[#C9A227]/50 text-[#8a6f17] text-xs font-semibold">
+                <HardHat size={14} /> Bid
+              </button>
+              <button onClick={() => downloadPdf(e)} disabled={!!pdfBusyId} className="p-2 rounded-lg hover:bg-slate-100 text-[#0B3A8F]"><Download size={16} /></button>
+              <button onClick={() => sendEmail.mutate(e.id)} disabled={sendEmail.isPending} className="p-2 rounded-lg hover:bg-slate-100 text-[#0B3A8F]"><Send size={16} /></button>
+              <button onClick={() => openEdit(e)} className="p-2 rounded-lg hover:bg-slate-100 text-[#0B3A8F]"><Pencil size={16} /></button>
+              <button onClick={() => { if (window.confirm(`Delete ${e.estimate_number}?`)) remove.mutate(e.id); }} className="p-2 rounded-lg hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

@@ -23,7 +23,7 @@ export function AuthBrandMark({ className = "", decorative = false }) {
 
 export default function AuthSplitLayout({ children, pitch = false }) {
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 font-['Work_Sans']">
+    <div className="min-h-dvh grid lg:grid-cols-2 font-['Work_Sans']">
       <aside className="relative hidden lg:flex flex-col items-center justify-center overflow-y-auto bg-[#0B3A8F] px-8 py-10">
         <AuthBrandMark
           decorative
@@ -46,9 +46,9 @@ export default function AuthSplitLayout({ children, pitch = false }) {
         ) : null}
       </aside>
 
-      <div className="flex items-center justify-center p-8 bg-[#F4F6FA]">
+      <div className="flex items-center justify-center px-5 py-8 sm:p-8 bg-[#F4F6FA] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <div className="w-full max-w-md">
-          <AuthBrandMark className="mx-auto mb-8 w-full max-w-[16rem] h-auto object-contain lg:hidden" />
+          <AuthBrandMark className="mx-auto mb-6 sm:mb-8 w-full max-w-[12rem] sm:max-w-[16rem] h-auto object-contain lg:hidden" />
           {children}
         </div>
       </div>

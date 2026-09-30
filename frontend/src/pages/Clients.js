@@ -100,19 +100,19 @@ export default function Clients() {
 
   return (
     <div className="space-y-6" data-testid="clients-page">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-3xl sm:text-4xl font-semibold font-['Outfit'] tracking-tight">Clients</h1>
-          <p className="text-[#4B6370] mt-1">Your simple contact book for leads and customers.</p>
+          <h1 className="text-2xl sm:text-4xl font-semibold font-['Outfit'] tracking-tight">Clients</h1>
+          <p className="text-[#4B6370] mt-1 text-sm sm:text-base">Your simple contact book for leads and customers.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" data-testid="import-proposal-btn" variant="outline" className="border-[#0B3A8F]/30 text-[#0B3A8F] gap-2" onClick={() => setImportOpen(true)}>
-            <FileUp size={18} /> Import proposal
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+          <Button type="button" data-testid="import-proposal-btn" variant="outline" className="border-[#0B3A8F]/30 text-[#0B3A8F] gap-2 h-11" onClick={() => setImportOpen(true)}>
+            <FileUp size={18} /> Import
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="add-client-btn" onClick={openNew} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2">
-              <Plus size={18} /> Add Client
+            <Button data-testid="add-client-btn" onClick={openNew} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2 h-11">
+              <Plus size={18} /> Add
             </Button>
           </DialogTrigger>
           <DialogContent className="bg-white max-w-lg">
@@ -204,7 +204,50 @@ export default function Clients() {
         <Input data-testid="client-search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients…" className="pl-10 bg-white" />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Phone card list */}
+      <div className="md:hidden space-y-3" data-testid="clients-phone-list">
+        {isLoading && <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#4B6370]">Loading…</div>}
+        {!isLoading && filtered.length === 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#4B6370]">No clients yet. Add your first client to get started.</div>
+        )}
+        {filtered.map((c) => (
+          <article
+            key={c.id}
+            data-testid={`client-card-${c.id}`}
+            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(`/clients/${c.id}`)}
+                data-testid={`open-client-card-${c.id}`}
+                className="text-left min-w-0"
+              >
+                <div className="font-semibold text-[#0B3A8F] font-['Outfit'] text-lg leading-tight truncate">{c.name}</div>
+                {c.address ? (
+                  <div className="text-xs text-[#4B6370] flex items-center gap-1 mt-1"><MapPin size={12} /><span className="truncate">{c.address}</span></div>
+                ) : null}
+              </button>
+              <StatusBadge status={c.status} />
+            </div>
+            <div className="mt-3 space-y-1 text-sm text-[#4B6370]">
+              {c.phone ? <div className="flex items-center gap-1.5"><Phone size={13} />{formatPhone(c.phone)}</div> : null}
+              {c.email ? <div className="flex items-center gap-1.5 truncate"><Mail size={13} />{c.email}</div> : null}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+              <span className="text-xs text-[#4B6370]">{c.source || "—"} · {fmtDate(c.created_at)}</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => navigate(`/clients/${c.id}`)} title="View timeline" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Eye size={16} /></button>
+                <button type="button" onClick={() => openEdit(c)} className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Pencil size={16} /></button>
+                <button type="button" onClick={() => { if (window.confirm(`Delete ${c.name}?`)) remove.mutate(c.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

@@ -34,45 +34,74 @@ export default function Contracts() {
       )}
 
       {contracts.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-[#4B6370]">
-                  <th className="p-4 font-medium">Contract #</th>
-                  <th className="p-4 font-medium">Client</th>
-                  <th className="p-4 font-medium">Project</th>
-                  <th className="p-4 font-medium">Status</th>
-                  <th className="p-4 font-medium text-right">Amount</th>
-                  <th className="p-4 font-medium">Created</th>
-                  <th className="p-4 font-medium text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contracts.map((c) => (
-                  <tr key={c.id} data-testid={`contract-row-${c.id}`} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="p-4">
-                      <button onClick={() => navigate(`/contracts/${c.id}`)} data-testid={`open-contract-${c.id}`} className="font-medium text-[#0B3A8F] hover:underline flex items-center gap-2">
-                        <FileSignature size={15} />{c.contract_number}
-                      </button>
-                    </td>
-                    <td className="p-4">{c.client_name}</td>
-                    <td className="p-4 text-[#4B6370] max-w-[240px] truncate">{c.project_description}</td>
-                    <td className="p-4"><StatusBadge status={c.status} /></td>
-                    <td className="p-4 text-right font-semibold font-['Outfit']">{usd(c.total)}</td>
-                    <td className="p-4 text-[#4B6370]">{fmtDate(c.created_at)}</td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-end gap-1">
-                        <button data-testid={`view-contract-${c.id}`} onClick={() => navigate(`/contracts/${c.id}`)} title="Open" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Eye size={16} /></button>
-                        <button data-testid={`delete-contract-${c.id}`} onClick={() => { if (window.confirm(`Delete ${c.contract_number}?`)) remove.mutate(c.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          <div className="md:hidden space-y-3" data-testid="contracts-phone-list">
+            {contracts.map((c) => (
+              <article key={c.id} data-testid={`contract-card-${c.id}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <button type="button" onClick={() => navigate(`/contracts/${c.id}`)} className="text-left min-w-0">
+                    <div className="font-semibold text-[#0B3A8F] font-['Outfit'] flex items-center gap-2">
+                      <FileSignature size={15} /><span className="truncate">{c.contract_number}</span>
+                    </div>
+                    <div className="text-sm mt-1 truncate">{c.client_name}</div>
+                    <div className="text-xs text-[#4B6370] mt-0.5 line-clamp-2">{c.project_description}</div>
+                  </button>
+                  <StatusBadge status={c.status} />
+                </div>
+                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                  <div>
+                    <div className="font-['Outfit'] font-semibold text-[#0B3A8F]">{usd(c.total)}</div>
+                    <div className="text-xs text-[#4B6370]">{fmtDate(c.created_at)}</div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => navigate(`/contracts/${c.id}`)} className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Eye size={16} /></button>
+                    <button type="button" onClick={() => { if (window.confirm(`Delete ${c.contract_number}?`)) remove.mutate(c.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
-        </div>
+
+          <div className="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-[#4B6370]">
+                    <th className="p-4 font-medium">Contract #</th>
+                    <th className="p-4 font-medium">Client</th>
+                    <th className="p-4 font-medium">Project</th>
+                    <th className="p-4 font-medium">Status</th>
+                    <th className="p-4 font-medium text-right">Amount</th>
+                    <th className="p-4 font-medium">Created</th>
+                    <th className="p-4 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contracts.map((c) => (
+                    <tr key={c.id} data-testid={`contract-row-${c.id}`} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="p-4">
+                        <button onClick={() => navigate(`/contracts/${c.id}`)} data-testid={`open-contract-${c.id}`} className="font-medium text-[#0B3A8F] hover:underline flex items-center gap-2">
+                          <FileSignature size={15} />{c.contract_number}
+                        </button>
+                      </td>
+                      <td className="p-4">{c.client_name}</td>
+                      <td className="p-4 text-[#4B6370] max-w-[240px] truncate">{c.project_description}</td>
+                      <td className="p-4"><StatusBadge status={c.status} /></td>
+                      <td className="p-4 text-right font-semibold font-['Outfit']">{usd(c.total)}</td>
+                      <td className="p-4 text-[#4B6370]">{fmtDate(c.created_at)}</td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <button data-testid={`view-contract-${c.id}`} onClick={() => navigate(`/contracts/${c.id}`)} title="Open" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]"><Eye size={16} /></button>
+                          <button data-testid={`delete-contract-${c.id}`} onClick={() => { if (window.confirm(`Delete ${c.contract_number}?`)) remove.mutate(c.id); }} className="p-2 rounded-md hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

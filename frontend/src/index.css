@@ -3,11 +3,21 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+    --rp-phone-tab-h: 0px;
+    --rp-safe-top: env(safe-area-inset-top, 0px);
+    --rp-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 body {
     margin: 0;
     font-family: "Work Sans", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+body.rp-phone-shell {
+    --rp-phone-tab-h: 3.85rem;
 }
 
 code {
@@ -230,6 +240,78 @@ code {
             inset 0 0 0 1px rgba(122, 90, 14, 0.25),
             0 0 0 1px rgba(255, 236, 170, 0.5),
             0 10px 24px rgba(201, 162, 39, 0.48);
+    }
+
+    /* —— Phone / iOS shell —— */
+    .rp-phone-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding:
+            calc(0.55rem + var(--rp-safe-top))
+            1rem
+            0.55rem;
+        background:
+            linear-gradient(180deg, #0B3A8F 0%, #082C73 100%);
+        border-bottom: 1px solid rgba(201, 162, 39, 0.4);
+        box-shadow: 0 10px 28px rgba(6, 26, 35, 0.28);
+    }
+
+    .rp-phone-main {
+        padding-bottom: calc(1rem + var(--rp-phone-tab-h) + var(--rp-safe-bottom));
+    }
+
+    .rp-phone-tabbar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 40;
+        display: flex;
+        align-items: stretch;
+        justify-content: space-around;
+        min-height: calc(var(--rp-phone-tab-h) + var(--rp-safe-bottom));
+        padding: 0.35rem 0.35rem calc(0.35rem + var(--rp-safe-bottom));
+        background: rgba(7, 30, 92, 0.97);
+        border-top: 1px solid rgba(201, 162, 39, 0.45);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 -12px 28px rgba(6, 26, 35, 0.28);
+    }
+
+    .rp-phone-tab-glyph {
+        display: grid;
+        place-items: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 0.75rem;
+        background:
+            linear-gradient(165deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.05) 46%, rgba(11, 58, 143, 0.28) 100%);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.4),
+            inset 0 0 0 1px rgba(201, 162, 39, 0.2),
+            0 6px 14px rgba(6, 26, 35, 0.25);
+        color: #F3E2A0;
+    }
+
+    .rp-phone-tab-glyph.is-active {
+        background: linear-gradient(165deg, #FFF6D0 0%, #E8C56A 46%, #C9A227 100%);
+        color: #061A23;
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.75),
+            0 0 0 1px rgba(255, 236, 170, 0.45),
+            0 8px 18px rgba(201, 162, 39, 0.4);
+    }
+
+    .rp-phone-more-sheet [data-radix-collection-item],
+    .rp-phone-more-sheet button {
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Fixed page footers (e.g. Job Sheet) sit above the phone tab bar */
+    body.rp-phone-shell .rp-phone-lift {
+        bottom: calc(var(--rp-phone-tab-h) + var(--rp-safe-bottom)) !important;
     }
 }
 
