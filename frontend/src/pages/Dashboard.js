@@ -20,18 +20,32 @@ const StatCard = ({ icon: Icon, label, value, sub, accent, testid }) => (
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => (await api.get("/dashboard")).data,
+    retry: 2,
   });
   const { data: jobs = [] } = useQuery({
     queryKey: ["jobs"],
     queryFn: async () => (await api.get("/jobs")).data,
+    retry: 2,
   });
   const activeJobs = jobs.filter((j) => (j.status || "Active") === "Active").slice(0, 6);
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return <div className="text-[#4B6370]">Loading dashboard…</div>;
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="space-y-3" data-testid="dashboard-error">
+        <h1 className="text-3xl sm:text-4xl font-semibold font-['Outfit'] tracking-tight">Dashboard</h1>
+        <p className="text-[#4B6370]">Office numbers did not load. Refresh, or confirm the API is running on port 8001.</p>
+        <button type="button" onClick={() => refetch()} className="text-sm font-medium text-[#0B3A8F] hover:underline">
+          Try again
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -48,7 +62,7 @@ export default function Dashboard() {
               <h2 className="text-lg font-semibold font-['Outfit']">Active jobs</h2>
               <p className="text-sm text-[#4B6370]">The workshop. Design, scope, money, and crew live on the job.</p>
             </div>
-            <button type="button" onClick={() => navigate("/jobs")} className="text-sm font-medium text-[#0A4D68] hover:underline flex items-center gap-1">
+            <button type="button" onClick={() => navigate("/jobs")} className="text-sm font-medium text-[#0B3A8F] hover:underline flex items-center gap-1">
               All jobs <ArrowRight size={14} />
             </button>
           </div>
@@ -73,7 +87,7 @@ export default function Dashboard() {
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard testid="kpi-pipeline" icon={DollarSign} label="Pipeline Value" value={usd(data.pipeline_value)} sub="Total in open estimates" accent="bg-[#0A4D68]/10 text-[#0A4D68]" />
+        <StatCard testid="kpi-pipeline" icon={DollarSign} label="Pipeline Value" value={usd(data.pipeline_value)} sub="Total in open estimates" accent="bg-[#0B3A8F]/10 text-[#0B3A8F]" />
         <StatCard testid="kpi-open-estimates" icon={FileText} label="Open Estimates" value={data.open_estimates_count} sub="Awaiting a decision" accent="bg-blue-100 text-blue-600" />
         <StatCard testid="kpi-active-jobs" icon={HardHat} label="Active Jobs" value={data.active_jobs} sub="Currently in progress" accent="bg-amber-100 text-amber-600" />
         <StatCard testid="kpi-ytd-revenue" icon={TrendingUp} label="YTD Revenue" value={usd(data.ytd_revenue)} sub="Collected this year" accent="bg-emerald-100 text-emerald-600" />
@@ -87,7 +101,7 @@ export default function Dashboard() {
               <h2 className="text-lg font-semibold font-['Outfit']">Needs Follow-up</h2>
               <p className="text-sm text-[#4B6370]">Estimates waiting on a reply — chase the biggest first.</p>
             </div>
-            <button data-testid="view-all-estimates-btn" onClick={() => navigate("/estimates")} className="text-sm font-medium text-[#0A4D68] hover:underline flex items-center gap-1">
+            <button data-testid="view-all-estimates-btn" onClick={() => navigate("/estimates")} className="text-sm font-medium text-[#0B3A8F] hover:underline flex items-center gap-1">
               View all <ArrowRight size={14} />
             </button>
           </div>
@@ -123,14 +137,14 @@ export default function Dashboard() {
           </div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0A4D68]/10 text-[#0A4D68]"><Users size={20} /></span>
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0B3A8F]/10 text-[#0B3A8F]"><Users size={20} /></span>
               <div>
                 <div className="text-sm text-[#4B6370]">Total Clients</div>
                 <div className="text-2xl font-semibold font-['Outfit']">{data.total_clients}</div>
               </div>
             </div>
           </div>
-          <div className="bg-[#0A4D68] rounded-xl shadow-sm p-6 text-white">
+          <div className="bg-[#0B3A8F] rounded-xl shadow-sm p-6 text-white">
             <div className="text-sm text-white/70">Collected YTD</div>
             <div className="text-3xl font-semibold font-['Outfit'] mt-1">{usdCents(data.ytd_revenue)}</div>
             <button onClick={() => navigate("/invoices")} className="mt-4 text-sm font-medium text-[#C9A227] hover:underline flex items-center gap-1">

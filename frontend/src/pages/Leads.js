@@ -30,7 +30,7 @@ const EMPTY = {
 };
 
 const sourceBadge = (source) => {
-  if (source === "Angi") return "bg-[#0A4D68]/10 text-[#0A4D68]";
+  if (source === "Angi") return "bg-[#0B3A8F]/10 text-[#0B3A8F]";
   if (source === "Thumbtack") return "bg-[#C9A227]/20 text-[#8a6f17]";
   return "bg-slate-100 text-[#4B6370]";
 };
@@ -109,6 +109,30 @@ export default function Leads() {
     callLead.mutate(lead);
   };
 
+  const { data: callingSettings } = useQuery({
+    queryKey: ["calling-settings"],
+    queryFn: async () => (await api.get("/leads/calling-settings")).data,
+  });
+
+  const { data: callLogs = [] } = useQuery({
+    queryKey: ["call-logs"],
+    queryFn: async () => (await api.get("/leads/call-logs", { params: { limit: 40 } })).data,
+  });
+
+  const [callingForm, setCallingForm] = useState(null);
+  const callingDraft = callingForm || callingSettings;
+
+  const saveCalling = useMutation({
+    mutationFn: async (payload) => (await api.put("/leads/calling-settings", payload)).data,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["calling-settings"] });
+      setCallingForm(null);
+      toast.success("Calling contacts saved");
+      return data;
+    },
+    onError: async (err) => toast.error(await formatApiError(err, "Could not save calling settings.")),
+  });
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return leads.filter((l) => {
@@ -163,9 +187,149 @@ export default function Leads() {
           <div className="mt-2 h-1 w-28 rounded-full bg-[#C9A227]" />
           <p className="text-[#4B6370] mt-2">New opportunities from Thumbtack, Angi, and everywhere else — before they go cold.</p>
         </div>
-        <Button data-testid="add-lead-btn" onClick={openNew} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2">
+        <Button data-testid="add-lead-btn" onClick={openNew} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2">
           <Plus size={18} /> Add Lead
         </Button>
+      </div>
+
+      <div
+        className="rounded-xl border border-[#C9A227]/35 bg-white p-4 shadow-sm space-y-3"
+        data-testid="leads-calling-settings"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-['Outfit'] text-lg font-semibold text-[#061A23] flex items-center gap-2">
+              <PhoneCall size={18} className="text-[#0B3A8F]" /> Speed dial &amp; notify contacts
+            </h2>
+            <p className="text-sm text-[#4B6370] mt-1 max-w-2xl">
+              New Thumbtack, Google Ads, and Angi leads auto-dial through Riley. Edit the from-number and notify contacts here until your custom number is ready.
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-[#061A23]">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={Boolean(callingDraft?.auto_call_enabled)}
+              onChange={(e) =>
+                setCallingForm({
+                  ...(callingDraft || {}),
+                  auto_call_enabled: e.target.checked,
+                })
+              }
+              data-testid="calling-auto-enabled"
+            />
+            Auto-call on
+          </label>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label>From number (Riley caller ID)</Label>
+            <Input
+              className="mt-1 h-10"
+              value={callingDraft?.from_number || ""}
+              onChange={(e) => setCallingForm({ ...(callingDraft || {}), from_number: e.target.value })}
+              placeholder="+18599978212"
+              data-testid="calling-from-number"
+            />
+          </div>
+          <div>
+            <Label>Notify emails (comma-separated)</Label>
+            <Input
+              className="mt-1 h-10"
+              value={(callingDraft?.notify_emails || []).join(", ")}
+              onChange={(e) =>
+                setCallingForm({
+                  ...(callingDraft || {}),
+                  notify_emails: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                })
+              }
+              placeholder="revivalhomeremodelingllc@gmail.com"
+              data-testid="calling-notify-emails"
+            />
+          </div>
+          <div>
+            <Label>Notify phones</Label>
+            <Input
+              className="mt-1 h-10"
+              value={(callingDraft?.notify_phones || []).join(", ")}
+              onChange={(e) =>
+                setCallingForm({
+                  ...(callingDraft || {}),
+                  notify_phones: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                })
+              }
+              placeholder="859-227-0340"
+              data-testid="calling-notify-phones"
+            />
+          </div>
+          <div>
+            <Label>Owner fallback phones</Label>
+            <Input
+              className="mt-1 h-10"
+              value={(callingDraft?.owner_fallback_phones || []).join(", ")}
+              onChange={(e) =>
+                setCallingForm({
+                  ...(callingDraft || {}),
+                  owner_fallback_phones: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                })
+              }
+              placeholder="After AI miss, optional"
+              data-testid="calling-fallback-phones"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-4 text-xs text-[#4B6370]">
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={Boolean(callingDraft?.auto_call_thumbtack)}
+              onChange={(e) => setCallingForm({ ...(callingDraft || {}), auto_call_thumbtack: e.target.checked })}
+            />
+            Thumbtack
+          </label>
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={Boolean(callingDraft?.auto_call_google_ads)}
+              onChange={(e) => setCallingForm({ ...(callingDraft || {}), auto_call_google_ads: e.target.checked })}
+            />
+            Google Ads
+          </label>
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={Boolean(callingDraft?.auto_call_angi)}
+              onChange={(e) => setCallingForm({ ...(callingDraft || {}), auto_call_angi: e.target.checked })}
+            />
+            Angi
+          </label>
+        </div>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            className="bg-[#0B3A8F] hover:bg-[#082C73]"
+            disabled={saveCalling.isPending || !callingForm}
+            onClick={() => saveCalling.mutate(callingDraft)}
+            data-testid="calling-settings-save"
+          >
+            {saveCalling.isPending ? "Saving…" : "Save contacts"}
+          </Button>
+        </div>
+        {callLogs.length ? (
+          <div className="border-t border-slate-100 pt-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#4B6370] mb-2">Recent call attempts</div>
+            <div className="max-h-40 overflow-y-auto space-y-1.5 text-sm">
+              {callLogs.slice(0, 12).map((log) => (
+                <div key={log.id} className="flex flex-wrap gap-x-3 gap-y-0.5 text-[#061A23]">
+                  <span className="font-medium">{log.status}</span>
+                  <span className="text-[#4B6370]">{log.source || "—"}</span>
+                  <span className="text-[#4B6370]">attempt {log.attempt}</span>
+                  <span className="text-[#4B6370] truncate max-w-[240px]">{log.summary || log.error || log.vapi_call_id || ""}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-col xl:flex-row xl:items-center gap-3">
@@ -199,7 +363,7 @@ export default function Leads() {
         </Select>
         <div
           data-testid="live-leads-counter"
-          className="flex items-center gap-3 rounded-xl bg-[#0A4D68] px-4 py-2.5 min-w-[150px] shadow-sm"
+          className="flex items-center gap-3 rounded-xl bg-[#0B3A8F] px-4 py-2.5 min-w-[150px] shadow-sm"
         >
           <Activity size={18} className="text-[#C9A227]" />
           <div>
@@ -268,7 +432,7 @@ export default function Leads() {
                           size="sm"
                           disabled={convert.isPending && convert.variables === lead.id}
                           onClick={() => convert.mutate(lead.id)}
-                          className="h-8 px-2.5 bg-[#0A4D68] hover:bg-[#083D53] text-white gap-1.5 whitespace-nowrap"
+                          className="h-8 px-2.5 bg-[#0B3A8F] hover:bg-[#082C73] text-white gap-1.5 whitespace-nowrap"
                         >
                           <UserPlus size={14} />
                           {convert.isPending && convert.variables === lead.id ? "Converting…" : "Convert to Client & Job"}
@@ -278,7 +442,7 @@ export default function Leads() {
                           <Link
                             data-testid={`view-client-${lead.id}`}
                             to={`/clients/${lead.client_id}`}
-                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-[#0A4D68]/30 text-[#0A4D68] text-xs font-medium hover:bg-[#0A4D68]/5 whitespace-nowrap"
+                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-[#0B3A8F]/30 text-[#0B3A8F] text-xs font-medium hover:bg-[#0B3A8F]/5 whitespace-nowrap"
                           >
                             <User size={13} /> View Client
                           </Link>
@@ -291,7 +455,7 @@ export default function Leads() {
                           </Link>
                         </div>
                       )}
-                      <button data-testid={`view-lead-${lead.id}`} onClick={() => openView(lead)} title="View lead" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]">
+                      <button data-testid={`view-lead-${lead.id}`} onClick={() => openView(lead)} title="View lead" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]">
                         <Eye size={16} />
                       </button>
                       <Button
@@ -308,7 +472,7 @@ export default function Leads() {
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button data-testid={`more-lead-${lead.id}`} className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68]" title="More">
+                          <button data-testid={`more-lead-${lead.id}`} className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F]" title="More">
                             <MoreVertical size={16} />
                           </button>
                         </DropdownMenuTrigger>
@@ -411,9 +575,9 @@ export default function Leads() {
                 <StatusBadge status={viewing.status} />
               </div>
               <div className="text-[#4B6370]">{viewing.project_type} · {viewing.source}</div>
-              {viewing.phone && <div className="flex items-center gap-2"><Phone size={14} className="text-[#0A4D68]" />{formatPhone(viewing.phone)}</div>}
-              {viewing.email && <div className="flex items-center gap-2"><Mail size={14} className="text-[#0A4D68]" />{viewing.email}</div>}
-              {viewing.address && <div className="flex items-center gap-2"><MapPin size={14} className="text-[#0A4D68]" />{viewing.address}</div>}
+              {viewing.phone && <div className="flex items-center gap-2"><Phone size={14} className="text-[#0B3A8F]" />{formatPhone(viewing.phone)}</div>}
+              {viewing.email && <div className="flex items-center gap-2"><Mail size={14} className="text-[#0B3A8F]" />{viewing.email}</div>}
+              {viewing.address && <div className="flex items-center gap-2"><MapPin size={14} className="text-[#0B3A8F]" />{viewing.address}</div>}
               <div className="rounded-lg bg-slate-50 p-3 text-[#4B6370]">{viewing.notes || "No notes yet."}</div>
               <div className="text-xs text-[#4B6370]">Response time: {viewing.wait_label}</div>
               <Button
@@ -432,7 +596,7 @@ export default function Leads() {
                   <Link
                     data-testid="detail-view-client"
                     to={`/clients/${viewing.client_id}`}
-                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-[#0A4D68]/30 text-[#0A4D68] text-sm font-medium hover:bg-[#0A4D68]/5"
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-[#0B3A8F]/30 text-[#0B3A8F] text-sm font-medium hover:bg-[#0B3A8F]/5"
                   >
                     <User size={14} /> View Client
                   </Link>
@@ -450,7 +614,7 @@ export default function Leads() {
                   type="button"
                   disabled={convert.isPending && convert.variables === viewing.id}
                   onClick={() => convert.mutate(viewing.id)}
-                  className="w-full bg-[#0A4D68] hover:bg-[#083D53] gap-2"
+                  className="w-full bg-[#0B3A8F] hover:bg-[#082C73] gap-2"
                 >
                   <UserPlus size={16} />
                   {convert.isPending && convert.variables === viewing.id ? "Converting…" : "Convert to Client & Job"}
@@ -458,7 +622,7 @@ export default function Leads() {
               )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setViewOpen(false)}>Close</Button>
-                <Button type="button" onClick={() => openEdit(viewing)} className="bg-[#0A4D68] hover:bg-[#083D53]">Edit Lead</Button>
+                <Button type="button" onClick={() => openEdit(viewing)} className="bg-[#0B3A8F] hover:bg-[#082C73]">Edit Lead</Button>
               </DialogFooter>
             </div>
           )}
@@ -518,7 +682,7 @@ export default function Leads() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setFormOpen(false)} disabled={save.isPending}>Cancel</Button>
-              <Button data-testid="save-lead-btn" type="submit" disabled={save.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+              <Button data-testid="save-lead-btn" type="submit" disabled={save.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                 {save.isPending ? "Saving…" : "Save Lead"}
               </Button>
             </DialogFooter>

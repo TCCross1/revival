@@ -18,6 +18,7 @@ import { Plus, TrendingUp, TrendingDown, Wallet, Receipt, HardHat, Scale, Messag
 import StatusBadge from "@/components/StatusBadge";
 import OverheadLedger from "@/components/OverheadLedger";
 import SquareStatements from "@/components/SquareStatements";
+import SquareReconciliation from "@/components/SquareReconciliation";
 import { toast } from "sonner";
 
 const todayDate = () => new Date().toISOString().slice(0, 10);
@@ -58,7 +59,7 @@ const StatCard = ({ icon: Icon, label, value, sub, accent, valueColor, testid, o
     type="button"
     data-testid={testid}
     onClick={onClick}
-    className={`bg-white rounded-xl border border-slate-200 shadow-sm p-6 text-left w-full ${onClick ? "hover:border-[#0A4D68]/30 transition-colors" : ""}`}
+    className={`bg-white rounded-xl border border-slate-200 shadow-sm p-6 text-left w-full ${onClick ? "hover:border-[#0B3A8F]/30 transition-colors" : ""}`}
   >
     <div className="flex items-center justify-between">
       <span className="text-sm font-medium text-[#4B6370]">{label}</span>
@@ -272,17 +273,17 @@ export default function Financials() {
           <h1 className="text-3xl sm:text-4xl font-semibold font-['Outfit'] tracking-tight">Financials</h1>
           <p className="text-[#4B6370] mt-1">Your books at a glance — income, overhead, and what’s still outstanding.</p>
         </div>
-        <Button data-testid="add-overhead-expense-btn" onClick={() => { setTab("overhead"); openNewExpense(); }} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2">
+        <Button data-testid="add-overhead-expense-btn" onClick={() => { setTab("overhead"); openNewExpense(); }} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2">
           <Plus size={18} /> Add Expense
         </Button>
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-6">
         <TabsList className="bg-white border border-slate-200 h-11 p-1 w-full sm:w-auto flex flex-wrap">
-          <TabsTrigger value="overview" data-testid="financials-overview-tab" className="px-4 data-[state=active]:bg-[#0A4D68] data-[state=active]:text-white">Overview</TabsTrigger>
-          <TabsTrigger value="overhead" data-testid="financials-overhead-tab" className="px-4 data-[state=active]:bg-[#0A4D68] data-[state=active]:text-white">Overhead</TabsTrigger>
-          <TabsTrigger value="square" data-testid="financials-square-tab" className="px-4 data-[state=active]:bg-[#0A4D68] data-[state=active]:text-white">Square</TabsTrigger>
-          <TabsTrigger value="tax" data-testid="financials-tax-tab" className="px-4 data-[state=active]:bg-[#0A4D68] data-[state=active]:text-white">Tax Assistant</TabsTrigger>
+          <TabsTrigger value="overview" data-testid="financials-overview-tab" className="px-4 data-[state=active]:bg-[#0B3A8F] data-[state=active]:text-white">Overview</TabsTrigger>
+          <TabsTrigger value="overhead" data-testid="financials-overhead-tab" className="px-4 data-[state=active]:bg-[#0B3A8F] data-[state=active]:text-white">Overhead</TabsTrigger>
+          <TabsTrigger value="square" data-testid="financials-square-tab" className="px-4 data-[state=active]:bg-[#0B3A8F] data-[state=active]:text-white">Square</TabsTrigger>
+          <TabsTrigger value="tax" data-testid="financials-tax-tab" className="px-4 data-[state=active]:bg-[#0B3A8F] data-[state=active]:text-white">Tax Assistant</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-0">
@@ -314,8 +315,8 @@ export default function Financials() {
                   label="Net Profit"
                   value={usd(overview.net_profit)}
                   sub={netPositive ? "Income minus expenses" : "Expenses currently exceed income"}
-                  accent="bg-[#0A4D68]/10 text-[#0A4D68]"
-                  valueColor={netPositive ? "text-[#0A4D68]" : "text-red-600"}
+                  accent="bg-[#0B3A8F]/10 text-[#0B3A8F]"
+                  valueColor={netPositive ? "text-[#0B3A8F]" : "text-red-600"}
                 />
                 <StatCard
                   testid="fin-outstanding"
@@ -337,18 +338,18 @@ export default function Financials() {
                         {overview.month_overhead.days_in_month} days this month · daily rate {usdCents(overview.month_overhead.daily_rate)} from actuals. A 7-day job would carry {usdCents((overview.month_overhead.actual_total ?? overview.month_overhead.total ?? 0) * (7 / (overview.month_overhead.days_in_month || 1)))} of overhead.
                       </p>
                     </div>
-                    <button type="button" onClick={() => setTab("overhead")} className="text-sm font-medium text-[#0A4D68] hover:underline">
+                    <button type="button" onClick={() => setTab("overhead")} className="text-sm font-medium text-[#0B3A8F] hover:underline">
                       Enter this month’s bills →
                     </button>
                   </div>
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <div className="text-xs uppercase tracking-wide text-[#4B6370]">Projected</div>
-                      <div className="text-2xl font-semibold font-['Outfit'] text-[#0A4D68]">{usdCents(overview.month_overhead.projected_total)}</div>
+                      <div className="text-2xl font-semibold font-['Outfit'] text-[#0B3A8F]">{usdCents(overview.month_overhead.projected_total)}</div>
                     </div>
                     <div>
                       <div className="text-xs uppercase tracking-wide text-[#4B6370]">Actual</div>
-                      <div className="text-2xl font-semibold font-['Outfit'] text-[#0A4D68]">{usdCents(overview.month_overhead.actual_total ?? overview.month_overhead.total)}</div>
+                      <div className="text-2xl font-semibold font-['Outfit'] text-[#0B3A8F]">{usdCents(overview.month_overhead.actual_total ?? overview.month_overhead.total)}</div>
                     </div>
                     <div>
                       <div className="text-xs uppercase tracking-wide text-[#4B6370]">Difference</div>
@@ -365,7 +366,7 @@ export default function Financials() {
                       <h2 className="text-lg font-semibold font-['Outfit']">Income breakdown</h2>
                       <p className="text-sm text-[#4B6370]">Collected from invoices vs everything else</p>
                     </div>
-                    <Button data-testid="add-other-income-btn" variant="outline" size="sm" className="h-8 border-[#0A4D68]/30 text-[#0A4D68]" onClick={() => setOtherOpen(true)}>
+                    <Button data-testid="add-other-income-btn" variant="outline" size="sm" className="h-8 border-[#0B3A8F]/30 text-[#0B3A8F]" onClick={() => setOtherOpen(true)}>
                       <Plus size={14} /> Other
                     </Button>
                   </div>
@@ -391,17 +392,17 @@ export default function Financials() {
                       <h2 className="text-lg font-semibold font-['Outfit']">Expense breakdown</h2>
                       <p className="text-sm text-[#4B6370]">Overhead vs actual job costs</p>
                     </div>
-                    <button type="button" onClick={() => setTab("overhead")} className="text-sm font-medium text-[#0A4D68] hover:underline" data-testid="goto-overhead-btn">
+                    <button type="button" onClick={() => setTab("overhead")} className="text-sm font-medium text-[#0B3A8F] hover:underline" data-testid="goto-overhead-btn">
                       Manage overhead →
                     </button>
                   </div>
                   <div className="mt-4">
-                    <MixBar leftValue={overview.overhead_ytd} rightValue={overview.job_costs_ytd} leftColor="bg-[#0A4D68]" rightColor="bg-amber-500" />
+                    <MixBar leftValue={overview.overhead_ytd} rightValue={overview.job_costs_ytd} leftColor="bg-[#0B3A8F]" rightColor="bg-amber-500" />
                   </div>
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button type="button" onClick={() => setTab("overhead")} className="rounded-lg bg-slate-50 p-4 text-left hover:bg-slate-100">
                       <div className="text-xs text-[#4B6370]">Overhead</div>
-                      <div className="text-xl font-semibold font-['Outfit'] text-[#0A4D68]" data-testid="fin-overhead-ytd">{usdCents(overview.overhead_ytd)}</div>
+                      <div className="text-xl font-semibold font-['Outfit'] text-[#0B3A8F]" data-testid="fin-overhead-ytd">{usdCents(overview.overhead_ytd)}</div>
                       <div className="text-xs text-[#4B6370] mt-1">Insurance, rent, vehicles…</div>
                     </button>
                     <button type="button" onClick={() => navigate("/jobs")} className="rounded-lg bg-slate-50 p-4 text-left hover:bg-slate-100">
@@ -419,7 +420,7 @@ export default function Financials() {
                     <h2 className="text-lg font-semibold font-['Outfit']">Profit by Job</h2>
                     <p className="text-sm text-[#4B6370]">Collected invoice payments minus actual job costs</p>
                   </div>
-                  <button type="button" onClick={() => navigate("/jobs")} className="text-sm font-medium text-[#0A4D68] hover:underline">
+                  <button type="button" onClick={() => navigate("/jobs")} className="text-sm font-medium text-[#0B3A8F] hover:underline">
                     Open Jobs →
                   </button>
                 </div>
@@ -452,7 +453,7 @@ export default function Financials() {
                             <td className="px-5 py-3">{row.status ? <StatusBadge status={row.status} /> : "—"}</td>
                             <td className="px-5 py-3 text-right text-emerald-600">{usdCents(row.income)}</td>
                             <td className="px-5 py-3 text-right text-amber-600">{usdCents(row.costs)}</td>
-                            <td className={`px-5 py-3 text-right font-semibold font-['Outfit'] ${row.profit >= 0 ? "text-[#0A4D68]" : "text-red-600"}`}>
+                            <td className={`px-5 py-3 text-right font-semibold font-['Outfit'] ${row.profit >= 0 ? "text-[#0B3A8F]" : "text-red-600"}`}>
                               {usdCents(row.profit)}
                             </td>
                           </tr>
@@ -484,18 +485,19 @@ export default function Financials() {
           />
         </TabsContent>
 
-        <TabsContent value="square" className="mt-0">
+        <TabsContent value="square" className="mt-0 space-y-6">
+          <SquareReconciliation />
           <SquareStatements />
         </TabsContent>
 
         <TabsContent value="tax" className="space-y-6 mt-0" data-testid="tax-assistant-section">
-          <div className="bg-[#0A4D68] rounded-xl shadow-sm p-6 text-white">
+          <div className="bg-[#0B3A8F] rounded-xl shadow-sm p-6 text-white">
             <div className="flex items-start gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#C9A227]/20 text-[#C9A227]"><Scale size={20} /></span>
               <div>
                 <h2 className="text-lg font-semibold font-['Outfit']">Tax Assistant</h2>
                 <p className="text-sm text-white/80 mt-1 max-w-3xl leading-relaxed">
-                  This is the foundation for Revival Pro’s accounting expert. Totals and expense history are ready. The agent is not connected yet — it will classify write-offs, estimate tax, and ask follow-up questions here.
+                  This is the foundation for Revival Pro’s accounting expert. Totals and expense history are ready — including job-allocated expenses and client deposits from the Job Fund Engine. The agent classifies write-offs, estimates tax, and asks follow-up questions here.
                 </p>
               </div>
             </div>
@@ -589,7 +591,7 @@ export default function Financials() {
                     <div className="text-sm font-medium">{q.question}</div>
                     {q.status === "answered" ? (
                       <div className="rounded-lg bg-slate-50 p-3 text-sm text-[#4B6370]">
-                        <span className="font-medium text-[#0A4D68]">Your answer: </span>{q.answer}
+                        <span className="font-medium text-[#0B3A8F]">Your answer: </span>{q.answer}
                       </div>
                     ) : (
                       <form
@@ -608,7 +610,7 @@ export default function Financials() {
                           placeholder="Type your answer…"
                           rows={3}
                         />
-                        <Button type="submit" size="sm" disabled={answerQuestion.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+                        <Button type="submit" size="sm" disabled={answerQuestion.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                           {answerQuestion.isPending ? "Saving…" : "Save answer"}
                         </Button>
                       </form>
@@ -647,7 +649,7 @@ export default function Financials() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOtherOpen(false)} disabled={saveOtherIncome.isPending}>Cancel</Button>
-              <Button data-testid="save-other-income-btn" type="submit" disabled={saveOtherIncome.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+              <Button data-testid="save-other-income-btn" type="submit" disabled={saveOtherIncome.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                 {saveOtherIncome.isPending ? "Saving…" : "Save Income"}
               </Button>
             </DialogFooter>
@@ -667,7 +669,7 @@ export default function Financials() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCatOpen(false)} disabled={saveCategory.isPending}>Cancel</Button>
-              <Button data-testid="save-category-btn" type="submit" disabled={saveCategory.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+              <Button data-testid="save-category-btn" type="submit" disabled={saveCategory.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                 {saveCategory.isPending ? "Saving…" : "Save Category"}
               </Button>
             </DialogFooter>
@@ -710,7 +712,7 @@ export default function Financials() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setExpOpen(false)} disabled={saveExpense.isPending}>Cancel</Button>
-              <Button data-testid="save-overhead-expense-btn" type="submit" disabled={saveExpense.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+              <Button data-testid="save-overhead-expense-btn" type="submit" disabled={saveExpense.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                 {saveExpense.isPending ? "Saving…" : "Save Expense"}
               </Button>
             </DialogFooter>

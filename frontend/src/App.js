@@ -20,6 +20,9 @@ import ContractDetail from "@/pages/ContractDetail";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
 import PublicSign from "@/pages/PublicSign";
+import PublicBid from "@/pages/PublicBid";
+import SubcontractorDirectory from "@/pages/SubcontractorDirectory";
+import BidPackageDetail from "@/pages/BidPackageDetail";
 import ChangePassword from "@/pages/ChangePassword";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
@@ -31,14 +34,16 @@ import FieldMileage from "@/pages/FieldMileage";
 import FieldJob from "@/pages/FieldJob";
 import FieldSchedule from "@/pages/FieldSchedule";
 import Permissions from "@/pages/Permissions";
+import OfficeCalendar from "@/pages/OfficeCalendar";
 import { Toaster } from "@/components/ui/sonner";
+import DollyAssistant from "@/components/DollyAssistant";
 import { BRAND } from "@/lib/format";
 import { can, isFieldOnly } from "@/lib/permissions";
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0A4D68]">
-      <img src={BRAND.logo} alt="Revival Pro" className="h-20 w-auto animate-pulse bg-white/95 rounded-xl p-3" />
+    <div className="min-h-screen flex items-center justify-center bg-[#0B3A8F]">
+      <img src={BRAND.logo} alt={BRAND.name} className="h-24 w-auto animate-pulse drop-shadow-[0_8px_24px_rgba(201,162,39,0.45)]" />
     </div>
   );
 }
@@ -81,6 +86,7 @@ function AppRouter() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/sign/:token" element={<PublicSign />} />
+      <Route path="/sub/:token" element={<PublicBid />} />
       <Route
         element={
           <ProtectedRoute>
@@ -95,22 +101,25 @@ function AppRouter() {
         <Route path="/field/mileage" element={<FeatureRoute feature="mileage"><FieldMileage /></FeatureRoute>} />
         <Route path="/field/schedule" element={<FeatureRoute feature="crew_schedule"><FieldSchedule /></FeatureRoute>} />
         <Route path="/field/jobs/:id" element={<FeatureRoute feature="jobs"><FieldJob /></FeatureRoute>} />
-        <Route path="/leads" element={<Leads />} />
-        <Route path="/clients" element={<Clients />} />
-        <Route path="/clients/:id" element={<ClientDetail />} />
-        <Route path="/estimates" element={<Estimates />} />
-        <Route path="/jobs" element={<Jobs />} />
-        <Route path="/jobs/:id" element={<JobWorkspace />} />
-        <Route path="/jobs/:id/sheet" element={<JobSheetRedirect />} />
-        <Route path="/floor-plans" element={<FloorPlans />} />
-        <Route path="/floor-plans/:id" element={<FloorPlanStudio />} />
-        <Route path="/invoices" element={<Invoices />} />
-        <Route path="/financials" element={<Financials />} />
-        <Route path="/contracts" element={<Contracts />} />
-        <Route path="/contracts/:id" element={<ContractDetail />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/leads" element={<FeatureRoute feature="leads"><Leads /></FeatureRoute>} />
+        <Route path="/clients" element={<FeatureRoute feature="clients"><Clients /></FeatureRoute>} />
+        <Route path="/clients/:id" element={<FeatureRoute feature="clients"><ClientDetail /></FeatureRoute>} />
+        <Route path="/estimates" element={<FeatureRoute feature="estimates"><Estimates /></FeatureRoute>} />
+        <Route path="/jobs" element={<FeatureRoute feature="jobs"><Jobs /></FeatureRoute>} />
+        <Route path="/jobs/:id" element={<FeatureRoute feature="jobs"><JobWorkspace /></FeatureRoute>} />
+        <Route path="/jobs/:id/sheet" element={<FeatureRoute feature="jobs"><JobSheetRedirect /></FeatureRoute>} />
+        <Route path="/subcontractors" element={<FeatureRoute feature="subcontractors"><SubcontractorDirectory /></FeatureRoute>} />
+        <Route path="/bid-packages/:id" element={<FeatureRoute feature="jobs"><BidPackageDetail /></FeatureRoute>} />
+        <Route path="/floor-plans" element={<FeatureRoute feature="floor_plans"><FloorPlans /></FeatureRoute>} />
+        <Route path="/floor-plans/:id" element={<FeatureRoute feature="floor_plans"><FloorPlanStudio /></FeatureRoute>} />
+        <Route path="/invoices" element={<FeatureRoute feature="invoices"><Invoices /></FeatureRoute>} />
+        <Route path="/financials" element={<FeatureRoute feature="financials"><Financials /></FeatureRoute>} />
+        <Route path="/contracts" element={<FeatureRoute feature="contracts"><Contracts /></FeatureRoute>} />
+        <Route path="/contracts/:id" element={<FeatureRoute feature="contracts"><ContractDetail /></FeatureRoute>} />
+        <Route path="/calendar" element={<FeatureRoute feature="calendar"><OfficeCalendar /></FeatureRoute>} />
+        <Route path="/settings" element={<FeatureRoute feature="settings"><Settings /></FeatureRoute>} />
         <Route path="/profile" element={<Profile />} />
-        <Route path="/team" element={<Team />} />
+        <Route path="/team" element={<FeatureRoute feature="team"><Team /></FeatureRoute>} />
         <Route path="/permissions" element={<FeatureRoute feature="team"><Permissions /></FeatureRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -123,6 +132,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <AppRouter />
+        <DollyAssistant />
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>

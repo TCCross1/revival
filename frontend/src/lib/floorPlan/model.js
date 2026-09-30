@@ -1,5 +1,5 @@
 import { dist, inches, round2, snapTo, uid } from "./units";
-import { DEFAULT_WALL_HEIGHT, EXT_THICKNESS, INT_THICKNESS } from "./units";
+import { DEFAULT_WALL_HEIGHT, EXT_THICKNESS, INT_THICKNESS, STUD_THICKNESS } from "./units";
 import {
   HOUSE_STANDARD_DEFAULTS,
   defaultCabinetConfig,
@@ -12,23 +12,24 @@ import {
 import { snapCabinetToWall, planSymbolDepth } from "./cabinetRun";
 import { emptyKitchenDesign } from "./kitchenDesign";
 
+export { STUD_THICKNESS };
 export function emptyOpening(kind = "door") {
   const widths = { door: 32, window: 36, cased: 36 };
   const heights = { door: 80, window: 48, cased: 80 };
   const styles = { door: "six-panel", window: "double-hung", cased: "cased" };
-  return {
+  const base = {
     id: uid(),
     type: kind,
     offset: 12,
     width: widths[kind] || 32,
     height: heights[kind] || 80,
-    sill: kind === "window" ? 24 : 0,
+    sill: kind === "window" ? 36 : 0,
     swing: "left",
     direction: "in",
     storm: false,
     style: styles[kind] || "standard",
     exterior: kind === "door",
-    material: kind === "window" ? "vinyl" : "",
+    material: kind === "window" ? "vinyl" : kind === "door" ? "fiberglass" : "",
     install: kind === "window" ? "new-construction" : "",
     extension_jambs: kind === "window",
     lites: 0,
@@ -39,6 +40,70 @@ export function emptyOpening(kind = "door") {
     finish: "",
     note: "",
   };
+  if (kind === "door") {
+    base.opening_category = "exterior-door";
+    base.door_material = "fiberglass";
+    base.construction = "insulated-exterior";
+    base.operation_type = "hinged";
+    base.bore_count = 2;
+    base.bores = [
+      { type: "lockset", diameter: 2.125, centerHeight: 36 },
+      { type: "deadbolt", diameter: 2.125, centerHeight: 44 },
+    ];
+    base.hinges = { count: 3, width: 4, height: 4, type: "ball-bearing" };
+    base.rough_opening_mode = "auto";
+    base.rough_opening_width = round2(base.width + 1.5);
+    base.rough_opening_height = round2(base.height + 2);
+  }
+  if (kind === "window") {
+    base.opening_category = "window";
+    base.window_type = "double-hung";
+    base.sill_height_above_floor = 36;
+    base.grid_pattern = "none";
+    base.glass = {
+      paneCount: 2,
+      lowE: true,
+      tempered: false,
+      laminated: false,
+      obscured: false,
+      gridPattern: "none",
+    };
+    base.rough_opening_mode = "auto";
+    // Window generic profile: +1" / +1" (not exterior-door +1.5"/+2")
+    base.rough_opening_width = round2(base.width + 1);
+    base.rough_opening_height = round2(base.height + 1);
+  }
+  return base;
+}
+
+/** Apply interior-door product defaults onto a door opening (in place). */
+export function applyInteriorDoorDefaults(opening) {
+  if (!opening || opening.type !== "door") return opening;
+  opening.exterior = false;
+  opening.opening_category = "interior-door";
+  opening.operation_type = opening.operation_type || "hinged";
+  opening.material = opening.material === "fiberglass" ? "painted-composite" : (opening.material || "painted-composite");
+  opening.door_material = opening.material;
+  opening.construction = opening.construction === "insulated-exterior" ? "hollow-core" : (opening.construction || "hollow-core");
+  opening.bore_count = Number.isFinite(Number(opening.bore_count)) ? Math.min(2, opening.bore_count) : 1;
+  opening.bores = opening.bore_count >= 2
+    ? [
+      { type: "lockset", diameter: 2.125, centerHeight: 36 },
+      { type: "deadbolt", diameter: 2.125, centerHeight: 44 },
+    ]
+    : [{ type: "lockset", diameter: 2.125, centerHeight: 36 }];
+  opening.hinges = {
+    count: opening.hinges?.count || 3,
+    width: opening.hinges?.width || 3.5,
+    height: opening.hinges?.height || 3.5,
+    type: opening.hinges?.type || "standard-butt",
+  };
+  if (opening.rough_opening_mode !== "manual" && opening.rough_opening_mode !== "manufacturer") {
+    opening.rough_opening_mode = "auto";
+    opening.rough_opening_width = round2(opening.width + 2);
+    opening.rough_opening_height = round2(opening.height + 2.5);
+  }
+  return opening;
 }
 
 export function emptyWall(x1, y1, x2, y2, kind = "exterior") {
@@ -54,6 +119,11 @@ export function emptyWall(x1, y1, x2, y2, kind = "exterior") {
     openings: [],
     work: "existing",
     note: "",
+    plumbing: false,
+    bearing: kind === "exterior",
+    stud_spacing: 16,
+    foundation_contact: false,
+    bottom_plate_treatment: "standard",
   };
 }
 
@@ -69,6 +139,7 @@ export function emptyRoom(name = "Room", x = 24, y = 24, width = 144, depth = 13
     rotation: 0,
     wall_height: DEFAULT_WALL_HEIGHT,
     ceiling_height: DEFAULT_WALL_HEIGHT,
+    wall_thickness: STUD_THICKNESS,
     flooring: "lvp",
     wall_finish: "",
     notes: "",
@@ -77,31 +148,157 @@ export function emptyRoom(name = "Room", x = 24, y = 24, width = 144, depth = 13
   };
 }
 
+/** Outside-to-outside room bounds — the single source of truth for room walls. */
+export function roomOutsideBounds(room) {
+  const left = inches(room.x);
+  const top = inches(room.y);
+  const width = inches(room.width);
+  const depth = inches(room.depth);
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + depth,
+    width,
+    depth,
+  };
+}
+
+export function roomWallThickness(room) {
+  const custom = inches(room?.wall_thickness);
+  if (custom > 0) return custom;
+  return STUD_THICKNESS;
+}
+
+/**
+ * Derive four walls from one outside rectangle with deterministic butt joints.
+ * N/S own the four outside corners (full outside width). E/W fit between the
+ * interior faces of N/S (length = outside depth − 2×thickness).
+ * Centerlines are inset by t/2 so existing ±t/2 rendering matches the outside
+ * butt-joint polygons exactly (zero corner gaps, no visual overlap hacks).
+ */
 export function wallsFromRoom(room, kind = "exterior") {
-  const x = inches(room.x);
-  const y = inches(room.y);
-  const w = inches(room.width);
-  const d = inches(room.depth);
+  const { left, top, right, bottom, depth } = roomOutsideBounds(room);
+  const t = Math.max(roomWallThickness(room), 1);
+  const maxInset = Math.max(0, (depth - 1) / 2);
+  const inset = Math.min(t, maxInset);
+  const half = t / 2;
+  const mk = (x1, y1, x2, y2, side) => ({
+    ...emptyWall(x1, y1, x2, y2, kind),
+    source_room_id: room.id,
+    thickness: round2(t),
+    room_side: side,
+  });
   return [
-    { ...emptyWall(x, y, x + w, y, kind), source_room_id: room.id },
-    { ...emptyWall(x + w, y, x + w, y + d, kind), source_room_id: room.id },
-    { ...emptyWall(x + w, y + d, x, y + d, kind), source_room_id: room.id },
-    { ...emptyWall(x, y + d, x, y, kind), source_room_id: room.id },
+    mk(left, top + half, right, top + half, "north"),
+    mk(right - half, top + inset, right - half, bottom - inset, "east"),
+    mk(right, bottom - half, left, bottom - half, "south"),
+    mk(left + half, bottom - inset, left + half, top + inset, "west"),
   ];
+}
+
+/** Axis-aligned wall polygons with outside faces on the room rectangle. */
+export function roomWallPolygons(room) {
+  const { left, top, right, bottom, depth } = roomOutsideBounds(room);
+  const t = Math.max(roomWallThickness(room), 1);
+  const maxInset = Math.max(0, (depth - 1) / 2);
+  const inset = Math.min(t, maxInset);
+  return {
+    thickness: t,
+    north: { x1: left, y1: top, x2: right, y2: top + t },
+    south: { x1: left, y1: bottom - t, x2: right, y2: bottom },
+    west: { x1: left, y1: top + inset, x2: left + t, y2: bottom - inset },
+    east: { x1: right - t, y1: top + inset, x2: right, y2: bottom - inset },
+  };
+}
+
+function wallSideOf(wall, room) {
+  if (wall.room_side) return wall.room_side;
+  const { left, top, right, bottom } = roomOutsideBounds(room);
+  const mx = (inches(wall.x1) + inches(wall.x2)) / 2;
+  const my = (inches(wall.y1) + inches(wall.y2)) / 2;
+  const scores = {
+    north: Math.abs(my - top),
+    south: Math.abs(my - bottom),
+    west: Math.abs(mx - left),
+    east: Math.abs(mx - right),
+  };
+  return Object.entries(scores).sort((a, b) => a[1] - b[1])[0][0];
+}
+
+function listCopy(value) {
+  return Array.isArray(value) ? value.map((row) => ({ ...row })) : [];
+}
+
+/** Rebuild a room’s four walls from the outside rectangle; keep openings by side. */
+export function regenerateRoomWalls(level, roomId, thickness) {
+  const room = (level.rooms || []).find((r) => r.id === roomId);
+  if (!room) return level;
+  // Polygonal rooms are reshaped via topology — do not wipe freeform walls.
+  if (room.geometry === "polygon") {
+    if (thickness == null) return level;
+    const nextRoom = { ...room, wall_thickness: Math.max(1, round2(thickness)) };
+    return {
+      ...level,
+      rooms: level.rooms.map((r) => (r.id === roomId ? nextRoom : r)),
+      walls: (level.walls || []).map((w) => (
+        w.source_room_id === roomId
+          ? { ...w, thickness: nextRoom.wall_thickness }
+          : w
+      )),
+    };
+  }
+  const nextRoom = thickness == null
+    ? room
+    : { ...room, wall_thickness: Math.max(1, round2(thickness)) };
+  const oldOwned = (level.walls || []).filter((w) => w.source_room_id === roomId);
+  const openingsBySide = {};
+  oldOwned.forEach((wall) => {
+    openingsBySide[wallSideOf(wall, room)] = listCopy(wall.openings);
+  });
+  const fresh = wallsFromRoom(nextRoom).map((wall) => {
+    const prev = oldOwned.find((o) => o.room_side === wall.room_side);
+    return {
+      ...wall,
+      id: prev?.id || wall.id,
+      openings: openingsBySide[wall.room_side] || [],
+      shared_partition: prev?.shared_partition,
+      adjacent_room_ids: prev?.adjacent_room_ids,
+    };
+  });
+  return fitRoofToRooms({
+    ...level,
+    rooms: level.rooms.map((r) => (r.id === roomId ? nextRoom : r)),
+    walls: [...(level.walls || []).filter((w) => w.source_room_id !== roomId), ...fresh],
+  });
+}
+
+export function setRoomWallThickness(level, roomId, thickness) {
+  return regenerateRoomWalls(level, roomId, thickness);
+}
+
+export function createRoomFromOutsideBounds(name, x1, y1, x2, y2, options = {}) {
+  const left = round2(Math.min(x1, x2));
+  const top = round2(Math.min(y1, y2));
+  const width = round2(Math.abs(x2 - x1));
+  const depth = round2(Math.abs(y2 - y1));
+  const room = emptyRoom(name || "Room", left, top, Math.max(36, width), Math.max(36, depth));
+  if (options.wall_thickness != null) room.wall_thickness = Math.max(1, round2(options.wall_thickness));
+  return room;
 }
 
 export function fitRoofToRooms(level) {
   const rooms = level?.rooms || [];
-  if (!rooms.length) return level;
+  const existing = level?.roofs?.[0];
+  if (!rooms.length || !existing) return level;
   const minX = Math.min(...rooms.map((r) => inches(r.x)));
   const minY = Math.min(...rooms.map((r) => inches(r.y)));
   const maxX = Math.max(...rooms.map((r) => inches(r.x) + inches(r.width)));
   const maxY = Math.max(...rooms.map((r) => inches(r.y) + inches(r.depth)));
-  const roof = (level.roofs && level.roofs[0]) || emptyRoof();
   return {
     ...level,
     roofs: [{
-      ...roof,
+      ...existing,
       x: round2(minX),
       y: round2(minY),
       width: round2(maxX - minX),
@@ -136,12 +333,10 @@ export function resizeRoom(level, roomId, width, depth) {
     width: Math.max(36, round2(width)),
     depth: Math.max(36, round2(depth)),
   };
-  const kept = (level.walls || []).filter((w) => w.source_room_id !== roomId);
-  return fitRoofToRooms({
+  return regenerateRoomWalls({
     ...level,
     rooms: level.rooms.map((r) => (r.id === roomId ? next : r)),
-    walls: [...kept, ...wallsFromRoom(next)],
-  });
+  }, roomId);
 }
 
 export function emptyRoof(kind = "gable", width = 240, depth = 180) {
@@ -172,6 +367,7 @@ export function emptyLevel(name = "1st Floor", sortOrder = 0) {
     decks: [],
     stairs: [],
     beams: [],
+    vertices: [],
     notes: "",
   };
 }
@@ -284,6 +480,41 @@ export function emptyObject(libItem, x, y, standards = {}) {
     sku: libItem.sku || "",
     actual_depth: tags.includes("appliance") ? (libItem.depth || 24) : "",
   };
+}
+
+export function clonePlanObject(obj, { gap = 12 } = {}) {
+  if (!obj) return null;
+  try {
+    let copy;
+    try {
+      copy = JSON.parse(JSON.stringify(obj));
+    } catch (err) {
+      console.error("Plan object JSON clone failed, using a field copy", err);
+      copy = {
+        ...obj,
+        tags: Array.isArray(obj.tags) ? [...obj.tags] : obj.tags,
+      };
+    }
+    copy.id = uid();
+    copy.locked = false;
+    copy.auto = false;
+    copy.anchor = "";
+    copy.wall_id = "";
+    const front = copy.front || "south";
+    const x = inches(copy.x);
+    const y = inches(copy.y);
+    if (front === "north") copy.y = round2(y - gap);
+    else if (front === "west") copy.x = round2(x - gap);
+    else if (front === "east") copy.x = round2(x + gap);
+    else copy.y = round2(y + gap);
+    copy.width = inches(copy.width) || inches(obj.width);
+    copy.depth = inches(copy.depth) || inches(obj.depth);
+    copy.height = inches(copy.height) || inches(obj.height);
+    return copy;
+  } catch (err) {
+    console.error("Clone plan object failed", err);
+    return null;
+  }
 }
 
 export function activeLevel(doc) {

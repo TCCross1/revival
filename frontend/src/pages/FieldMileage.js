@@ -65,11 +65,11 @@ export default function FieldMileage() {
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl bg-white border border-slate-200 p-3 text-center">
             <div className="text-[10px] text-[#8AA0AB]">Job miles</div>
-            <div className="font-['Outfit'] font-semibold text-[#0A4D68]">{report.job_miles}</div>
+            <div className="font-['Outfit'] font-semibold text-[#0B3A8F]">{report.job_miles}</div>
           </div>
           <div className="rounded-xl bg-white border border-slate-200 p-3 text-center">
             <div className="text-[10px] text-[#8AA0AB]">Business</div>
-            <div className="font-['Outfit'] font-semibold text-[#0A4D68]">{report.business_miles}</div>
+            <div className="font-['Outfit'] font-semibold text-[#0B3A8F]">{report.business_miles}</div>
           </div>
           <div className="rounded-xl bg-[#FBF6E8] border border-[#C9A227]/40 p-3 text-center">
             <div className="text-[10px] text-[#8AA0AB]">{year} deduction</div>
@@ -85,7 +85,7 @@ export default function FieldMileage() {
       <Input className="h-12" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Note — dump run, supplier, office" />
 
       {active ? (
-        <div className="rounded-2xl bg-[#0A4D68] text-white p-4">
+        <div className="rounded-2xl bg-[#0B3A8F] text-white p-4">
           <div className="text-[11px] uppercase tracking-wide text-[#C9A227]">Trip running</div>
           <div className="font-semibold">{active.job_name || "Business miles"}</div>
           <Button type="button" className="mt-3 w-full h-12 bg-[#C9A227] text-[#061A23] hover:bg-[#B89120]" disabled={stop.isPending} onClick={() => stop.mutate()}>
@@ -93,13 +93,13 @@ export default function FieldMileage() {
           </Button>
         </div>
       ) : (
-        <Button type="button" className="w-full h-12 bg-[#0A4D68] hover:bg-[#083D53]" disabled={start.isPending} onClick={() => start.mutate()} data-testid="mileage-start">
+        <Button type="button" className="w-full h-12 bg-[#0B3A8F] hover:bg-[#082C73]" disabled={start.isPending} onClick={() => start.mutate()} data-testid="mileage-start">
           {start.isPending ? "Starting…" : "Start trip from here"}
         </Button>
       )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
-        <div className="text-xs font-semibold uppercase text-[#0A4D68]">Or type miles</div>
+        <div className="text-xs font-semibold uppercase text-[#0B3A8F]">Or type miles</div>
         <Label>Miles</Label>
         <Input className="h-12" inputMode="decimal" type="number" step="any" value={miles} onChange={(e) => setMiles(e.target.value)} />
         <Button type="button" variant="outline" className="w-full h-11" disabled={manual.isPending} onClick={() => manual.mutate()}>

@@ -144,7 +144,7 @@ export default function Invoices() {
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="add-invoice-btn" onClick={openNew} className="bg-[#0A4D68] hover:bg-[#083D53] gap-2"><Plus size={18} /> New Invoice</Button>
+            <Button data-testid="add-invoice-btn" onClick={openNew} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-2"><Plus size={18} /> New Invoice</Button>
           </DialogTrigger>
           <DialogContent className="bg-white max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle className="font-['Outfit'] text-2xl">{editing ? `Edit ${editing.invoice_number}` : "New Invoice"}</DialogTitle></DialogHeader>
@@ -187,7 +187,7 @@ export default function Invoices() {
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={save.isPending}>Cancel</Button>
-                  <Button data-testid="save-invoice-btn" type="submit" disabled={save.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">{save.isPending ? "Saving…" : "Save Invoice"}</Button>
+                  <Button data-testid="save-invoice-btn" type="submit" disabled={save.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">{save.isPending ? "Saving…" : "Save Invoice"}</Button>
                 </DialogFooter>
               </form>
             )}
@@ -196,12 +196,58 @@ export default function Invoices() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <StatBox label="Total Billed" value={usd(totalBilled)} color="text-[#0A4D68]" />
+        <StatBox label="Total Billed" value={usd(totalBilled)} color="text-[#0B3A8F]" />
         <StatBox label="Collected" value={usd(totalPaid)} color="text-emerald-600" />
         <StatBox label="Outstanding" value={usd(outstanding)} color="text-amber-600" />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="md:hidden space-y-3" data-testid="invoices-phone-list">
+        {isLoading && <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#4B6370]">Loading…</div>}
+        {!isLoading && invoices.length === 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#4B6370]">No invoices yet. Create one or convert a won estimate.</div>
+        )}
+        {invoices.map((inv) => {
+          const balance = remainingBalance(inv);
+          const rowBusy = pdfBusyId === inv.id || emailBusyId === inv.id || payBusyId === inv.id;
+          return (
+            <article key={inv.id} data-testid={`invoice-card-${inv.id}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-[#0B3A8F] font-['Outfit'] flex items-center gap-2"><Receipt size={15} /><span className="truncate">{inv.invoice_number}</span></div>
+                  <div className="text-sm mt-1 truncate">{inv.client_name}</div>
+                  <div className="text-xs text-[#4B6370] mt-0.5">Due {fmtDate(inv.due_date)}</div>
+                </div>
+                <StatusBadge status={inv.status} />
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-xl bg-[#F4F6FA] p-2">
+                  <div className="text-[#4B6370]">Amount</div>
+                  <div className="font-['Outfit'] font-semibold text-sm text-[#0B3A8F]">{usdCents(inv.amount)}</div>
+                </div>
+                <div className="rounded-xl bg-[#F4F6FA] p-2">
+                  <div className="text-[#4B6370]">Paid</div>
+                  <div className="font-['Outfit'] font-semibold text-sm text-emerald-600">{usdCents(inv.amount_paid)}</div>
+                </div>
+                <div className="rounded-xl bg-[#F4F6FA] p-2">
+                  <div className="text-[#4B6370]">Balance</div>
+                  <div className={`font-['Outfit'] font-semibold text-sm ${balance > 0 ? "text-amber-600" : "text-emerald-600"}`}>{usdCents(balance)}</div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+                <Button data-testid={`pay-invoice-card-${inv.id}`} onClick={() => openPay(inv)} disabled={rowBusy || balance <= 0} variant="outline" size="sm" className="h-9 gap-1 border-[#0B3A8F]/30 text-[#0B3A8F]">
+                  <DollarSign size={14} /> Pay
+                </Button>
+                <button type="button" onClick={() => downloadPdf(inv)} disabled={rowBusy} className="p-2 rounded-lg hover:bg-slate-100 text-[#0B3A8F]"><Download size={16} /></button>
+                <button type="button" onClick={() => sendEmail.mutate(inv.id)} disabled={rowBusy} className="p-2 rounded-lg hover:bg-slate-100 text-[#0B3A8F]"><Send size={16} /></button>
+                <button type="button" onClick={() => openEdit(inv)} disabled={rowBusy} className="p-2 rounded-lg hover:bg-slate-100 text-[#0B3A8F]"><Pencil size={16} /></button>
+                <button type="button" onClick={() => { if (window.confirm(`Delete ${inv.invoice_number}?`)) remove.mutate(inv.id); }} disabled={rowBusy} className="p-2 rounded-lg hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -226,7 +272,7 @@ export default function Invoices() {
                 const rowBusy = pdfBusyId === inv.id || emailBusyId === inv.id || payBusyId === inv.id;
                 return (
                   <tr key={inv.id} data-testid={`invoice-row-${inv.id}`} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="p-4 font-medium text-[#0A4D68] flex items-center gap-2"><Receipt size={15} />{inv.invoice_number}</td>
+                    <td className="p-4 font-medium text-[#0B3A8F] flex items-center gap-2"><Receipt size={15} />{inv.invoice_number}</td>
                     <td className="p-4">{inv.client_name}</td>
                     <td className="p-4"><StatusBadge status={inv.status} /></td>
                     <td className="p-4 text-right font-semibold font-['Outfit']">{usdCents(inv.amount)}</td>
@@ -237,16 +283,16 @@ export default function Invoices() {
                     <td className="p-4 text-[#4B6370]">{fmtDate(inv.due_date)}</td>
                     <td className="p-4">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
-                        <button data-testid={`pdf-invoice-${inv.id}`} onClick={() => downloadPdf(inv)} disabled={rowBusy} title="Download PDF" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68] disabled:opacity-50 disabled:pointer-events-none">
+                        <button data-testid={`pdf-invoice-${inv.id}`} onClick={() => downloadPdf(inv)} disabled={rowBusy} title="Download PDF" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F] disabled:opacity-50 disabled:pointer-events-none">
                           <Download size={16} />
                         </button>
-                        <button data-testid={`email-invoice-${inv.id}`} onClick={() => sendEmail.mutate(inv.id)} disabled={rowBusy} title="Email to client" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68] disabled:opacity-50 disabled:pointer-events-none">
+                        <button data-testid={`email-invoice-${inv.id}`} onClick={() => sendEmail.mutate(inv.id)} disabled={rowBusy} title="Email to client" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F] disabled:opacity-50 disabled:pointer-events-none">
                           <Send size={16} />
                         </button>
-                        <Button data-testid={`pay-invoice-${inv.id}`} onClick={() => openPay(inv)} disabled={rowBusy || balance <= 0} variant="outline" size="sm" className="h-8 gap-1 border-[#0A4D68]/30 text-[#0A4D68]">
+                        <Button data-testid={`pay-invoice-${inv.id}`} onClick={() => openPay(inv)} disabled={rowBusy || balance <= 0} variant="outline" size="sm" className="h-8 gap-1 border-[#0B3A8F]/30 text-[#0B3A8F]">
                           <DollarSign size={14} /> {payBusyId === inv.id ? "Recording…" : "Record Payment"}
                         </Button>
-                        <button data-testid={`edit-invoice-${inv.id}`} onClick={() => openEdit(inv)} disabled={rowBusy} title="Edit invoice" className="p-2 rounded-md hover:bg-slate-100 text-[#0A4D68] disabled:opacity-50 disabled:pointer-events-none">
+                        <button data-testid={`edit-invoice-${inv.id}`} onClick={() => openEdit(inv)} disabled={rowBusy} title="Edit invoice" className="p-2 rounded-md hover:bg-slate-100 text-[#0B3A8F] disabled:opacity-50 disabled:pointer-events-none">
                           <Pencil size={16} />
                         </button>
                         <button data-testid={`delete-invoice-${inv.id}`} onClick={() => { if (window.confirm(`Delete ${inv.invoice_number}?`)) remove.mutate(inv.id); }} disabled={rowBusy} className="p-2 rounded-md hover:bg-red-50 text-red-500 disabled:opacity-50 disabled:pointer-events-none">
@@ -272,7 +318,7 @@ export default function Invoices() {
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-[#4B6370]">Invoice</span>
-                  <span className="font-semibold text-[#0A4D68]">{paying.invoice_number}</span>
+                  <span className="font-semibold text-[#0B3A8F]">{paying.invoice_number}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[#4B6370]">Total</span>
@@ -302,7 +348,7 @@ export default function Invoices() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setPayOpen(false)} disabled={recordPayment.isPending}>Cancel</Button>
-                <Button data-testid="save-payment-btn" type="submit" disabled={recordPayment.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+                <Button data-testid="save-payment-btn" type="submit" disabled={recordPayment.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                   {recordPayment.isPending ? "Recording…" : "Record Payment"}
                 </Button>
               </DialogFooter>

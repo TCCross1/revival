@@ -14,16 +14,31 @@ from floor_plan import (
     empty_document,
     empty_level,
     empty_opening,
-    empty_roof,
     empty_room,
     empty_wall,
     new_id,
     now_iso,
+    refit_room_wall_joints,
     walls_from_room,
 )
 
 SHOWCASE_PLAN_ID = "showcase-lexington-kitchen"
 SHOWCASE_NAME = "SHOWCASE — Lexington Estate Kitchen"
+
+
+def should_replace_showcase(existing) -> bool:
+    """Insert the factory Lexington plan only when Mongo has no copy.
+
+    After the shop opens and saves that plan, API reloads and code changes
+    must not write the factory document back over their workflow tests.
+    """
+    try:
+        if existing is None:
+            return True
+        return False
+    except Exception:
+        return False
+
 
 _CAT = {row["id"]: row for row in catalog()}
 
@@ -167,53 +182,63 @@ def build_showcase_document() -> dict:
     ke["height"] = 108
     ks["height"] = 108
     kw["height"] = 108
+    ke["kind"] = "interior"
+    ke["thickness"] = 4.5
+    ke["plumbing"] = True
+    ks["kind"] = "interior"
+    ks["thickness"] = 4.5
+    for room in rooms:
+        refit_room_wall_joints(walls, room)
+
+    # Vertical-wall opening offsets are measured from the butt-joint start
+    # (interior face of the adjacent horizontal), not the outer room corner.
+    kn_t = float(kn.get("thickness") or 6)
+    pn = _find_wall(walls, pantry["id"], "north")
+    pe = _find_wall(walls, pantry["id"], "east")
+    ns = _find_wall(walls, nook["id"], "south")
+    nw = _find_wall(walls, nook["id"], "west")
+    ls = _find_wall(walls, laundry["id"], "south")
+    le = _find_wall(walls, laundry["id"], "east")
+    pe_north_t = float(pn.get("thickness") or 6)
+    nw_south_t = float(ns.get("thickness") or 6)
+    le_south_t = float(ls.get("thickness") or 6)
+
     kn["openings"] = [
         _opening("window", 75, 36, style="picture", material="aluminum-clad", install="new-construction", height=36, sill=42, note="36×36 picture over the sink — no wall cabinets in this zone"),
     ]
     kn["note"] = "North garden wall. One window centered on the sink so upper cabinets can run continuously."
     kw["openings"] = []
     kw["note"] = "Range wall. Keep 18\" clearance each side of the 36\" range. No windows on the cooking wall."
-    ke["kind"] = "interior"
-    ke["thickness"] = 4.5
-    ke["plumbing"] = True
     ke["openings"] = [
-        _opening("door", 36, 32, style="six-panel", swing="right", direction="in", exterior=False, height=80, note="Kitchen to butler’s pantry"),
+        _opening("door", max(0, 36 - kn_t), 32, style="six-panel", swing="right", direction="in", exterior=False, height=80, note="Kitchen to butler’s pantry"),
     ]
     ke["note"] = "32\" door centered on the butler’s pantry — swing into the pantry."
-    ks["kind"] = "interior"
-    ks["thickness"] = 4.5
     ks["openings"] = [
         _opening("cased", 24, 72, style="cased", height=96),
         _opening("door", 180, 32, style="pocket", swing="left", direction="in", exterior=False),
     ]
     ks["note"] = "6' cased opening to the breakfast nook — double LVL above. Pocket door to laundry."
 
-    pn = _find_wall(walls, pantry["id"], "north")
-    pe = _find_wall(walls, pantry["id"], "east")
     pn["openings"] = []
     pn["note"] = "Solid north wall for a continuous pantry cabinet run — no window over the uppers."
     pe["openings"] = [
-        _opening("window", 18, 36, style="casement", material="vinyl-clad", install="new-construction", height=42, sill=36),
+        _opening("window", max(0, 18 - pe_north_t), 36, style="casement", material="vinyl-clad", install="new-construction", height=42, sill=36),
     ]
 
-    ns = _find_wall(walls, nook["id"], "south")
-    nw = _find_wall(walls, nook["id"], "west")
     ns["openings"] = [
         _opening("door", 48, 60, style="french", swing="left", direction="out", exterior=True, storm=True, height=80),
         _opening("window", 120, 48, style="picture", material="aluminum-clad", install="new-construction", height=54, sill=24),
     ]
     ns["note"] = "French pair to the terrace with storm panels."
     nw["openings"] = [
-        _opening("window", 42, 60, style="slider", material="aluminum-clad", install="new-construction", height=48, sill=30),
+        _opening("window", max(0, 42 - nw_south_t), 60, style="slider", material="aluminum-clad", install="new-construction", height=48, sill=30),
     ]
 
-    ls = _find_wall(walls, laundry["id"], "south")
-    le = _find_wall(walls, laundry["id"], "east")
     ls["openings"] = [
         _opening("door", 18, 36, style="six-panel", swing="right", direction="in", exterior=True, storm=True),
     ]
     le["openings"] = [
-        _opening("window", 40, 36, style="awning", material="vinyl", install="replacement", height=24, sill=48, extension_jambs=False),
+        _opening("window", max(0, 40 - le_south_t), 36, style="awning", material="vinyl", install="replacement", height=24, sill=48, extension_jambs=False),
     ]
 
     walls = _coalesce_shared_walls(walls)
@@ -235,12 +260,12 @@ def build_showcase_document() -> dict:
     # --- NW lazy Susan + north perimeter bases flush to the garden wall ---
     objects += [
         _obj("cab-corner-36", wi, ni, finish="navy", door_style="shaker", species="painted", front="south", width=36, depth=36, config="lazy-susan", note="36\" corner lazy Susan, flush to both interior faces"),
-        _obj("cab-base-36", 75, ni, finish="navy", front="south", width=36, depth=base_d, config="drawers-3", note="Pot-and-pan drawers"),
+        _obj("cab-drawers-3-36", 75, ni, finish="navy", front="south", width=36, depth=base_d, config="drawers-3", note="Pot-and-pan drawers"),
         _obj("cab-sink-36", 111, ni, finish="navy", front="south", width=36, depth=base_d, config="sink", note="Farm sink base, plumbing wall"),
         _obj("dw-24", 147, ni, appliance_finish="panel", front="south", width=24, depth=app_d, note="Panel-ready dishwasher, integrated navy door"),
-        _obj("cab-base-30", 171, ni, finish="navy", front="south", width=30, depth=base_d, config="drawers-3", note="Utensil drawers"),
+        _obj("cab-drawers-3-30", 171, ni, finish="navy", front="south", width=30, depth=base_d, config="drawers-3", note="Utensil drawers"),
         _obj("cab-trash-18", 201, ni, finish="navy", front="south", width=18, depth=base_d, config="trash", note="Double trash / recycle pull-out"),
-        _obj("cab-base-36", 219, ni, finish="navy", front="south", width=36, depth=base_d, note="Bakeware drawers"),
+        _obj("cab-drawers-3-36", 219, ni, finish="navy", front="south", width=36, depth=base_d, config="drawers-3", note="Bakeware drawers"),
     ]
 
     # --- North wall cabinets (12\" deep, dashed) including corner wall ---
@@ -429,19 +454,12 @@ def build_showcase_document() -> dict:
         },
     ]
 
-    roof = empty_roof("hip", 384, 360)
-    roof["x"] = 36
-    roof["y"] = 36
-    roof["pitch_rise"] = 8
-    roof["pitch_run"] = 12
-    roof["overhang"] = 16
-
     level = empty_level("1st Floor", 0)
     level["id"] = new_id()
     level["rooms"] = rooms
     level["walls"] = walls
     level["objects"] = objects
-    level["roofs"] = [roof]
+    level["roofs"] = []
     level["beams"] = beams
     level["notes"] = (
         "Lexington Estate Kitchen — proposed. Navy perimeter, walnut island, Calacatta quartz, "
@@ -471,7 +489,7 @@ def build_showcase_document() -> dict:
 
 def build_showcase_plan(*, client_id="", client_name="", job_id="", address="") -> dict:
     document = build_showcase_document()
-    takeoffs = compute_takeoffs(document)
+    takeoffs = compute_takeoffs(document, "Kitchen")
     return {
         "id": SHOWCASE_PLAN_ID,
         "name": SHOWCASE_NAME,

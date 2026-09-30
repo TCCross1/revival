@@ -93,7 +93,7 @@ export default function FieldTime() {
       <p className="text-white/70">Hours land on the job as labor when you have a pay rate on your profile.</p>
 
       {open ? (
-        <div className="rounded-2xl bg-[#0A4D68] text-white p-5">
+        <div className="rounded-2xl bg-[#0B3A8F] text-white p-5">
           <div className="text-[11px] uppercase tracking-wide text-[#C9A227]">On the clock</div>
           <div className="font-['Outfit'] font-semibold text-2xl">{open.job_name}</div>
           <div className="text-white/80 text-sm mt-1">In since {new Date(open.clock_in).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>
@@ -120,7 +120,7 @@ export default function FieldTime() {
           {clockOut.isPending ? "Clocking out…" : "Clock out"}
         </Button>
       ) : (
-        <Button type="button" className="w-full h-14 bg-[#0A4D68] hover:bg-[#083D53] text-base" disabled={clockIn.isPending || (!jobId && !jobs[0])} onClick={() => clockIn.mutate("manual")} data-testid="clock-in-btn">
+        <Button type="button" className="w-full h-14 bg-[#0B3A8F] hover:bg-[#082C73] text-base" disabled={clockIn.isPending || (!jobId && !jobs[0])} onClick={() => clockIn.mutate("manual")} data-testid="clock-in-btn">
           {clockIn.isPending ? "Clocking in…" : "Clock in"}
         </Button>
       )}
@@ -138,7 +138,7 @@ export default function FieldTime() {
       </label>
 
       <div>
-        <div className="text-xs font-semibold uppercase tracking-wide text-[#0A4D68] mb-2">Recent time</div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-[#0B3A8F] mb-2">Recent time</div>
         <div className="space-y-2">
           {entries.slice(0, 12).map((row) => (
             <div key={row.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">

@@ -1,6 +1,6 @@
 /** 20/20-style 2D kitchen CAD — black ink on paper, plan view. */
 
-import { isWallCabinetObject, professionalDoorCount, resolvedCabinetConfig } from "@/lib/floorPlan/library";
+import { cabinetDoorCount, isWallCabinetObject, rangeBurnerCount, resolvedCabinetConfig } from "@/lib/floorPlan/library";
 
 const INK = "#111111";
 const PAPER = "#FFFFFF";
@@ -9,25 +9,6 @@ const WASH = "#F4F4F4";
 const FLOOR_JOINT = "#E4E0D8";
 const FLOOR_GRAIN = "#EDE9E2";
 const FLOOR_DOT = "#E8E4DC";
-
-function facingOf(item) {
-  if (item?.front === "east" || item?.front === "west" || item?.front === "north" || item?.front === "south") {
-    return item.front;
-  }
-  return "south";
-}
-
-function OrientedSymbol({ w, d, front, render }) {
-  const angle = front === "east" ? -90 : front === "west" ? 90 : front === "north" ? 180 : 0;
-  const iw = angle % 180 === 0 ? w : d;
-  const ih = angle % 180 === 0 ? d : w;
-  if (angle === 0) return render(iw, ih);
-  return (
-    <g transform={`translate(${w / 2} ${d / 2}) rotate(${angle}) translate(${-iw / 2} ${-ih / 2})`}>
-      {render(iw, ih)}
-    </g>
-  );
-}
 
 function libId(item) {
   return String(item?.library_id || item?.id || "");
@@ -38,8 +19,7 @@ function configOf(item) {
 }
 
 function doorCount(item, w, config) {
-  if (config === "single" && w > 24) return professionalDoorCount(w, "doors");
-  return professionalDoorCount(w, config);
+  return cabinetDoorCount(item, w, config);
 }
 
 function idIncludes(item, part) {
@@ -233,6 +213,40 @@ function HardwareTick({ x, y, style, vertical = true }) {
   return <rect x={x - 0.9} y={y - 0.16} width="1.8" height="0.32" rx="0.12" fill={PAPER} stroke={INK} strokeWidth="0.26" />;
 }
 
+function drawerStackCount(item, config) {
+  const id = libId(item);
+  if (config === "drawers-4" || id.includes("drawers-4")) return 4;
+  if (config === "drawers-3" || id.includes("drawers-3") || id.includes("utensil") || (item?.tags || []).includes("drawers")) {
+    if (id.includes("drawer-doors")) return 0;
+    return 3;
+  }
+  return 0;
+}
+
+function DrawerStackPlan({ w, d, count, style }) {
+  const band = Math.min(Math.max(d * 0.5, 11.5), Math.max(d - 0.8, 8));
+  const y0 = Math.max(0.4, d - band - 0.2);
+  const innerW = Math.max(w - 1.4, 4);
+  const rows = Math.max(3, Number(count) || 3);
+  return (
+    <g>
+      <text x={w / 2} y={Math.max(y0 - 1.05, 2.1)} textAnchor="middle" fontSize={Math.min(2.35, Math.max(1.7, w / 12))} fill={INK} fontFamily="Times, serif">
+        {rows}DR
+      </text>
+      {Array.from({ length: rows }).map((_, i) => {
+        const h = (band - 0.25) / rows;
+        const y = y0 + i * h;
+        return (
+          <g key={i}>
+            <rect x="0.7" y={y} width={innerW} height={h - 0.16} fill={PAPER} stroke={INK} strokeWidth="0.42" />
+            <HardwareTick x={w / 2} y={y + h / 2} style={style} vertical={false} />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
 function CabinetPlan({ w, d, item, wall = false, showSink = false }) {
   const uid = hatchId(item, "ct");
   const config = configOf(item);
@@ -315,19 +329,8 @@ function CabinetPlan({ w, d, item, wall = false, showSink = false }) {
           <line x1="0.9" y1="0.7" x2="0.9" y2={d - 0.7} stroke={INK} strokeWidth="0.4" />
           <line x1={w - 0.9} y1="0.7" x2={w - 0.9} y2={d - 0.7} stroke={INK} strokeWidth="0.4" />
         </g>
-      ) : config === "drawers-3" || config === "drawers-4" ? (
-        <g>
-          {Array.from({ length: config === "drawers-4" ? 4 : 3 }).map((_, i, arr) => {
-            const h = (frontY - 0.7) / arr.length;
-            const y = 0.45 + i * h;
-            return (
-              <g key={i}>
-                <rect x="0.7" y={y} width={w - 1.4} height={h - 0.2} fill="none" stroke={INK} strokeWidth="0.38" />
-                <HardwareTick x={w / 2} y={y + h / 2} style={style} vertical={false} />
-              </g>
-            );
-          })}
-        </g>
+      ) : drawerStackCount(item, config) ? (
+        <DrawerStackPlan w={w} d={d} count={drawerStackCount(item, config)} style={style} />
       ) : config === "drawer-doors" ? (
         <g>
           <rect x="0.7" y="0.55" width={w - 1.4} height="4.7" fill="none" stroke={INK} strokeWidth="0.38" />
@@ -441,7 +444,7 @@ function Burner({ cx, cy, r }) {
 }
 
 function RangePlan({ w, d, item }) {
-  const six = w >= 35;
+  const six = rangeBurnerCount({ width: w, burners: item?.burners }) === 6;
   const cols = six ? 3 : 2;
   const rows = 2;
   const rail = Math.min(3.2, Math.max(2.5, d * 0.14));
@@ -558,8 +561,8 @@ function HoodPlan({ w, d }) {
 }
 
 export function ObjectSymbol({ item, width, depth }) {
-  const w = Math.max(Number(width || item?.width || 24), 4);
-  const d = Math.max(Number(depth || item?.depth || 24), 2);
+  const w = Math.max(Number(width) || Number(item?.width) || 0, 0.5);
+  const d = Math.max(Number(depth) || Number(item?.depth) || 0, 0.5);
   const id = libId(item);
   const tags = item?.tags || [];
   const wallCab = isWallCabinetObject(item) || id.includes("cab-wall") || id.includes("shelf");
@@ -590,16 +593,7 @@ export function ObjectSymbol({ item, width, depth }) {
   }
 
   if (id.startsWith("cab-") || id.startsWith("island") || id.startsWith("peninsula") || id.includes("vanity") || tags.includes("cabinet") || tags.includes("island") || tags.includes("peninsula") || tags.includes("vanity")) {
-    return (
-      <OrientedSymbol
-        w={w}
-        d={d}
-        front={facingOf(item)}
-        render={(iw, ih) => (
-          <CabinetPlan w={iw} d={ih} item={item} wall={wallCab} showSink={id.includes("sink") || id.includes("vanity") || id.includes("farm")} />
-        )}
-      />
-    );
+    return <CabinetPlan w={w} d={d} item={item} wall={wallCab} showSink={id.includes("sink") || id.includes("vanity") || id.includes("farm")} />;
   }
 
   if (id.startsWith("mirror")) {
@@ -621,16 +615,16 @@ export function ObjectSymbol({ item, width, depth }) {
   }
 
   if (id.startsWith("range") || id.startsWith("cooktop")) {
-    return <OrientedSymbol w={w} d={d} front={facingOf(item)} render={(iw, ih) => <RangePlan w={iw} d={ih} item={item} />} />;
+    return <RangePlan w={w} d={d} item={item} />;
   }
   if (id.startsWith("fridge") || id.startsWith("wine-fridge")) {
-    return <OrientedSymbol w={w} d={d} front={facingOf(item)} render={(iw, ih) => <FridgePlan w={iw} d={ih} />} />;
+    return <FridgePlan w={w} d={d} />;
   }
   if (id.startsWith("dw-")) {
-    return <OrientedSymbol w={w} d={d} front={facingOf(item)} render={(iw, ih) => <DishwasherPlan w={iw} d={ih} />} />;
+    return <DishwasherPlan w={w} d={d} />;
   }
   if (id.startsWith("micro")) {
-    return <OrientedSymbol w={w} d={d} front={facingOf(item)} render={(iw, ih) => <LaundryPlan w={iw} d={ih} kind="micro" />} />;
+    return <LaundryPlan w={w} d={d} kind="micro" />;
   }
   if (id === "washer") return <LaundryPlan w={w} d={d} kind="washer" />;
   if (id === "dryer") return <LaundryPlan w={w} d={d} kind="dryer" />;
@@ -647,7 +641,7 @@ export function ObjectSymbol({ item, width, depth }) {
 
   if (id.startsWith("sink-") || (id.includes("sink") && tags.includes("plumbing"))) {
     const farm = String(item?.sink_type || "").includes("farm") || /apron|fireclay|farm|copper/i.test(note + id);
-    return <OrientedSymbol w={w} d={d} front={facingOf(item)} render={(iw, ih) => <KitchenSink w={iw} d={ih} item={{ ...item, id }} farm={farm} />} />;
+    return <KitchenSink w={w} d={d} item={{ ...item, id }} farm={farm} />;
   }
 
   if (id.startsWith("hood") || id.startsWith("vent")) {
@@ -661,7 +655,7 @@ export function ObjectSymbol({ item, width, depth }) {
         </g>
       );
     }
-    return <OrientedSymbol w={w} d={d} front={facingOf(item)} render={(iw, ih) => <HoodPlan w={iw} d={ih} />} />;
+    return <HoodPlan w={w} d={d} />;
   }
 
   if (id.startsWith("shower") || tags.includes("glass") || tags.includes("shower")) {
@@ -864,22 +858,58 @@ export function ObjectSymbol({ item, width, depth }) {
         </g>
       );
     }
+    const duplex = (ox) => (
+      <g>
+        <circle cx={ox} cy={cy} r={mark * 0.92} fill="none" stroke={INK} strokeWidth="0.45" />
+        <line x1={ox - mark * 0.32} y1={cy - mark * 0.18} x2={ox - mark * 0.32} y2={cy + mark * 0.18} stroke={INK} strokeWidth="0.35" />
+        <line x1={ox + mark * 0.32} y1={cy - mark * 0.18} x2={ox + mark * 0.32} y2={cy + mark * 0.18} stroke={INK} strokeWidth="0.35" />
+      </g>
+    );
+    const outletTag = id.includes("240")
+      ? "240"
+      : id.includes("dual")
+        ? "DF"
+        : id.includes("gfci")
+          ? (id.includes("wr") ? "WR" : "GFI")
+          : id.includes("afci")
+            ? "AFCI"
+            : id.includes("quad")
+              ? "QUAD"
+              : "TR";
+    const switchTag = id.includes("fan-light")
+      ? "SFL"
+      : id.includes("fan")
+        ? "SF"
+        : id.includes("4way")
+          ? "S4"
+          : id.includes("3way") && id.includes("dimmer")
+            ? "S3D"
+            : id.includes("dimmer")
+              ? "SD"
+              : id.includes("3way")
+                ? "S3"
+                : id === "smoke"
+                  ? "SM"
+                  : id.includes("gfci")
+                    ? "SG"
+                    : "S";
     return (
       <g>
         {id.startsWith("outlet") ? (
           <g>
-            <circle cx={cx} cy={cy} r={mark} fill="none" stroke={INK} strokeWidth="0.45" />
-            <line x1={cx - mark * 0.35} y1={cy - mark * 0.2} x2={cx - mark * 0.35} y2={cy + mark * 0.2} stroke={INK} strokeWidth="0.35" />
-            <line x1={cx + mark * 0.35} y1={cy - mark * 0.2} x2={cx + mark * 0.35} y2={cy + mark * 0.2} stroke={INK} strokeWidth="0.35" />
-            {id.includes("gfci") ? (
-              <text x={cx} y={cy + mark + 1.8} textAnchor="middle" fontSize="1.7" fill={INK} fontFamily="Times, serif">GFI</text>
-            ) : null}
+            {id.includes("quad") ? (
+              <g>
+                {duplex(cx - mark * 1.05)}
+                {duplex(cx + mark * 1.05)}
+              </g>
+            ) : duplex(cx)}
+            <text x={cx} y={cy + mark + 1.85} textAnchor="middle" fontSize="1.55" fill={INK} fontFamily="Times, serif">{outletTag}</text>
           </g>
         ) : (
           <g>
             <circle cx={cx} cy={cy} r={mark} fill="none" stroke={INK} strokeWidth="0.45" />
-            <text x={cx} y={cy + mark * 0.38} textAnchor="middle" fontSize={mark * 1.05} fill={INK} fontFamily="Times, serif">
-              {id.includes("dimmer") ? "SD" : id.includes("3way") ? "S3" : id === "smoke" ? "SM" : "S"}
+            <text x={cx} y={cy + mark * 0.38} textAnchor="middle" fontSize={mark * (switchTag.length > 2 ? 0.78 : 1.05)} fill={INK} fontFamily="Times, serif">
+              {switchTag}
             </text>
           </g>
         )}
@@ -988,8 +1018,8 @@ function CabinetElevation({ w, h, item }) {
     <g>
       <rect x="0.3" y="0.3" width={w - 0.6} height={h - 0.6} fill={PAPER} stroke={INK} strokeWidth="0.5" />
       {toe > 0.4 ? <rect x="0.3" y={h - toe - 0.3} width={w - 0.6} height={toe} fill={WASH} stroke={INK} strokeWidth="0.32" /> : null}
-      {config === "drawers-3" || config === "drawers-4" ? (
-        Array.from({ length: config === "drawers-4" ? 4 : 3 }).map((_, i, arr) => {
+      {config === "drawers-3" || config === "drawers-4" || drawerStackCount(item, config) ? (
+        Array.from({ length: drawerStackCount(item, config) || (config === "drawers-4" ? 4 : 3) }).map((_, i, arr) => {
           const dh = (faceBottom - top) / arr.length;
           const y = top + i * dh;
           return (
@@ -1098,7 +1128,8 @@ export function CasedOpening({ opening, thickness, scale = 1 }) {
 export function DoorSwing({ opening, thickness, scale = 1 }) {
   const width = Number(opening.width || 32) * scale;
   const offset = Number(opening.offset || 0) * scale;
-  const french = String(opening.style || "").includes("french") || Number(opening.leafs) === 2;
+  const op = String(opening.operation_type || opening.operationType || "hinged");
+  const french = op === "french" || String(opening.style || "").includes("french") || Number(opening.leafs) === 2;
   const leafs = french ? 2 : Math.max(1, Number(opening.leafs) || 1);
   const lites = Math.max(0, Number(opening.lites) || (french ? 4 : 0));
   const left = opening.swing !== "right";
@@ -1107,6 +1138,7 @@ export function DoorSwing({ opening, thickness, scale = 1 }) {
   const leafW = width / leafs;
   const sign = inward ? 1 : -1;
   const liteH = Math.max(thickness * 0.55, 2.2);
+  const hinged = op === "hinged" || op === "french" || (!opening.operation_type && !opening.operationType);
 
   const swingPath = (hinge, leafWidth, sweepLeft) => {
     const sweep = sweepLeft ? (inward ? 1 : 0) : (inward ? 0 : 1);
@@ -1132,6 +1164,35 @@ export function DoorSwing({ opening, thickness, scale = 1 }) {
       );
     });
   };
+
+  if (!hinged) {
+    const label = op === "pocket" ? "POCKET"
+      : op === "bifold" ? "BIFOLD"
+        : op === "bypass" ? "SLIDING"
+          : op === "barn" ? "BARN"
+            : "DOOR";
+    return (
+      <g>
+        <rect x={offset} y={-thickness / 2} width={width} height={thickness} fill={PAPER} stroke={INK} strokeWidth="0.6" />
+        {op === "pocket" || op === "bypass" || op === "barn" ? (
+          <line
+            x1={offset + 2}
+            y1={0}
+            x2={offset + width - 2}
+            y2={0}
+            stroke={INK}
+            strokeWidth="0.55"
+            strokeDasharray="2.2 1.4"
+          />
+        ) : (
+          <line x1={offset + leafW} y1={-thickness / 2 - 1} x2={offset + leafW} y2={thickness / 2 + 1} stroke={INK} strokeWidth="0.45" />
+        )}
+        <text x={offset + width / 2} y={thickness / 2 + 8} textAnchor="middle" fill={INK} stroke="none" fontFamily="Times, serif" fontSize="6">
+          {label}
+        </text>
+      </g>
+    );
+  }
 
   return (
     <g>

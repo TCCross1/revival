@@ -60,11 +60,11 @@ export default function JobFieldOps({ jobId, job }) {
   return (
     <div className="space-y-4" data-testid="job-field-ops">
       <section className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-        <div className="px-4 py-3 bg-[#0A4D68] text-white font-['Outfit'] font-semibold">Field & crew</div>
+        <div className="px-4 py-3 bg-[#0B3A8F] text-white font-['Outfit'] font-semibold">Field & crew</div>
         <div className="p-4 space-y-4">
           {!field ? (
             <div>
-              <div className="text-xs font-semibold uppercase text-[#0A4D68] mb-2">Assigned crew</div>
+              <div className="text-xs font-semibold uppercase text-[#0B3A8F] mb-2">Assigned crew</div>
               <div className="flex flex-wrap gap-2">
                 {crew.map((person) => {
                   const on = crewIds.includes(person.user_id);
@@ -77,7 +77,7 @@ export default function JobFieldOps({ jobId, job }) {
                         setCrewIds(next);
                         saveCrew.mutate(next);
                       }}
-                      className={`rounded-full px-3 py-1 text-xs ${on ? "bg-[#0A4D68] text-white" : "bg-slate-100 text-[#4B6370]"}`}
+                      className={`rounded-full px-3 py-1 text-xs ${on ? "bg-[#0B3A8F] text-white" : "bg-slate-100 text-[#4B6370]"}`}
                     >
                       {person.name}
                     </button>
@@ -89,12 +89,12 @@ export default function JobFieldOps({ jobId, job }) {
 
           {!field ? (
             <div className="rounded-xl bg-[#F4F7F8] p-3 space-y-2">
-              <div className="text-xs font-semibold uppercase text-[#0A4D68]">Geo-fence</div>
+              <div className="text-xs font-semibold uppercase text-[#0B3A8F]">Geo-fence</div>
               <p className="text-sm text-[#4B6370]">Stand at the job site and set the fence. Crew can auto clock when they arrive.</p>
               <div className="flex items-center gap-2">
                 <Input className="h-10 w-28" type="number" value={radius} onChange={(e) => setRadius(e.target.value)} />
                 <span className="text-xs text-[#8AA0AB]">meters</span>
-                <Button type="button" className="h-10 bg-[#0A4D68]" onClick={() => saveFence.mutate()} disabled={saveFence.isPending}>
+                <Button type="button" className="h-10 bg-[#0B3A8F]" onClick={() => saveFence.mutate()} disabled={saveFence.isPending}>
                   {saveFence.isPending ? "Setting…" : "Use my location"}
                 </Button>
               </div>
@@ -102,14 +102,14 @@ export default function JobFieldOps({ jobId, job }) {
             </div>
           ) : null}
 
-          <div className="text-sm text-[#4B6370]">Labor on the clock: <span className="font-semibold text-[#0A4D68]">{hours.toFixed(1)} hrs</span></div>
+          <div className="text-sm text-[#4B6370]">Labor on the clock: <span className="font-semibold text-[#0B3A8F]">{hours.toFixed(1)} hrs</span></div>
           {entries.slice(0, 6).map((row) => (
             <div key={row.id} className="text-xs text-[#4B6370]">{row.user_name} · {row.minutes || 0} min {row.clock_out ? "" : "(open)"}</div>
           ))}
 
           {logs.length ? (
             <div>
-              <div className="text-xs font-semibold uppercase text-[#0A4D68] mb-1">Crew notes</div>
+              <div className="text-xs font-semibold uppercase text-[#0B3A8F] mb-1">Crew notes</div>
               {logs.slice(0, 5).map((row) => (
                 <div key={row.id} className="text-sm text-[#4B6370]">{row.user_name}: {row.text}</div>
               ))}
@@ -118,7 +118,7 @@ export default function JobFieldOps({ jobId, job }) {
 
           {materials.length ? (
             <div>
-              <div className="text-xs font-semibold uppercase text-[#0A4D68] mb-1">Material requests</div>
+              <div className="text-xs font-semibold uppercase text-[#0B3A8F] mb-1">Material requests</div>
               {materials.map((row) => (
                 <div key={row.id} className="flex items-center justify-between gap-2 text-sm">
                   <span>{row.quantity} × {row.item}</span>
@@ -136,7 +136,7 @@ export default function JobFieldOps({ jobId, job }) {
 
           {tasks.length ? (
             <div>
-              <div className="text-xs font-semibold uppercase text-[#0A4D68] mb-1">Tasks</div>
+              <div className="text-xs font-semibold uppercase text-[#0B3A8F] mb-1">Tasks</div>
               {tasks.map((row) => (
                 <div key={row.id} className="text-sm text-[#4B6370]">{row.status === "done" ? "✓" : "○"} {row.title}</div>
               ))}

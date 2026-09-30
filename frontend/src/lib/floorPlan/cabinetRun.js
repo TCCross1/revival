@@ -2,11 +2,11 @@
 
 import { dist, formatFtIn, inches, round2, snapTo, uid } from "./units";
 import {
-  isCabinetObject, isFillerObject, isIslandObject, isWallCabinetObject, libraryById,
+  isCabinetObject, isFillerObject, isIslandObject, isWallCabinetObject, libraryById, normalizeRangeSpec,
 } from "./library";
 
 export const MIN_FILLER = 0.5;
-export const MAX_FILLER = 6;
+export const MAX_FILLER = 4;
 const OVERLAP_EPS = 0.35;
 const WALL_SNAP_IN = 42;
 
@@ -30,16 +30,43 @@ export function runBand(obj) {
   return "base";
 }
 
+export function planObjectSize(obj) {
+  try {
+    const lib = obj?.library_id ? libraryById(obj.library_id) : null;
+    const width = inches(obj?.width) || inches(lib?.width) || 0;
+    const rawDepth = inches(obj?.depth) || inches(lib?.depth) || 0;
+    const depth = planSymbolDepth({ ...obj, depth: rawDepth || undefined }) || rawDepth;
+    return {
+      width: Math.max(width, 0.5),
+      depth: Math.max(depth, 0.5),
+    };
+  } catch (err) {
+    console.error("Plan object size failed", err, obj?.library_id || obj?.id);
+    return {
+      width: Math.max(inches(obj?.width), 0.5),
+      depth: Math.max(inches(obj?.depth), 0.5),
+    };
+  }
+}
+
+export function objectOrientTransform(front, width, depth) {
+  const w = inches(width);
+  const d = inches(depth);
+  if (front === "east") return "matrix(0 1 1 0 0 0)";
+  if (front === "west") return `matrix(0 1 -1 0 ${d} 0)`;
+  if (front === "north") return `rotate(180 ${w / 2} ${d / 2})`;
+  return "";
+}
+
 export function objectFootprint(obj) {
+  const { width, depth } = planObjectSize(obj);
   const x = inches(obj?.x);
   const y = inches(obj?.y);
-  const w = inches(obj?.width);
-  const d = inches(obj?.depth);
   const front = obj?.front || "south";
   if (front === "east" || front === "west") {
-    return { x, y, w: d, h: w, front };
+    return { x, y, w: depth, h: width, front, width, depth };
   }
-  return { x, y, w, h: d, front };
+  return { x, y, w: width, h: depth, front, width, depth };
 }
 
 function nearestWall(walls, x, y, maxDist = 1e9) {
@@ -332,6 +359,75 @@ export function snapCabinetToWall(obj, level, snap = 6) {
   } catch (err) {
     console.error("Cabinet wall snap failed", err);
     return { object: obj, fit: true, reason: "" };
+  }
+}
+
+/** Inches from the item's center to a wall centerline that still counts as "on the wall". */
+export const APPLIANCE_WALL_REACH_IN = WALL_SNAP_IN;
+
+/** Appliances (range, fridge, dishwasher, ovens, microwaves, laundry…) must sit on a wall. */
+export function requiresWallHost(obj) {
+  if (!obj || isIslandObject(obj) || isFillerObject(obj)) return false;
+  return isPlanAppliance(obj);
+}
+
+/**
+ * Place an appliance flush against the interior face of the nearest interior or
+ * exterior wall. Run appliances keep cabinet-run collision rules; others hold the
+ * tapped position along the wall. `onWall: false` means it must not be placed.
+ */
+export function snapApplianceToWall(obj, level, snap = 6) {
+  const label = obj?.name || "appliance";
+  try {
+    const sized = normalizeRangeSpec(obj);
+    const normalized = { ...sized, depth: planSymbolDepth(sized) };
+    const fp = objectFootprint(normalized);
+    const cx = fp.x + fp.w / 2;
+    const cy = fp.y + fp.h / 2;
+    const hit = nearestWall(level?.walls || [], cx, cy, APPLIANCE_WALL_REACH_IN);
+    if (!hit) {
+      return {
+        object: obj,
+        onWall: false,
+        fit: false,
+        reason: `Tap on or right next to a wall to place the ${label}. Appliances go against an interior or exterior wall.`,
+      };
+    }
+    const interior = wallInterior(hit.wall, level?.rooms || []);
+    if (!interior.horizontal && !interior.vertical) {
+      return {
+        object: obj,
+        onWall: false,
+        fit: false,
+        reason: `The ${label} snaps to straight horizontal or vertical walls. Tap a different wall.`,
+      };
+    }
+    const alongW = inches(normalized.width);
+    if (alongW > interior.len + 0.5) {
+      return {
+        object: obj,
+        onWall: false,
+        fit: false,
+        reason: `The ${label} is wider than that wall. Pick a longer wall or a smaller size.`,
+      };
+    }
+    if (isRunOccupant(normalized)) {
+      const run = snapCabinetToWall(normalized, level, snap);
+      return { ...run, onWall: true, wallId: hit.wall.id };
+    }
+    const grid = Math.max(Number(snap) || 6, 1);
+    const maxStart = Math.max(0, interior.len - alongW);
+    const start = Math.max(0, Math.min(snapTo(alongOf(interior, cx, cy) - alongW / 2, grid), maxStart));
+    return {
+      object: placeFlush(normalized, interior, start),
+      onWall: true,
+      fit: true,
+      reason: "",
+      wallId: hit.wall.id,
+    };
+  } catch (err) {
+    console.error("Appliance wall snap failed", { error: err?.message || err, item: obj?.library_id });
+    return { object: obj, onWall: false, fit: false, reason: `Could not place the ${label}. Please try again.` };
   }
 }
 

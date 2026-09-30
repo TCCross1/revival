@@ -2,7 +2,7 @@
 
 import {
   isCabinetObject, isCountertopObject, isFillerObject, isIslandObject, isSinkObject,
-  isWallCabinetObject, isBaseRunObject,
+  isWallCabinetObject, isBaseRunObject, cabinetDoorCount, isDoubleDoorBaseCabinet, isDrawerStackCabinet,
 } from "./library";
 import { objectFootprint, wallInterior } from "./cabinetRun";
 import { dist, formatFtIn, inches } from "./units";
@@ -166,7 +166,15 @@ function evaluateDoors(level, warnings) {
     if (obj.work === "demo") return;
     if (!isCabinetObject(obj) && !isIslandObject(obj)) return;
     const w = inches(obj.width);
-    if (w > 24 && obj.config === "single") {
+    const cfg = obj.config || "";
+    const doors = cabinetDoorCount(obj, w, cfg);
+    if (isDrawerStackCabinet(obj) && (/double door/i.test(obj.name || "") || doors >= 2)) {
+      warnings.push({ severity: "error", code: "drawer-front", text: `${named(obj)} is a 3- or 4-drawer utensil base and cannot be drawn as a double door.` });
+    }
+    if (isDoubleDoorBaseCabinet(obj) && doors < 2) {
+      warnings.push({ severity: "error", code: "double-doors", text: `${named(obj)} is a double-door base and must show two doors on the 2D plan.` });
+    }
+    if (w > 24 && cfg === "single") {
       warnings.push({ severity: "error", code: "double-doors", text: `${named(obj)} is ${formatFtIn(w)} and must be drawn with double doors or a proper drawer stack — a single door over 24\" is not allowed.` });
     }
   });

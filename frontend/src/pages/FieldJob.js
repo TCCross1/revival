@@ -7,9 +7,11 @@ import { can } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ArrowLeft, Camera, Mic } from "lucide-react";
+import { ArrowLeft, Camera, Mic, ScanLine } from "lucide-react";
 import { startVoiceNote } from "@/lib/voiceNote";
 import { enqueueOffline } from "@/lib/offlineQueue";
+import { scanKitchenPath } from "@/lib/floorPlan/roomplan";
+import JobFundsCard from "@/components/JobFundsCard";
 
 export default function FieldJob() {
   const { id } = useParams();
@@ -70,13 +72,17 @@ export default function FieldJob() {
         <p className="text-white/70">{job?.client_name}</p>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Button type="button" className="h-12 bg-[#0A4D68]" onClick={() => navigate("/field/receipt")}>Receipt</Button>
+        <Button type="button" className="h-12 col-span-2 bg-[#C9A227] hover:bg-[#B8911F] text-[#061A23]" onClick={() => navigate(scanKitchenPath(id))} data-testid="field-scan-kitchen">
+          <ScanLine size={16} className="mr-1" /> Scan room
+        </Button>
+        <Button type="button" className="h-12 bg-[#0B3A8F]" onClick={() => navigate("/field/receipt")}>Receipt</Button>
         <Button type="button" variant="outline" className="h-12" onClick={() => navigate("/field/time")}>Time clock</Button>
       </div>
+      <JobFundsCard jobId={id} field />
 
       {can(user, "tasks") ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
-          <div className="text-xs font-semibold uppercase text-[#0A4D68]">Tasks</div>
+          <div className="text-xs font-semibold uppercase text-[#0B3A8F]">Tasks</div>
           {tasks.map((row) => (
             <label key={row.id} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={row.status === "done"} onChange={() => toggleTask.mutate(row)} />
@@ -85,17 +91,17 @@ export default function FieldJob() {
           ))}
           <div className="flex gap-2">
             <Input className="h-11" value={task} onChange={(e) => setTask(e.target.value)} placeholder="Add a task" />
-            <Button type="button" className="h-11 bg-[#0A4D68]" onClick={() => addTask.mutate()} disabled={!task.trim()}>Add</Button>
+            <Button type="button" className="h-11 bg-[#0B3A8F]" onClick={() => addTask.mutate()} disabled={!task.trim()}>Add</Button>
           </div>
         </section>
       ) : null}
 
       {can(user, "job_notes") ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
-          <div className="text-xs font-semibold uppercase text-[#0A4D68]">Daily note</div>
+          <div className="text-xs font-semibold uppercase text-[#0B3A8F]">Daily note</div>
           <Input className="h-11" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What happened on site today?" />
           <div className="grid grid-cols-[1fr_auto] gap-2">
-            <Button type="button" className="w-full h-11 bg-[#0A4D68]" disabled={!note.trim() || addNote.isPending} onClick={() => addNote.mutate()}>
+            <Button type="button" className="w-full h-11 bg-[#0B3A8F]" disabled={!note.trim() || addNote.isPending} onClick={() => addNote.mutate()}>
               Save note
             </Button>
             <Button
@@ -123,7 +129,7 @@ export default function FieldJob() {
             <div key={row.id} className="rounded-lg bg-[#F4F7F8] p-2 text-sm">
               <div className="text-[11px] text-[#8AA0AB]">{row.user_name} · {new Date(row.created_at).toLocaleString()}</div>
               <div>{row.text}</div>
-              <label className="mt-1 inline-flex items-center gap-1 text-xs text-[#0A4D68]">
+              <label className="mt-1 inline-flex items-center gap-1 text-xs text-[#0B3A8F]">
                 <Camera size={12} /> Add photo
                 <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onPhoto(row.id, e.target.files?.[0])} />
               </label>
@@ -134,10 +140,10 @@ export default function FieldJob() {
 
       {can(user, "material_requests") ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
-          <div className="text-xs font-semibold uppercase text-[#0A4D68]">Need material</div>
+          <div className="text-xs font-semibold uppercase text-[#0B3A8F]">Need material</div>
           <Input className="h-11" value={material.item} onChange={(e) => setMaterial({ ...material, item: e.target.value })} placeholder="What do you need?" />
           <Input className="h-11" value={material.quantity} onChange={(e) => setMaterial({ ...material, quantity: e.target.value })} placeholder="Qty" />
-          <Button type="button" className="w-full h-11 bg-[#0A4D68]" disabled={!material.item.trim() || addMat.isPending} onClick={() => addMat.mutate()}>
+          <Button type="button" className="w-full h-11 bg-[#0B3A8F]" disabled={!material.item.trim() || addMat.isPending} onClick={() => addMat.mutate()}>
             Send to office
           </Button>
           {materials.slice(0, 5).map((row) => (

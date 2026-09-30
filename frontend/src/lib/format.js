@@ -59,6 +59,9 @@ export function formatPhone(phone) {
 }
 
 export const BRAND = {
-  logo: "https://customer-assets-lxgj4vgw.emergentagent.net/job_a0b60c79-694f-4789-8f44-c88f5bec0abf/artifacts/7b1gd1pi_29B98378-43E4-4E5E-9059-E73074B861FB.png",
-  bg: "https://customer-assets-lxgj4vgw.emergentagent.net/job_a0b60c79-694f-4789-8f44-c88f5bec0abf/artifacts/8y6jtssj_676A1DF1-2965-47D7-B3A5-70E8A72E6D04.png",
+  name: "Revival Home Remodeling",
+  tagline: "Revive your home, renew your spirit.",
+  logo: "/brand/revival-landing.jpg",
+  banner: "/brand/revival-header-banner.jpg",
+  bg: "/brand/revival-header-banner.jpg",
 };

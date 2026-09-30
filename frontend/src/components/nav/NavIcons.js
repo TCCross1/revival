@@ -15,7 +15,7 @@ function Svg({ id, size = 36, children }) {
           <stop offset="100%" stopColor="#D7E8EC" />
         </linearGradient>
         <linearGradient id={`${id}-ink`} x1="8" y1="6" x2="40" y2="44" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#1A4F5E" />
+          <stop offset="0%" stopColor="#0B3A8F" />
           <stop offset="100%" stopColor="#061A23" />
         </linearGradient>
         <filter id={`${id}-glow`} x="-18%" y="-18%" width="136%" height="136%">
@@ -248,6 +248,33 @@ export function IconSchedule({ size }) {
       <rect x="14.2" y="29.4" width="4.2" height="4.2" rx="0.6" fill={g(id)} />
       <path d="M21.9 29.4h4.2v4.2h-4.2zm7.7 0h4.2v4.2h-4.2z" fill={p(id)} opacity="0.55" />
       <path d="M10.4 12.4h4.6" stroke={p(id)} strokeWidth="1.05" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+export function IconCalendar({ size }) {
+  const id = "nav-office-cal";
+  return (
+    <Svg id={id} size={size}>
+      <rect x="7" y="9.2" width="34" height="31.2" rx="3.4" fill={k(id)} />
+      <path d="M7 17.4h34" stroke={g(id)} strokeWidth="2" />
+      <path d="M16.2 6v6.2M31.8 6v6.2" stroke={g(id)} strokeWidth="2" strokeLinecap="round" />
+      <path d="M13.2 23.2h5.2M21.4 23.2h5.2M29.6 23.2h5.2M13.2 29.4h5.2M21.4 29.4h5.2M29.6 29.4h5.2" stroke={p(id)} strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="34.2" cy="34.4" r="6.4" fill={g(id)} />
+      <path d="M34.2 31.2v3.8l2.4 1.6" stroke={k(id)} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+export function IconBids({ size }) {
+  const id = "nav-bids";
+  return (
+    <Svg id={id} size={size}>
+      <rect x="8.4" y="7.2" width="31.2" height="34.4" rx="3.2" fill={k(id)} />
+      <rect x="11.4" y="10.4" width="25.2" height="28" rx="1.6" fill={g(id)} />
+      <path d="M15 16.2h18.2M15 21.2h14.4M15 26.2h16" stroke={k(id)} strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="32.6" cy="32.4" r="7.2" fill={k(id)} />
+      <path d="M29.4 32.6 31.8 35l4.6-5.4" stroke={g(id)} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }

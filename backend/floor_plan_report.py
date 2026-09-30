@@ -81,7 +81,7 @@ def build_client_report(plan: dict, client: dict | None, company: dict | None, s
     styles = _styles()
     snapshots = snapshots or {}
     document = plan.get("document") or {}
-    scope = build_scope(document)
+    scope = build_scope(document, plan.get("project_type") or "")
     take = scope.get("takeoffs") or {}
     totals = take.get("totals") or {}
     client = client or {}
@@ -241,7 +241,8 @@ def build_client_report(plan: dict, client: dict | None, company: dict | None, s
         Spacer(1, 12),
         Paragraph(
             f"Floor {totals.get('floor_sf') or 0:.0f} SF · Walls {totals.get('wall_sf') or 0:.0f} SF · "
-            f"Roof {totals.get('roof_sf') or 0:.0f} SF · LVL {totals.get('lvl_lf') or 0:.1f} LF · "
+            + (f"Roof {totals.get('roof_sf') or 0:.0f} SF · " if totals.get("roof_in_scope") else "")
+            + f"LVL {totals.get('lvl_lf') or 0:.1f} LF · "
             f"Plumbing walls {totals.get('plumbing_wall_lf') or 0:.1f} LF",
             styles["td"],
         ),

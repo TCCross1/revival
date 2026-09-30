@@ -1986,7 +1986,8 @@ class TestFinancials:
         assert body["income_ytd"] == round(body["invoice_income_ytd"] + body["other_income_ytd"], 2)
         assert body["expenses_ytd"] == round(body["overhead_ytd"] + body["job_costs_ytd"], 2)
         assert isinstance(body["jobs_profit"], list)
-        assert body["square"]["status"] == "coming_soon"
+        assert isinstance(body["square"]["connected"], bool)
+        assert body["square"]["status"] in ("connected", "disconnected")
 
     def test_monthly_overhead_days_and_total(self, client):
         r = client.get(f"{BASE_URL}/api/financials/monthly-overhead", params={"year": 2026, "month": 2})
@@ -2617,6 +2618,8 @@ class TestFloorPlans:
         pid = plan["id"]
         try:
             assert plan["takeoffs"]["totals"]["floor_sf"] == 132.0
+            assert plan["takeoffs"]["totals"]["roof_sf"] == 0
+            assert plan["takeoffs"]["totals"].get("roof_in_scope") is False
             listed = client.get(f"{BASE_URL}/api/floor-plans")
             assert listed.status_code == 200
             assert any(p["id"] == pid for p in listed.json())

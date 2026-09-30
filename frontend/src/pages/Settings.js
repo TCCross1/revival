@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Building2, FileText, Receipt, FileSignature, Save, FolderOpen, Percent, Copy, CheckCircle2, ExternalLink, ShieldCheck } from "lucide-react";
+import { Building2, FileText, Receipt, FileSignature, Save, FolderOpen, Percent, Copy, CheckCircle2, ExternalLink, ShieldCheck, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 
 const DRIVE_WHY = {
@@ -25,7 +25,19 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [form, setForm] = useState(null);
   const [driveKeys, setDriveKeys] = useState({ client_id: "", client_secret: "" });
+  const [squareForm, setSquareForm] = useState({
+    access_token: "",
+    location_id: "",
+    application_id: "",
+    application_secret: "",
+    environment: "production",
+    webhook_signature_key: "",
+    terminal_device_id: "",
+    checking_account_id: "",
+    balance_account_id: "",
+  });
   const driveToast = useRef(false);
+  const squareToast = useRef(false);
   const { data, isLoading } = useQuery({
     queryKey: ["settings"],
     queryFn: async () => (await api.get("/settings")).data,
@@ -33,6 +45,10 @@ export default function Settings() {
   const { data: drive } = useQuery({
     queryKey: ["google-drive-status"],
     queryFn: async () => (await api.get("/google-drive/status")).data,
+  });
+  const { data: square } = useQuery({
+    queryKey: ["square-status"],
+    queryFn: async () => (await api.get("/square/status")).data,
   });
   useEffect(() => { if (data) setForm(data); }, [data]);
 
@@ -53,6 +69,19 @@ export default function Settings() {
     qc.invalidateQueries({ queryKey: ["google-drive-status"] });
     const next = new URLSearchParams(searchParams);
     next.delete("drive");
+    next.delete("why");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, qc]);
+
+  useEffect(() => {
+    const flag = searchParams.get("square");
+    if (!flag || squareToast.current) return;
+    squareToast.current = true;
+    if (flag === "connected") toast.success("Square is connected. Job deposits can park into Savings folders.");
+    if (flag === "error") toast.error("Could not connect Square. Check the Application ID and secret, then try again.");
+    qc.invalidateQueries({ queryKey: ["square-status"] });
+    const next = new URLSearchParams(searchParams);
+    next.delete("square");
     next.delete("why");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, qc]);
@@ -96,6 +125,34 @@ export default function Settings() {
     onError: async (err) => toast.error(await formatApiError(err, "Could not verify Google Drive. Connect again in Company Profile.")),
   });
 
+  const saveSquare = useMutation({
+    mutationFn: async () => (await api.post("/square/credentials", squareForm)).data,
+    onSuccess: (res) => {
+      qc.setQueryData(["square-status"], res);
+      setSquareForm((prev) => ({ ...prev, access_token: "", application_secret: "", webhook_signature_key: "" }));
+      toast.success(res?.connected ? "Square credentials saved." : "Square settings saved.");
+    },
+    onError: async (err) => toast.error(await formatApiError(err, "Could not save Square credentials.")),
+  });
+
+  const connectSquare = useMutation({
+    mutationFn: async () => (await api.get("/square/connect")).data,
+    onSuccess: (res) => {
+      if (res?.auth_url) window.location.href = res.auth_url;
+      else toast.error("Square did not return a sign-in link.");
+    },
+    onError: async (err) => toast.error(await formatApiError(err, "Could not start Square sign-in.")),
+  });
+
+  const disconnectSquare = useMutation({
+    mutationFn: async () => (await api.post("/square/disconnect")).data,
+    onSuccess: (res) => {
+      qc.setQueryData(["square-status"], res);
+      toast.success("Square disconnected. Saved application keys stay on the server.");
+    },
+    onError: async (err) => toast.error(await formatApiError(err, "Could not disconnect Square.")),
+  });
+
   const saveDriveKeys = useMutation({
     mutationFn: async () => (await api.post("/google-drive/credentials", driveKeys)).data,
     onSuccess: () => {
@@ -135,6 +192,7 @@ export default function Settings() {
     credit_card_fee_pct: Number(form.credit_card_fee_pct ?? 3),
     sales_tax_pct: Number(form.sales_tax_pct ?? 6),
     optional_tax_pct: Number(form.optional_tax_pct ?? 5),
+    job_fund_folder_name_pattern: form.job_fund_folder_name_pattern || "{client_name} – {job_short_name}",
   });
 
   return (
@@ -145,7 +203,7 @@ export default function Settings() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2 px-6 py-4 bg-[#0A4D68]">
+        <div className="flex items-center gap-2 px-6 py-4 bg-[#0B3A8F]">
           <Building2 size={18} className="text-[#C9A227]" />
           <h2 className="text-white font-['Outfit'] font-semibold">Contractor Details</h2>
         </div>
@@ -176,7 +234,7 @@ export default function Settings() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" data-testid="google-drive-settings">
-        <div className="flex items-center justify-between gap-3 px-6 py-4 bg-[#0A4D68]">
+        <div className="flex items-center justify-between gap-3 px-6 py-4 bg-[#0B3A8F]">
           <div className="flex items-center gap-2">
             <FolderOpen size={18} className="text-[#C9A227]" />
             <h2 className="text-white font-['Outfit'] font-semibold">Google Drive</h2>
@@ -222,7 +280,7 @@ export default function Settings() {
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 {drive.root_folder_url || drive.parent_folder_url ? (
-                  <a className="inline-flex items-center gap-1.5 text-sm text-[#0A4D68] hover:underline" href={drive.root_folder_url || drive.parent_folder_url} target="_blank" rel="noopener noreferrer">
+                  <a className="inline-flex items-center gap-1.5 text-sm text-[#0B3A8F] hover:underline" href={drive.root_folder_url || drive.parent_folder_url} target="_blank" rel="noopener noreferrer">
                     <ExternalLink size={14} /> Open Revival Pro folder
                   </a>
                 ) : null}
@@ -233,9 +291,9 @@ export default function Settings() {
               <div className={`rounded-lg border px-4 py-3 ${drive?.configured || drive?.keys_saved ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200 bg-white"}`}>
                 <p className="text-sm font-semibold text-[#061A23]">Step 1 — Enable Drive in Google Cloud</p>
                 <ol className="text-sm text-[#4B6370] space-y-1.5 list-decimal pl-5 mt-2">
-                  <li>Open <a className="text-[#0A4D68] underline" href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noopener noreferrer">Google Cloud → Drive API</a> and click Enable.</li>
+                  <li>Open <a className="text-[#0B3A8F] underline" href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noopener noreferrer">Google Cloud → Drive API</a> and click Enable.</li>
                   <li>On the OAuth consent screen, add <span className="font-medium text-[#061A23]">revivalhomeremodelingllc@gmail.com</span> as a test user.</li>
-                  <li>Go to <a className="text-[#0A4D68] underline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Credentials</a> → Create credentials → OAuth client ID → Web application.</li>
+                  <li>Go to <a className="text-[#0B3A8F] underline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Credentials</a> → Create credentials → OAuth client ID → Web application.</li>
                   <li>Paste the redirect URI below into Authorized redirect URIs, then create the client.</li>
                 </ol>
               </div>
@@ -279,17 +337,17 @@ export default function Settings() {
               ) : null}
               <div className="flex flex-wrap gap-2">
                 {!drive?.connected ? (
-                  <Button type="button" variant="outline" data-testid="save-drive-keys-btn" onClick={() => saveDriveKeys.mutate()} disabled={saveDriveKeys.isPending} className="border-[#0A4D68]/30 text-[#0A4D68]">
+                  <Button type="button" variant="outline" data-testid="save-drive-keys-btn" onClick={() => saveDriveKeys.mutate()} disabled={saveDriveKeys.isPending} className="border-[#0B3A8F]/30 text-[#0B3A8F]">
                     {saveDriveKeys.isPending ? "Saving keys…" : drive?.configured || drive?.keys_saved ? "Update Google keys" : "Save Google keys"}
                   </Button>
                 ) : null}
                 {(drive?.configured || drive?.keys_saved) && !drive?.connected ? (
-                  <Button type="button" data-testid="connect-drive-btn" onClick={() => connectDrive.mutate()} disabled={connectDrive.isPending} className="bg-[#0A4D68] hover:bg-[#083D53]">
+                  <Button type="button" data-testid="connect-drive-btn" onClick={() => connectDrive.mutate()} disabled={connectDrive.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73]">
                     {connectDrive.isPending ? "Opening Google…" : "Connect Google Drive"}
                   </Button>
                 ) : null}
                 {drive?.connected ? (
-                  <Button type="button" data-testid="verify-drive-btn" onClick={() => verifyDrive.mutate()} disabled={verifyDrive.isPending} className="bg-[#0A4D68] hover:bg-[#083D53] gap-1.5">
+                  <Button type="button" data-testid="verify-drive-btn" onClick={() => verifyDrive.mutate()} disabled={verifyDrive.isPending} className="bg-[#0B3A8F] hover:bg-[#082C73] gap-1.5">
                     <ShieldCheck size={14} /> {verifyDrive.isPending ? "Checking Drive…" : "Verify Drive"}
                   </Button>
                 ) : null}
@@ -309,8 +367,89 @@ export default function Settings() {
         </div>
       </div>
 
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" data-testid="square-settings">
+        <div className="flex items-center justify-between gap-3 px-6 py-4 bg-[#0B3A8F]">
+          <div className="flex items-center gap-2">
+            <CreditCard size={18} className="text-[#C9A227]" />
+            <h2 className="text-white font-['Outfit'] font-semibold">Square Job Funds</h2>
+          </div>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${square?.connected ? "bg-emerald-400/20 text-emerald-100" : "bg-white/15 text-white"}`} data-testid="square-status-badge">
+            {square?.connected ? "Connected" : "Not connected"}
+          </span>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-[#4B6370]">
+            Revival Pro is the source of truth for client deposits. Connect Square so Collect Deposit can charge the Reader, record the deposit on the job, and park net funds in that job’s Savings folder.
+          </p>
+          <div>
+            <Label className="text-xs text-[#4B6370]">Folder name pattern</Label>
+            <Input className="mt-1" data-testid="job-fund-folder-pattern" value={form.job_fund_folder_name_pattern || ""} onChange={(e) => set("job_fund_folder_name_pattern", e.target.value)} placeholder="{client_name} – {job_short_name}" />
+            <p className="text-xs text-[#4B6370] mt-1">Tokens: {"{client_name}"}, {"{job_short_name}"}, {"{job_name}"}, {"{job_number}"}.</p>
+          </div>
+          {user?.role === "admin" ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-[#4B6370]">Access token</Label>
+                  <Input className="mt-1 font-mono text-xs" type="password" autoComplete="new-password" value={squareForm.access_token} onChange={(e) => setSquareForm({ ...squareForm, access_token: e.target.value })} placeholder={square?.connected ? "Saved on the server" : "EAAA…"} />
+                </div>
+                <div>
+                  <Label className="text-xs text-[#4B6370]">Location ID</Label>
+                  <Input className="mt-1 font-mono text-xs" value={squareForm.location_id} onChange={(e) => setSquareForm({ ...squareForm, location_id: e.target.value })} placeholder={square?.location_id || "L…"} />
+                </div>
+                <div>
+                  <Label className="text-xs text-[#4B6370]">Application ID</Label>
+                  <Input className="mt-1 font-mono text-xs" value={squareForm.application_id} onChange={(e) => setSquareForm({ ...squareForm, application_id: e.target.value })} placeholder={square?.application_id || "sq0idp-…"} />
+                </div>
+                <div>
+                  <Label className="text-xs text-[#4B6370]">Application secret</Label>
+                  <Input className="mt-1 font-mono text-xs" type="password" autoComplete="new-password" value={squareForm.application_secret} onChange={(e) => setSquareForm({ ...squareForm, application_secret: e.target.value })} placeholder="Optional for OAuth" />
+                </div>
+                <div>
+                  <Label className="text-xs text-[#4B6370]">Terminal / Reader device ID</Label>
+                  <Input className="mt-1 font-mono text-xs" value={squareForm.terminal_device_id} onChange={(e) => setSquareForm({ ...squareForm, terminal_device_id: e.target.value })} placeholder={square?.terminal_device_id || "Optional"} />
+                </div>
+                <div>
+                  <Label className="text-xs text-[#4B6370]">Webhook signature key</Label>
+                  <Input className="mt-1 font-mono text-xs" type="password" autoComplete="new-password" value={squareForm.webhook_signature_key} onChange={(e) => setSquareForm({ ...squareForm, webhook_signature_key: e.target.value })} placeholder="From Square Developer Dashboard" />
+                </div>
+                <div>
+                  <Label className="text-xs text-[#4B6370]">Environment</Label>
+                  <select className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm" value={squareForm.environment} onChange={(e) => setSquareForm({ ...squareForm, environment: e.target.value })}>
+                    <option value="production">Production</option>
+                    <option value="sandbox">Sandbox</option>
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-xs text-[#4B6370]">Webhook URL</Label>
+                  <Input className="mt-1 font-mono text-xs" readOnly value={square?.webhook_url || "http://localhost:8001/api/webhooks/square"} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" className="bg-[#0B3A8F] hover:bg-[#082C73]" disabled={saveSquare.isPending} onClick={() => saveSquare.mutate()}>
+                  {saveSquare.isPending ? "Saving…" : "Save Square credentials"}
+                </Button>
+                {square?.oauth_configured ? (
+                  <Button type="button" variant="outline" className="border-[#0B3A8F]/30 text-[#0B3A8F]" disabled={connectSquare.isPending} onClick={() => connectSquare.mutate()}>
+                    {connectSquare.isPending ? "Opening Square…" : "Connect with Square OAuth"}
+                  </Button>
+                ) : null}
+                {square?.connected ? (
+                  <Button type="button" variant="outline" disabled={disconnectSquare.isPending} onClick={() => { if (window.confirm("Disconnect Square? Job folder links stay, but new deposits cannot charge a card until you connect again.")) disconnectSquare.mutate(); }}>
+                    {disconnectSquare.isPending ? "Disconnecting…" : "Disconnect"}
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-xs text-[#4B6370]">Tokens are encrypted on the server and never shown again. Paste a new token only when you rotate it.</p>
+            </div>
+          ) : (
+            <p className="text-sm text-[#4B6370]">Ask an admin to connect Square.</p>
+          )}
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2 px-6 py-4 bg-[#0A4D68]">
+        <div className="flex items-center gap-2 px-6 py-4 bg-[#0B3A8F]">
           <FileText size={18} className="text-[#C9A227]" />
           <h2 className="text-white font-['Outfit'] font-semibold">Estimate Terms</h2>
         </div>
@@ -321,7 +460,7 @@ export default function Settings() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2 px-6 py-4 bg-[#0A4D68]">
+        <div className="flex items-center gap-2 px-6 py-4 bg-[#0B3A8F]">
           <Receipt size={18} className="text-[#C9A227]" />
           <h2 className="text-white font-['Outfit'] font-semibold">Invoice Terms</h2>
         </div>
@@ -332,7 +471,7 @@ export default function Settings() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2 px-6 py-4 bg-[#0A4D68]">
+        <div className="flex items-center gap-2 px-6 py-4 bg-[#0B3A8F]">
           <FileSignature size={18} className="text-[#C9A227]" />
           <h2 className="text-white font-['Outfit'] font-semibold">Contract Terms</h2>
         </div>
@@ -360,7 +499,7 @@ export default function Settings() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" data-testid="pricing-defaults">
-        <div className="flex items-center gap-2 px-6 py-4 bg-[#0A4D68]">
+        <div className="flex items-center gap-2 px-6 py-4 bg-[#0B3A8F]">
           <Percent size={18} className="text-[#C9A227]" />
           <h2 className="text-white font-['Outfit'] font-semibold">Estimate Pricing</h2>
         </div>
@@ -387,7 +526,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <Button data-testid="save-settings-btn" onClick={() => save.mutate(payload())} disabled={save.isPending} className="gap-1.5 bg-[#0A4D68] hover:bg-[#083D53]">
+      <Button data-testid="save-settings-btn" onClick={() => save.mutate(payload())} disabled={save.isPending} className="gap-1.5 bg-[#0B3A8F] hover:bg-[#082C73]">
         <Save size={16} /> {save.isPending ? "Saving…" : "Save Profile"}
       </Button>
     </div>

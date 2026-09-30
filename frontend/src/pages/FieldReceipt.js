@@ -69,17 +69,17 @@ export default function FieldReceipt() {
       <button
         type="button"
         onClick={() => fileRef.current?.click()}
-        className="w-full rounded-2xl border-2 border-dashed border-[#0A4D68]/30 bg-white min-h-[220px] flex flex-col items-center justify-center overflow-hidden"
+        className="w-full rounded-2xl border-2 border-dashed border-[#0B3A8F]/30 bg-white min-h-[220px] flex flex-col items-center justify-center overflow-hidden"
         data-testid="receipt-camera"
       >
         {preview ? (
           <img src={preview} alt="Receipt" className="w-full h-56 object-cover" />
         ) : (
           <>
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#0A4D68] text-white">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#0B3A8F] text-white">
               <Camera size={26} />
             </span>
-            <div className="mt-3 font-semibold text-[#0A4D68]">Take photo</div>
+            <div className="mt-3 font-semibold text-[#0B3A8F]">Take photo</div>
             <div className="text-xs text-[#8AA0AB]">Uses the iPhone camera</div>
           </>
         )}
@@ -114,7 +114,7 @@ export default function FieldReceipt() {
         <Label>Note (optional)</Label>
         <Input className="mt-1 h-12" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Home Depot — shims and adhesive" data-testid="receipt-notes" />
       </div>
-      <Button type="button" className="w-full h-12 bg-[#0A4D68] hover:bg-[#083D53] text-base" disabled={save.isPending} onClick={() => save.mutate()} data-testid="receipt-save">
+      <Button type="button" className="w-full h-12 bg-[#0B3A8F] hover:bg-[#082C73] text-base" disabled={save.isPending} onClick={() => save.mutate()} data-testid="receipt-save">
         {save.isPending ? "Saving…" : "Save to job"}
       </Button>
     </div>

@@ -4,7 +4,7 @@ import api, { formatApiError } from "@/lib/api";
 import { usd, usdCents, fmtDate, formatPhone } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
 import ClientDriveCard from "@/components/ClientDriveCard";
-import { ArrowLeft, Phone, Mail, MapPin, FileText, HardHat, Receipt, User as UserIcon, PenTool } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, FileText, HardHat, Receipt, User as UserIcon, PenTool, Download, ScrollText } from "lucide-react";
 import { toast } from "sonner";
 
 const Stat = ({ label, value, color }) => (
@@ -36,11 +36,28 @@ export default function ClientDetail() {
   if (isLoading) return <div className="text-[#4B6370]">Loading client…</div>;
   if (isError || !data) return <div className="text-[#4B6370]">Client not found.</div>;
 
-  const { client, estimates, jobs, invoices, summary, drive } = data;
+  const { client, estimates, jobs, invoices, contracts = [], summary, drive } = data;
+  const master = client.master_file || {};
+
+  const downloadMaster = async () => {
+    try {
+      const res = await api.get(`/clients/${id}/master-file`, { responseType: "blob", timeout: 60000 });
+      const url = window.URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = master.filename || "proposal.docx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(await formatApiError(err, "Could not download the master file. Please try again."));
+    }
+  };
 
   return (
     <div className="space-y-6" data-testid="client-detail-page">
-      <button onClick={() => navigate("/clients")} className="flex items-center gap-1.5 text-sm font-medium text-[#0A4D68] hover:underline" data-testid="back-to-clients-btn">
+      <button onClick={() => navigate("/clients")} className="flex items-center gap-1.5 text-sm font-medium text-[#0B3A8F] hover:underline" data-testid="back-to-clients-btn">
         <ArrowLeft size={16} /> Back to Clients
       </button>
 
@@ -48,7 +65,7 @@ export default function ClientDetail() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-4">
-            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#0A4D68]/10 text-[#0A4D68] shrink-0">
+            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#0B3A8F]/10 text-[#0B3A8F] shrink-0">
               <UserIcon size={26} />
             </span>
             <div>
@@ -56,7 +73,7 @@ export default function ClientDetail() {
                 <h1 className="text-3xl font-semibold font-['Outfit'] tracking-tight">{client.name}</h1>
                 <StatusBadge status={client.status} />
               </div>
-              <div className="text-sm text-[#4B6370] mt-1">Lead source: <span className="text-[#0A4D68] font-medium">{client.source}</span></div>
+              <div className="text-sm text-[#4B6370] mt-1">Lead source: <span className="text-[#0B3A8F] font-medium">{client.source}</span></div>
               <div className="flex flex-wrap gap-4 mt-3 text-sm text-[#4B6370]">
                 {client.phone && <span className="flex items-center gap-1"><Phone size={14} />{formatPhone(client.phone)}</span>}
                 {client.email && <span className="flex items-center gap-1"><Mail size={14} />{client.email}</span>}
@@ -64,7 +81,7 @@ export default function ClientDetail() {
               </div>
             </div>
           </div>
-          <button type="button" className="inline-flex items-center gap-2 rounded-md bg-[#0A4D68] hover:bg-[#083D53] text-white px-3 py-2 text-sm font-medium" onClick={() => navigate(`/floor-plans/new`)}>
+          <button type="button" className="inline-flex items-center gap-2 rounded-md bg-[#0B3A8F] hover:bg-[#082C73] text-white px-3 py-2 text-sm font-medium" onClick={() => navigate(`/floor-plans/new`)}>
             <PenTool size={16} /> Floor plan
           </button>
         </div>
@@ -79,9 +96,51 @@ export default function ClientDetail() {
         onRefresh={(next) => qc.setQueryData(["client-detail", id], (old) => (old ? { ...old, drive: next } : old))}
       />
 
+      {master.has_document ? (
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4" data-testid="client-master-file">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold font-['Outfit']">Master file</h2>
+              <p className="text-sm text-[#4B6370] mt-1">{master.filename}{master.proposal_date_label ? ` · ${master.proposal_date_label}` : ""}</p>
+            </div>
+            <button type="button" data-testid="download-master-file" onClick={downloadMaster} className="inline-flex items-center gap-2 rounded-md border border-[#0B3A8F]/30 text-[#0B3A8F] px-3 py-2 text-sm font-medium">
+              <Download size={16} /> Download proposal
+            </button>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Stat label="Original price" value={usd(master.original_contract_price)} />
+            <Stat label="Contract balance" value={usd(master.remaining_balance)} color="text-[#0B3A8F]" />
+            <Stat label="Materials" value={usd(master.itemized_materials_total)} />
+            <Stat label="Labor remainder" value={usd(master.labor_remainder)} />
+          </div>
+          {(master.adjustments || []).length ? (
+            <ul className="text-sm text-[#4B6370] space-y-1">
+              {master.adjustments.map((row) => (
+                <li key={row.label}>{row.label}: {usd(row.amount)}</li>
+              ))}
+            </ul>
+          ) : null}
+          {Math.abs(Number(master.materials_variance || 0)) >= 0.01 ? (
+            <p className="text-sm text-[#8A7018] bg-[#FBF6E8] rounded-lg px-3 py-2">
+              The printed materials total is {usd(master.stated_materials_total)}. The itemized allowances add to {usd(master.itemized_materials_total)}. The job sheet uses the itemized allowances.
+            </p>
+          ) : null}
+          {(master.payment_schedule || []).length ? (
+            <div>
+              <div className="text-sm font-medium text-[#061A23]">Payment schedule</div>
+              <ul className="mt-1 text-sm text-[#4B6370] space-y-1">
+                {master.payment_schedule.map((row) => (
+                  <li key={`${row.label}-${row.amount}`}>{row.label}: {usd(row.amount)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Open Pipeline" value={usd(summary.open_pipeline)} color="text-[#0A4D68]" />
+        <Stat label="Open Pipeline" value={usd(summary.open_pipeline)} color="text-[#0B3A8F]" />
         <Stat label="Won Value" value={usd(summary.won_value)} color="text-emerald-600" />
         <Stat label="Collected" value={usd(summary.collected)} color="text-emerald-600" />
         <Stat label="Outstanding" value={usd(summary.outstanding)} color="text-amber-600" />
@@ -101,11 +160,34 @@ export default function ClientDetail() {
             <tbody>
               {estimates.map((e) => (
                 <tr key={e.id} data-testid={`detail-estimate-${e.id}`} className="border-b border-slate-100">
-                  <td className="p-3 font-medium text-[#0A4D68]">{e.estimate_number}</td>
+                  <td className="p-3 font-medium text-[#0B3A8F]">{e.estimate_number}</td>
                   <td className="p-3 text-[#4B6370]">{e.category}</td>
                   <td className="p-3"><StatusBadge status={e.status} /></td>
                   <td className="p-3 text-right font-semibold font-['Outfit']">{usd(e.total)}</td>
                   <td className="p-3 text-[#4B6370]">{fmtDate(e.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+
+      <Section icon={ScrollText} title="Contracts" count={contracts.length}>
+        {contracts.length === 0 ? (
+          <Empty text="No contracts for this client yet." />
+        ) : (
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-[#4B6370] border-b border-slate-200">
+              <th className="p-3 font-medium">Contract #</th><th className="p-3 font-medium">Status</th>
+              <th className="p-3 font-medium text-right">Total</th><th className="p-3 font-medium">Created</th>
+            </tr></thead>
+            <tbody>
+              {contracts.map((contract) => (
+                <tr key={contract.id} data-testid={`detail-contract-${contract.id}`} className="border-b border-slate-100 cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/contracts/${contract.id}`)}>
+                  <td className="p-3 font-medium text-[#0B3A8F]">{contract.contract_number}</td>
+                  <td className="p-3"><StatusBadge status={contract.status} /></td>
+                  <td className="p-3 text-right font-semibold font-['Outfit']">{usd(contract.total)}</td>
+                  <td className="p-3 text-[#4B6370]">{fmtDate(contract.created_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -126,7 +208,7 @@ export default function ClientDetail() {
             <tbody>
               {jobs.map((j) => (
                 <tr key={j.id} data-testid={`detail-job-${j.id}`} className="border-b border-slate-100 cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/jobs/${j.id}/sheet`)}>
-                  <td className="p-3 font-medium text-[#0A4D68]">{j.job_number}</td>
+                  <td className="p-3 font-medium text-[#0B3A8F]">{j.job_number}</td>
                   <td className="p-3">{j.name}</td>
                   <td className="p-3"><StatusBadge status={j.status} /></td>
                   <td className="p-3 text-right font-semibold font-['Outfit']">{usd(j.budget)}</td>
@@ -151,7 +233,7 @@ export default function ClientDetail() {
             <tbody>
               {invoices.map((inv) => (
                 <tr key={inv.id} data-testid={`detail-invoice-${inv.id}`} className="border-b border-slate-100">
-                  <td className="p-3 font-medium text-[#0A4D68]">{inv.invoice_number}</td>
+                  <td className="p-3 font-medium text-[#0B3A8F]">{inv.invoice_number}</td>
                   <td className="p-3"><StatusBadge status={inv.status} /></td>
                   <td className="p-3 text-right font-semibold font-['Outfit']">{usdCents(inv.amount)}</td>
                   <td className="p-3 text-right text-emerald-600">{usdCents(inv.amount_paid)}</td>
@@ -169,7 +251,7 @@ export default function ClientDetail() {
 const Section = ({ icon: Icon, title, count, children }) => (
   <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
     <div className="flex items-center gap-2 px-6 py-4 border-b border-slate-200">
-      <Icon size={18} className="text-[#0A4D68]" />
+      <Icon size={18} className="text-[#0B3A8F]" />
       <h2 className="text-lg font-semibold font-['Outfit']">{title}</h2>
       <span className="text-xs bg-slate-100 text-[#4B6370] rounded-full px-2 py-0.5">{count}</span>
     </div>

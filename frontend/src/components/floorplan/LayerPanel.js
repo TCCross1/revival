@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AppWindow, Box, BoxSelect, Copy, DoorOpen, Frame, Hand, Layers3, MoreVertical,
-  RotateCw, ScanLine, Square, Trash2, Lock, Unlock, Ruler, Refrigerator,
-  Columns3, Minus, MousePointer2, Flame, Lightbulb,
+  RotateCw,   ScanLine, Square, Trash2, Lock, Unlock, Ruler, Refrigerator,
+  Columns3, Minus, MousePointer2, Flame, Lightbulb, Undo2, Redo2, Zap, SquareAsterisk,
 } from "lucide-react";
 import { PLAN_LAYERS, layerOn } from "@/lib/floorPlan/layers";
 
@@ -12,10 +12,18 @@ const DEFAULT_POS = { x: 12, y: 108 };
 
 const EDIT_GROUPS = [
   {
+    id: "history",
+    label: "History",
+    tools: [
+      { id: "undo", label: "Undo", hint: "Undo the last change", icon: Undo2 },
+      { id: "redo", label: "Redo", hint: "Redo the last undone change", icon: Redo2 },
+    ],
+  },
+  {
     id: "pointer",
     label: "Pointer",
     tools: [
-      { id: "select", label: "Select / move", hint: "Click to select, drag along the wall", icon: MousePointer2 },
+      { id: "select", label: "Select / move", hint: "Drag the body to move. Gold corner resizes.", icon: MousePointer2 },
       { id: "pan", label: "Pan", hint: "Drag the drawing without changing items", icon: Hand },
     ],
   },
@@ -23,8 +31,9 @@ const EDIT_GROUPS = [
     id: "draw",
     label: "Draw",
     tools: [
-      { id: "room", label: "Room block", hint: "Tap to drop a room, then drag to size", icon: Square },
-      { id: "draw", label: "Point & line", hint: "Click wall endpoints, double-click to finish", icon: Layers3 },
+      { id: "room", label: "Room block", hint: "Click-drag an outside rectangle; walls butt-join at corners", icon: Square },
+      { id: "draw", label: "Point & line", hint: "Click wall endpoints, double-click to finish. Type a length to lock it.", icon: Layers3 },
+      { id: "square-up", label: "Square up", hint: "Straighten nearly-square walls and close gaps", icon: SquareAsterisk },
     ],
   },
   {
@@ -44,7 +53,8 @@ const EDIT_GROUPS = [
       { id: "place:cab-base-24", label: "Base 24", hint: "Tap the plan to place a 24\" base", icon: Square },
       { id: "place:cab-wall-30", label: "Wall 30", hint: "Tap the plan to place a 30\" wall cabinet", icon: Columns3 },
       { id: "place:fridge-36", label: "Fridge 36", hint: "24\" deep 2D fridge, flush to the run", icon: Refrigerator },
-      { id: "place:range-36", label: "Range 36", hint: "Tap the cooking wall", icon: Flame },
+      { id: "place:range-30", label: "Range 30", hint: "30\" 4-burner range — tap the cooking wall", icon: Flame },
+      { id: "place:range-33", label: "Range 33", hint: "33\" 4-burner range — widen to 35\"–40\" for 6 burners", icon: Flame },
       { id: "place:dw-24", label: "Dishwasher", hint: "24\" dishwasher on the sink run", icon: BoxSelect },
       { id: "place:island-96", label: "Island 96", hint: "8' working island", icon: Lightbulb },
       { id: "place:lvl-double", label: "LVL", hint: "Click a wall, or drop over an opening", icon: Minus },
@@ -55,9 +65,9 @@ const EDIT_GROUPS = [
     label: "Modify",
     tools: [
       { id: "rotate", label: "Rotate 90°", hint: "Turn the selected item", icon: RotateCw, needs: "item" },
-      { id: "duplicate", label: "Duplicate", hint: "Copy the selected item beside it", icon: Copy, needs: "item" },
+      { id: "duplicate", label: "Duplicate", hint: "Make an identical twin you can drag into place", icon: Copy, needs: "item" },
       { id: "specs", label: "Properties", hint: "Same as double-click — edit specs", icon: Ruler, needs: "any" },
-      { id: "lock", label: "Lock / unlock", hint: "Pin so auto-fill will not replace it", icon: Lock, needs: "item" },
+      { id: "lock", label: "Lock / unlock", hint: "Pin so Auto Generator will not replace it", icon: Lock, needs: "item" },
       { id: "delete", label: "Delete", hint: "Remove the selection", icon: Trash2, needs: "any" },
     ],
   },
@@ -66,7 +76,8 @@ const EDIT_GROUPS = [
     label: "Finish",
     tools: [
       { id: "counters", label: "Snap counters", hint: "Rebuild countertops on the base run", icon: Ruler },
-      { id: "lidar", label: "LiDAR scan", hint: "Import a RoomPlan scan", icon: ScanLine },
+      { id: "electrical", label: "Electrical design", hint: "Place required devices, size circuits, build the panel schedule", icon: Zap },
+      { id: "lidar", label: "Scan room", hint: "LiDAR / RoomPlan kitchen or bath", icon: ScanLine },
       { id: "3d", label: "3D view", hint: "Open the 3D walkthrough", icon: Box },
     ],
   },
