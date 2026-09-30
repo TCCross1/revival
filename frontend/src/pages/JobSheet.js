@@ -557,7 +557,7 @@ export default function JobSheet({ embedded = false }) {
       />
       )}
 
-      <div className={`sm:hidden ${embedded ? "static" : "fixed bottom-0 inset-x-0 z-20"} border-t border-slate-200 bg-white/95 backdrop-blur px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-2`}>
+      <div className={`sm:hidden ${embedded ? "static" : "rp-phone-lift fixed bottom-0 inset-x-0 z-20"} border-t border-slate-200 bg-white/95 backdrop-blur px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-2`}>
         <Button type="button" variant="outline" className="flex-1 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={downloadPdf}>PDF</Button>
         <Button type="button" variant="outline" className="flex-1 border-[#0B3A8F]/25 text-[#0B3A8F]" onClick={openDrive} disabled={driveBusy}>Drive</Button>
         <Button type="submit" form="job-sheet-form" disabled={save.isPending} className="flex-[2] bg-[#0B3A8F] hover:bg-[#082C73] gap-2">

@@ -201,7 +201,53 @@ export default function Invoices() {
         <StatBox label="Outstanding" value={usd(outstanding)} color="text-amber-600" />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="md:hidden space-y-3" data-testid="invoices-phone-list">
+        {isLoading && <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#4B6370]">Loading…</div>}
+        {!isLoading && invoices.length === 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#4B6370]">No invoices yet. Create one or convert a won estimate.</div>
+        )}
+        {invoices.map((inv) => {
+          const balance = remainingBalance(inv);
+          const rowBusy = pdfBusyId === inv.id || emailBusyId === inv.id || payBusyId === inv.id;
+          return (
+            <article key={inv.id} data-testid={`invoice-card-${inv.id}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-[#0B3A8F] font-['Outfit'] flex items-center gap-2"><Receipt size={15} /><span className="truncate">{inv.invoice_number}</span></div>
+                  <div className="text-sm mt-1 truncate">{inv.client_name}</div>
+                  <div className="text-xs text-[#4B6370] mt-0.5">Due {fmtDate(inv.due_date)}</div>
+                </div>
+                <StatusBadge status={inv.status} />
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-xl bg-[#F4F6FA] p-2">
+                  <div className="text-[#4B6370]">Amount</div>
+                  <div className="font-['Outfit'] font-semibold text-sm text-[#0B3A8F]">{usdCents(inv.amount)}</div>
+                </div>
+                <div className="rounded-xl bg-[#F4F6FA] p-2">
+                  <div className="text-[#4B6370]">Paid</div>
+                  <div className="font-['Outfit'] font-semibold text-sm text-emerald-600">{usdCents(inv.amount_paid)}</div>
+                </div>
+                <div className="rounded-xl bg-[#F4F6FA] p-2">
+                  <div className="text-[#4B6370]">Balance</div>
+                  <div className={`font-['Outfit'] font-semibold text-sm ${balance > 0 ? "text-amber-600" : "text-emerald-600"}`}>{usdCents(balance)}</div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+                <Button data-testid={`pay-invoice-card-${inv.id}`} onClick={() => openPay(inv)} disabled={rowBusy || balance <= 0} variant="outline" size="sm" className="h-9 gap-1 border-[#0B3A8F]/30 text-[#0B3A8F]">
+                  <DollarSign size={14} /> Pay
+                </Button>
+                <button type="button" onClick={() => downloadPdf(inv)} disabled={rowBusy} className="p-2 rounded-lg hover:bg-slate-100 text-[#0B3A8F]"><Download size={16} /></button>
+                <button type="button" onClick={() => sendEmail.mutate(inv.id)} disabled={rowBusy} className="p-2 rounded-lg hover:bg-slate-100 text-[#0B3A8F]"><Send size={16} /></button>
+                <button type="button" onClick={() => openEdit(inv)} disabled={rowBusy} className="p-2 rounded-lg hover:bg-slate-100 text-[#0B3A8F]"><Pencil size={16} /></button>
+                <button type="button" onClick={() => { if (window.confirm(`Delete ${inv.invoice_number}?`)) remove.mutate(inv.id); }} disabled={rowBusy} className="p-2 rounded-lg hover:bg-red-50 text-red-500"><Trash2 size={16} /></button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
