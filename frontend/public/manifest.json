@@ -1,11 +1,11 @@
 {
   "name": "Revival Home Remodeling",
   "short_name": "Revival",
-  "description": "Revive your home, renew your spirit.",
+  "description": "Revival Pro — capture, organize, and close remodeling jobs from your phone or office.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "portrait-primary",
   "background_color": "#0B3A8F",
   "theme_color": "#0B3A8F",
   "lang": "en-US",
